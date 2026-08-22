@@ -1,0 +1,9 @@
+{
+  "name": "stubbase-dashboard-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server-app.ts",
+    "dev": "bun --watch run server-app.ts"
+  }
+}

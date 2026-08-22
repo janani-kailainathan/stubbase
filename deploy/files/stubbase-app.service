@@ -1,0 +1,36 @@
+[Unit]
+Description=Stubbase Dashboard Backend (auth/projects/billing, port 3001)
+After=network-online.target stubbase-core.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=stubbase
+Group=stubbase
+WorkingDirectory=/opt/stubbase/app
+ExecStart=/usr/local/bin/bun run server-app.ts
+EnvironmentFile=/etc/stubbase/stubbase.env
+Environment=PORT=3001
+Environment=CORE_API_URL=http://127.0.0.1:3000
+Environment=DB_PATH=/var/lib/stubbase/app.sqlite
+Restart=always
+RestartSec=2
+
+# ── 1GB-VPS guardrails ──
+MemoryMax=256M
+MemoryHigh=192M
+
+# ── Sandboxing ──
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# The only path the backend may write: its SQLite database (+ WAL/SHM files)
+ReadWritePaths=/var/lib/stubbase
+
+[Install]
+WantedBy=multi-user.target

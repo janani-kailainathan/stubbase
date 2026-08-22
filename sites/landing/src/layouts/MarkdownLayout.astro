@@ -1,0 +1,202 @@
+---
+// Wraps a content-collection entry: hero (h1 + subheadline) from the frontmatter,
+// then the rendered Markdown body. Emits TechArticle + BreadcrumbList JSON-LD so
+// answer engines get the page's identity and its position in the hub-and-spoke tree.
+import Layout from './Layout.astro';
+import { NAV_GROUPS } from '../lib/nav';
+
+interface Props {
+  collection: 'solutions' | 'features' | 'compare';
+  /** Collection-entry id, i.e. the slug segment. */
+  id: string;
+  title: string;
+  description: string;
+  h1: string;
+  subheadline: string;
+}
+
+const { collection, id, title, description, h1, subheadline } = Astro.props;
+
+const group = NAV_GROUPS.find((candidate) => candidate.key === collection)!;
+const path = `/${collection}/${id}`;
+const siblings = group.links.filter((link) => link.href !== path);
+
+const articleSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: h1,
+  name: title,
+  description,
+  url: new URL(path, Astro.site).toString(),
+  inLanguage: 'en',
+  isPartOf: { '@type': 'WebSite', name: 'Stubbase', url: Astro.site?.toString() },
+  publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+};
+
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: Astro.site?.toString() },
+    { '@type': 'ListItem', position: 2, name: group.label },
+    { '@type': 'ListItem', position: 3, name: h1, item: new URL(path, Astro.site).toString() },
+  ],
+};
+---
+
+<Layout
+  title={title}
+  description={description}
+  active={collection}
+  schema={[articleSchema, breadcrumbSchema]}
+>
+  <article>
+    <header class="border-b border-zinc-800">
+      <div class="mx-auto max-w-3xl px-6 pt-16 pb-14">
+        <nav aria-label="Breadcrumb" class="mb-6 flex items-center gap-2 text-sm text-zinc-500">
+          <a href="/" class="transition-colors hover:text-zinc-300">Home</a>
+          <span aria-hidden="true">/</span>
+          <span class="text-zinc-400">{group.label}</span>
+        </nav>
+        <h1 class="mb-5 text-4xl leading-tight font-extrabold text-zinc-50">{h1}</h1>
+        <p class="text-lg leading-relaxed text-zinc-400">{subheadline}</p>
+      </div>
+    </header>
+
+    <div class="mx-auto max-w-3xl px-6 py-14">
+      <div class="prose-stubbase">
+        <slot />
+      </div>
+    </div>
+  </article>
+
+  {
+    siblings.length > 0 && (
+      <section class="border-t border-zinc-800 bg-zinc-900/30">
+        <div class="mx-auto max-w-3xl px-6 py-14">
+          <h2 class="mb-6 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+            More in {group.label}
+          </h2>
+          <ul class="grid gap-4 sm:grid-cols-2">
+            {siblings.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="block rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-sm font-medium text-zinc-50 transition-colors hover:border-zinc-700 hover:bg-zinc-800"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )
+  }
+</Layout>
+
+<style is:global>
+  /* Markdown body styling. Hand-written instead of @tailwindcss/typography so the
+     dark zinc/emerald tokens stay in one place and the site gains no dependency. */
+  .prose-stubbase > * + * {
+    margin-top: 1.25rem;
+  }
+
+  /* The hero already supplies the space above the first heading. */
+  .prose-stubbase > :first-child {
+    margin-top: 0;
+  }
+
+  .prose-stubbase h2 {
+    margin-top: 3rem;
+    margin-bottom: 1.25rem;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 800;
+    color: var(--color-zinc-50);
+  }
+
+  .prose-stubbase h3 {
+    margin-top: 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-zinc-50);
+  }
+
+  .prose-stubbase p,
+  .prose-stubbase li {
+    line-height: 1.75;
+    color: var(--color-zinc-400);
+  }
+
+  .prose-stubbase strong {
+    font-weight: 600;
+    color: var(--color-zinc-50);
+  }
+
+  .prose-stubbase em {
+    color: var(--color-zinc-300);
+  }
+
+  .prose-stubbase ul,
+  .prose-stubbase ol {
+    padding-left: 1.25rem;
+  }
+
+  .prose-stubbase ul {
+    list-style-type: disc;
+  }
+
+  .prose-stubbase ol {
+    list-style-type: decimal;
+  }
+
+  .prose-stubbase li::marker {
+    color: var(--color-zinc-600);
+  }
+
+  .prose-stubbase li + li {
+    margin-top: 0.625rem;
+  }
+
+  .prose-stubbase a {
+    color: var(--color-emerald-400);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  .prose-stubbase a:hover {
+    color: var(--color-emerald-300);
+  }
+
+  /* Inline code. */
+  .prose-stubbase :not(pre) > code {
+    border-radius: 0.25rem;
+    background-color: var(--color-zinc-800);
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    color: var(--color-emerald-400);
+  }
+
+  /* Shiki-highlighted fenced blocks: multimodal crawlers look for <pre><code>,
+     so the structure stays plain and only the chrome is styled. */
+  .prose-stubbase pre {
+    overflow-x: auto;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-zinc-800);
+    background-color: #000 !important;
+    padding: 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  .prose-stubbase hr {
+    margin-top: 2.5rem;
+    margin-bottom: 2.5rem;
+    border-color: var(--color-zinc-800);
+  }
+</style>

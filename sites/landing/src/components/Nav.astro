@@ -1,0 +1,127 @@
+---
+// Site header. Named Nav.astro (not Header.astro) because every existing page
+// already imports it — the hub-and-spoke groups were added here rather than in a
+// second, competing header component.
+//
+// The dropdowns are native <details>/<summary>, so the landing site keeps its
+// zero-client-JS guarantee (see CLAUDE.md). Trade-off: they close on Esc and on
+// re-click, not on outside click.
+import { ChevronDown, Menu } from 'lucide-astro';
+import { APP_URL } from '../lib/urls';
+import { NAV_GROUPS, RESOURCE_LINKS } from '../lib/nav';
+
+interface Props {
+  active?: 'solutions' | 'features' | 'compare' | 'pricing' | 'quick-start' | 'faqs' | 'contact';
+}
+
+const { active } = Astro.props;
+
+const linkClass = (isActive: boolean) =>
+  isActive
+    ? 'text-sm font-medium text-zinc-50 transition-colors'
+    : 'text-sm text-zinc-400 transition-colors hover:text-zinc-50';
+---
+
+<header class="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950">
+  <nav
+    class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"
+    aria-label="Main"
+  >
+    <a href="/" class="flex items-center">
+      <img src="/stubbase-logo-text-dark.png" alt="Stubbase" class="h-7 sm:h-8" />
+    </a>
+
+    <div class="hidden items-center gap-7 lg:flex">
+      {
+        NAV_GROUPS.map((group) => (
+          <details class="group relative">
+            <summary
+              class={`flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden ${linkClass(group.key === active)}`}
+            >
+              {group.label}
+              <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+            </summary>
+            <div
+              class="absolute top-full left-0 z-50 mt-3 w-64 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
+            >
+              {group.links.map((link) => (
+                <a
+                  href={link.href}
+                  class="block rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </details>
+        ))
+      }
+      <a href="/pricing" aria-current={active === 'pricing' ? 'page' : undefined} class={linkClass(active === 'pricing')}>
+        Pricing
+      </a>
+    </div>
+
+    <div class="flex items-center gap-3 sm:gap-4">
+      <a
+        href={`${APP_URL}/login`}
+        class="hidden text-sm text-zinc-400 transition-colors hover:text-zinc-50 sm:inline"
+      >
+        Login
+      </a>
+      <a
+        href={APP_URL}
+        class="rounded-md bg-emerald-500 px-3 py-2 text-xs font-semibold text-black whitespace-nowrap transition-colors hover:bg-emerald-600 sm:px-4 sm:text-sm"
+      >
+        Generate API (Free)
+      </a>
+
+      <details class="relative lg:hidden">
+        <summary
+          class="flex cursor-pointer list-none items-center text-zinc-400 transition-colors hover:text-zinc-50 [&::-webkit-details-marker]:hidden"
+          aria-label="Open menu"
+        >
+          <Menu class="h-5 w-5" />
+        </summary>
+        <div
+          class="absolute top-full right-0 z-50 mt-3 w-72 rounded-lg border border-zinc-800 bg-zinc-900 p-3"
+        >
+          {
+            NAV_GROUPS.map((group) => (
+              <div class="mb-3">
+                <p class="px-3 pb-1 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                  {group.label}
+                </p>
+                {group.links.map((link) => (
+                  <a
+                    href={link.href}
+                    class="block rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            ))
+          }
+          <div class="border-t border-zinc-800 pt-2">
+            <a
+              href="/pricing"
+              class="block rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+            >
+              Pricing
+            </a>
+            {
+              RESOURCE_LINKS.map((link) => (
+                <a
+                  href={link.href}
+                  class="block rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                >
+                  {link.label}
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>

@@ -1,0 +1,40 @@
+[Unit]
+Description=Stubbase Core Tenant Engine (JSON-to-CRUD, port 3000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=stubbase
+Group=stubbase
+WorkingDirectory=/opt/stubbase/core
+ExecStart=/usr/local/bin/bun run server-core.ts
+EnvironmentFile=/etc/stubbase/stubbase.env
+Environment=PORT=3000
+Environment=TENANTS_DIR=/var/www/stubbase/tenants
+# Usage counters flush to the dashboard API over loopback — that service owns
+# the SQLite file, which this unit's sandbox deliberately cannot write.
+Environment=USAGE_SINK_URL=http://127.0.0.1:3001/_internal/usage
+Restart=always
+RestartSec=2
+
+# ── 1GB-VPS guardrails ──
+# Hard ceiling so a runaway tenant load can never OOM the whole box;
+# the engine's own MAX_ACTIVE_TENANTS cap should trip long before this.
+MemoryMax=384M
+MemoryHigh=320M
+
+# ── Sandboxing ──
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# The only path the engine may write: tenant JSON files
+ReadWritePaths=/var/www/stubbase/tenants
+
+[Install]
+WantedBy=multi-user.target

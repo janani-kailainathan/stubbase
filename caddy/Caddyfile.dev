@@ -1,0 +1,26 @@
+# Local dev routing — *.localhost resolves to 127.0.0.1 automatically,
+# and :80 (no https) keeps Caddy from attempting cert issuance locally.
+
+http://stubbase.localhost {
+	root * /srv/landing
+	file_server
+}
+
+# Mirrors the production www → apex redirect.
+http://www.stubbase.localhost {
+	redir http://stubbase.localhost{uri} permanent
+}
+
+http://app.stubbase.localhost {
+	root * /srv/dashboard
+	try_files {path} /index.html
+	file_server
+}
+
+http://api.app.stubbase.localhost {
+	reverse_proxy dashboard-api:3001
+}
+
+http://api.stubbase.localhost {
+	reverse_proxy core:3000
+}

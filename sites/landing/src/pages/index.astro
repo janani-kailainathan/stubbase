@@ -1,0 +1,351 @@
+---
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight } from 'lucide-astro';
+import Layout from '../layouts/Layout.astro';
+import { APP_URL, CORE_URL } from '../lib/urls';
+import { NAV_GROUPS } from '../lib/nav';
+
+const publicResources = [
+  { path: '/posts', count: '100 posts' },
+  { path: '/comments', count: '500 comments' },
+  { path: '/albums', count: '100 albums' },
+  { path: '/photos', count: '5000 photos' },
+  { path: '/todos', count: '200 todos' },
+  { path: '/users', count: '10 users' },
+];
+
+const capabilities = [
+  {
+    Icon: Sparkles,
+    title: 'AI-Powered Generation',
+    copy: 'Describe your schema in plain English. Our AI engine outputs a fully populated, relational database with production-ready endpoints.',
+  },
+  {
+    Icon: FileJson,
+    title: 'JSON-to-REST',
+    copy: 'Upload a flat JSON file. Stubbase automatically infers relationships, mounts CRUD operations, and enables nested routing.',
+  },
+  {
+    Icon: Rocket,
+    title: 'Zero-Downtime Deployments',
+    copy: 'Click "Deploy" to instantly push schema changes live without breaking existing client connections.',
+  },
+];
+
+const pipeline = [
+  {
+    Icon: ShieldCheck,
+    name: 'AuthGuard',
+    copy: 'Instantly secure your endpoints. Enable Google OAuth and JWT validation without writing authentication logic.',
+  },
+  {
+    Icon: OctagonAlert,
+    name: 'ChaosGuard',
+    copy: 'Inject deterministic latency, error rates, and 5xx status codes to test frontend error boundaries.',
+  },
+  {
+    Icon: Webhook,
+    name: 'Webhook Proxying',
+    copy: 'Securely trigger external services (Resend, Twilio) from your client-side code without exposing secret API keys.',
+  },
+];
+---
+
+<Layout
+  title="Stubbase — The Instant Backend for Frontend & QA Teams"
+  description="Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero database configuration. Built for autonomous frontend development and deterministic chaos testing."
+>
+  <section class="relative overflow-hidden border-b border-zinc-800">
+    <div
+      class="pointer-events-none absolute top-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-emerald-500 opacity-15 blur-[120px]"
+    >
+    </div>
+    <div class="relative mx-auto max-w-5xl px-6 pt-24 pb-20 text-center">
+      <p class="mb-4 text-xs font-semibold tracking-wide text-emerald-500 uppercase">
+        No login required. Generate an endpoint in 2 seconds.
+      </p>
+      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-zinc-50">
+        The Instant Backend for<br />Frontend &amp; QA Teams
+      </h1>
+      <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-zinc-400">
+        Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero
+        database configuration. Built for autonomous frontend development and deterministic chaos
+        testing.
+      </p>
+
+      <div class="flex items-center justify-center gap-4">
+        <a
+          href={APP_URL}
+          class="inline-block rounded-md bg-emerald-500 px-6 py-3 font-semibold text-black transition-colors hover:bg-emerald-600"
+        >
+          Generate API (Free)
+        </a>
+        <a
+          href="#free-resources"
+          class="inline-block rounded-md border border-zinc-800 bg-zinc-900 px-6 py-3 font-semibold text-zinc-50 transition-colors hover:bg-zinc-800"
+        >
+          Use Public APIs
+        </a>
+      </div>
+
+      <div class="relative mx-auto mt-14 max-w-5xl">
+        <div
+          class="absolute -inset-1 rounded-xl bg-gradient-to-r from-emerald-500/20 to-zinc-800/20 opacity-50 blur-lg"
+        >
+        </div>
+        <div
+          class="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl"
+        >
+          <img
+            src="/dashboard-ui.png"
+            alt="Stubbase Dashboard UI"
+            class="w-full rounded-lg border border-zinc-800/50"
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="border-b border-zinc-800">
+    <div class="mx-auto max-w-5xl px-6 py-20">
+      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Stop Writing Boilerplate APIs</h2>
+      <p class="mb-12 max-w-3xl leading-relaxed text-zinc-400">
+        Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
+        testing teams to unblock themselves instantly.
+      </p>
+      <div class="grid gap-6 md:grid-cols-3">
+        {
+          capabilities.map(({ Icon, title, copy }) => (
+            <article class="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <Icon class="h-5 w-5 text-emerald-500" />
+              </div>
+              <h3 class="mb-2 font-semibold text-zinc-50">{title}</h3>
+              <p class="text-sm leading-relaxed text-zinc-400">{copy}</p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="border-b border-zinc-800 bg-zinc-900/30">
+    <div class="mx-auto max-w-5xl px-6 py-20">
+      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">A Complete API Pipeline</h2>
+      <p class="mb-12 max-w-3xl leading-relaxed text-zinc-400">
+        Every endpoint deployed on Stubbase routes through our dynamic middleware pipeline,
+        controlled entirely via your dashboard.
+      </p>
+      <ul class="grid gap-6 md:grid-cols-3">
+        {
+          pipeline.map(({ Icon, name, copy }) => (
+            <li class="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <Icon class="h-5 w-5 text-emerald-500" />
+              </div>
+              <h3 class="mb-2 font-semibold text-zinc-50">{name}</h3>
+              <p class="text-sm leading-relaxed text-zinc-400">{copy}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section class="border-b border-zinc-800 bg-zinc-950">
+    <div class="mx-auto max-w-3xl px-6 py-24 text-center">
+      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Try it live</h2>
+      <p class="mb-8 text-zinc-400">
+        Run this code here, in your console, or from any frontend application.
+      </p>
+
+      <div class="mb-6 overflow-hidden rounded-xl border border-zinc-800 bg-black text-left shadow-xl">
+        <div class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-4 py-3">
+          <Terminal class="h-4 w-4 text-zinc-500" />
+          <span class="font-mono text-xs text-zinc-500">fetch.js</span>
+        </div>
+        <pre
+          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-zinc-300"><code><span class="text-sky-300">fetch</span>(<span class="text-emerald-400">'{CORE_URL}/public/users/1'</span>)
+  .<span class="text-sky-300">then</span>(response =&gt; response.<span class="text-sky-300">json</span>())
+  .<span class="text-sky-300">then</span>(json =&gt; console.<span class="text-sky-300">log</span>(json))</code></pre>
+      </div>
+
+      <div class="mb-6 text-left">
+        <button
+          id="run-script-btn"
+          class="flex items-center gap-2 rounded-md bg-zinc-100 px-5 py-2 text-sm font-semibold text-black shadow-sm transition-colors hover:bg-white"
+        >
+          <span class="flex items-center gap-2 data-[hidden]:hidden" data-state="idle">
+            <Play class="h-4 w-4" /> Run script
+          </span>
+          <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="loading">
+            <Loader class="h-4 w-4 animate-spin" /> Running...
+          </span>
+          <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="done">
+            <Check class="h-4 w-4 text-emerald-500" /> Done
+          </span>
+        </button>
+      </div>
+
+      <div
+        id="output-container"
+        class="hidden overflow-hidden rounded-xl border border-zinc-800 bg-black text-left shadow-xl"
+      >
+        <div class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-4 py-3">
+          <FileJson class="h-4 w-4 text-zinc-500" />
+          <span class="font-mono text-xs text-zinc-500">Output</span>
+        </div>
+        <div
+          id="script-output"
+          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-zinc-300"
+        >
+        </div>
+      </div>
+
+      <p id="success-msg" class="mt-6 hidden text-left text-sm text-zinc-400">
+        Congrats! You've made your first call to Stubbase. 🎉
+      </p>
+    </div>
+  </section>
+
+  <section id="free-resources" class="border-b border-zinc-800 bg-zinc-900/30">
+    <div class="mx-auto max-w-4xl px-6 py-20">
+      <div class="mb-12 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Free Resources</h2>
+        <p class="text-zinc-400">
+          Stubbase comes with a set of 6 common resources for quick frontend prototyping.<br />
+          No account required.
+        </p>
+      </div>
+
+      <div class="mx-auto max-w-2xl">
+        <div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm">
+          <div
+            class="flex items-center justify-between border-b border-zinc-800 bg-black/50 px-6 py-4"
+          >
+            <span class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Base URL</span>
+            <code class="font-mono text-sm text-zinc-300">{CORE_URL}/public</code>
+          </div>
+
+          {
+            publicResources.map((resource, i) => (
+              <div
+                class={`group flex items-center justify-between px-6 py-4 transition-colors hover:bg-zinc-800/50 ${i < publicResources.length - 1 ? 'border-b border-zinc-800' : ''}`}
+              >
+                <a
+                  href={`${CORE_URL}/public${resource.path}`}
+                  class="font-mono text-sm text-emerald-400 underline-offset-4 hover:text-emerald-300 hover:underline"
+                >
+                  {resource.path}
+                </a>
+                <span class="text-sm text-zinc-400 transition-colors group-hover:text-zinc-300">
+                  {resource.count}
+                </span>
+              </div>
+            ))
+          }
+        </div>
+
+        <div class="mt-8 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
+          <p class="text-sm text-emerald-400">
+            <strong>Need custom fields?</strong> Edit these APIs in the{' '}
+            <a href={APP_URL} class="font-semibold underline hover:text-emerald-300">
+              Stubbase Dashboard
+            </a>{' '}
+            to add delays, errors, or your own data.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-20">
+      <h2 class="mb-12 text-3xl font-extrabold text-zinc-50">Explore Stubbase</h2>
+      <div class="grid gap-10 md:grid-cols-3">
+        {
+          NAV_GROUPS.map((group) => (
+            <div>
+              <p class="mb-4 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                {group.label}
+              </p>
+              <ul class="space-y-3">
+                {group.links.map((link) => (
+                  <li>
+                    <a
+                      href={link.href}
+                      class="group flex items-center gap-2 text-sm text-zinc-300 transition-colors hover:text-emerald-400"
+                    >
+                      {link.label}
+                      <ArrowRight class="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { CORE_URL } from '../lib/urls';
+
+  const btn = document.getElementById('run-script-btn') as HTMLButtonElement | null;
+  const outContainer = document.getElementById('output-container');
+  const outText = document.getElementById('script-output');
+  const successMsg = document.getElementById('success-msg');
+
+  const FALLBACK_USER = { id: 1, name: 'Ava Chen', role: 'admin', active: true };
+
+  function setButtonState(state: 'idle' | 'loading' | 'done') {
+    btn?.querySelectorAll<HTMLElement>('[data-state]').forEach((span) => {
+      span.classList.toggle('hidden', span.dataset.state !== state);
+      span.classList.toggle('flex', span.dataset.state === state);
+    });
+    if (state === 'done' && btn) {
+      btn.classList.remove('bg-zinc-100', 'hover:bg-white', 'text-black');
+      btn.classList.add('border', 'border-zinc-800', 'bg-zinc-900', 'text-zinc-50');
+    }
+  }
+
+  function highlightJson(value: unknown): string {
+    const json = JSON.stringify(value, null, 2)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const tokenRe =
+      /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
+    return json.replace(tokenRe, (match, str, colon, boolNull, num, punct) => {
+      if (str) {
+        const cls = colon ? 'text-emerald-400' : 'text-sky-300';
+        return `<span class="${cls}">${str}</span>${colon ?? ''}`;
+      }
+      if (boolNull) return `<span class="text-purple-400">${boolNull}</span>`;
+      if (num) return `<span class="text-amber-300">${num}</span>`;
+      if (punct) return `<span class="text-zinc-500">${punct}</span>`;
+      return match;
+    });
+  }
+
+  btn?.addEventListener('click', async () => {
+    btn.disabled = true;
+    setButtonState('loading');
+
+    let data: unknown;
+    try {
+      const response = await fetch(`${CORE_URL}/public/users/1`);
+      if (!response.ok) throw new Error(String(response.status));
+      data = await response.json();
+    } catch {
+      data = FALLBACK_USER;
+    }
+
+    if (outText) outText.innerHTML = `<pre class="whitespace-pre-wrap">${highlightJson(data)}</pre>`;
+    outContainer?.classList.remove('hidden');
+    successMsg?.classList.remove('hidden');
+    setButtonState('done');
+    btn.disabled = false;
+  });
+</script>

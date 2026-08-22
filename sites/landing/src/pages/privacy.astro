@@ -1,0 +1,64 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const sections = [
+  {
+    h: '1. Information we collect',
+    p: 'We collect account information (name, email, company) and usage data necessary to operate and improve Stubbase.',
+  },
+  {
+    h: '2. How we use information',
+    p: 'We use your information to provide the service, respond to support requests, and send important account notices. We do not sell your data.',
+  },
+  {
+    h: '3. Data sharing',
+    p: 'We only share data with third-party processors necessary to run Stubbase (e.g. hosting, billing), each bound by confidentiality obligations.',
+  },
+  {
+    h: '4. Data security',
+    p: 'We use industry-standard measures to protect your data, including encryption in transit and at rest.',
+  },
+  {
+    h: '5. Your rights',
+    p: 'You may request access to, correction of, or deletion of your personal data at any time by contacting us.',
+  },
+];
+---
+
+<BaseLayout
+  title="Privacy Policy — Stubbase"
+  description="How Stubbase collects, uses, and protects your data."
+>
+  <Nav />
+  <main>
+    <section>
+      <article class="mx-auto max-w-3xl px-6 py-20">
+        <h1 class="mb-3 text-4xl font-extrabold text-zinc-50">Privacy policy</h1>
+        <p class="mb-12 font-mono text-sm text-zinc-500">Last updated: July 14, 2026</p>
+
+        <div class="flex flex-col gap-10">
+          {
+            sections.map((section) => (
+              <section>
+                <h2 class="mb-3 text-xl font-semibold text-zinc-50">{section.h}</h2>
+                <p class="text-sm leading-relaxed text-zinc-400">{section.p}</p>
+              </section>
+            ))
+          }
+          <section>
+            <h2 class="mb-3 text-xl font-semibold text-zinc-50">6. Contact</h2>
+            <p class="text-sm leading-relaxed text-zinc-400">
+              Questions about this policy? Reach out on{' '}
+              <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+                help@stubbase.dev
+              </a>.
+            </p>
+          </section>
+        </div>
+      </article>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

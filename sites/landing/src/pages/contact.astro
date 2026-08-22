@@ -1,0 +1,111 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const inputClass =
+  'rounded-md border border-zinc-800 bg-black px-4 py-2.5 text-sm text-zinc-50 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none';
+---
+
+<BaseLayout
+  title="Contact — Stubbase"
+  description="Get in touch with the Stubbase team about mock APIs, enterprise request volumes, or support. We reply to every message."
+>
+  <Nav active="contact" />
+  <main>
+    <section>
+      <div class="mx-auto max-w-xl px-6 pt-20 pb-14 text-center">
+        <h1 class="mb-4 text-4xl font-extrabold text-zinc-50">Contact us</h1>
+        <p class="text-zinc-400">
+          We'd love to hear from you! Send us a message and we will get back to you. Alternatively,
+          email us at{' '}
+          <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+            help@stubbase.dev
+          </a>.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="mx-auto max-w-xl px-6 py-16">
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-8">
+          <form class="flex flex-col gap-5" method="post">
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label
+                  for="first-name"
+                  class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                >
+                  First name
+                </label>
+                <input id="first-name" name="firstName" type="text" required class={inputClass} />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label
+                  for="last-name"
+                  class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                >
+                  Last name
+                </label>
+                <input id="last-name" name="lastName" type="text" required class={inputClass} />
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label for="email" class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                Email
+              </label>
+              <input id="email" name="email" type="email" required class={inputClass} />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label
+                for="company"
+                class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+              >
+                Company
+              </label>
+              <input id="company" name="company" type="text" class={inputClass} />
+            </div>
+            <fieldset class="flex flex-col gap-2.5">
+              <legend class="mb-2.5 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                How many API requests do you need monthly?
+              </legend>
+              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
+                <input type="radio" name="requests" value="lt-10k" class="accent-emerald-500" />
+                Less than 10,000
+              </label>
+              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
+                <input type="radio" name="requests" value="10k-100k" class="accent-emerald-500" />
+                Between 10,000 and 100,000
+              </label>
+              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
+                <input type="radio" name="requests" value="gt-100k" class="accent-emerald-500" />
+                More than 100,000, or enterprise scale
+              </label>
+            </fieldset>
+            <div class="flex flex-col gap-1.5">
+              <label
+                for="message"
+                class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+              >
+                How can we help you?
+              </label>
+              <textarea
+                id="message"
+                name="message"
+                rows="4"
+                required
+                class={`${inputClass} resize-y`}></textarea>
+            </div>
+            <button
+              type="submit"
+              class="mt-2 rounded-md bg-emerald-500 py-3 font-semibold text-black transition-colors hover:bg-emerald-600"
+            >
+              Submit
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

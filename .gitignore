@@ -1,0 +1,11 @@
+node_modules/
+*.sqlite
+*.sqlite-*
+.DS_Store
+tenants/*
+!tenants/demo/
+.envrc
+.idea/
+# Local Compose secrets (GOOGLE_AI_API_KEY). Never commit real keys.
+.env
+sites/*/.env.local

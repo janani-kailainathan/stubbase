@@ -1,0 +1,109 @@
+# CLAUDE.md
+
+Stubbase: multi-tenant, scale-to-zero JSON-to-CRUD hosting for a 1GB VPS. See README.md for architecture and API details. Canonical domain is **stubbase.dev** (we do not own stubbase.com).
+
+## Hard constraints
+
+- **Bun only** on the backend — no Node.js, Express, PM2, or ts-node. Use `Bun.serve`, `Bun.file()`, `Bun.write()`, `bun:sqlite`, `Bun.password`. The two backend apps must stay at **zero npm dependencies**.
+- **Caddy only** for proxying/static files (no Nginx). Static zones (`stubbase.dev`, `app.stubbase.dev`) are served by Caddy alone — the frontends must always build to static `dist/`; never add a backend process (SSR, API routes) for them.
+- Production runs under **systemd** (no Docker); Docker Compose is for local dev only. Deployment is **Ansible** (`deploy/deploy.yml`).
+- Everything is sized for 1GB RAM: keep per-request allocations small, preserve the memory caps, keep argon2 params modest.
+- **`ADMIN_SECRET` never reaches a browser.** The SPA must not call the core `_admin` plane; all file writes go through the Dashboard API's authenticated files proxy (`PUT/DELETE /projects/<id>/files/<res>`).
+
+## Commands
+
+```bash
+# whole dev stack in one process: both backends (--watch) + both dev servers,
+# prefixed output, one Ctrl-C. Owns the dev ports; seeds the `public` demo
+# tenant on first run. Dev-only supervisor — nothing in prod depends on it.
+bun run scripts/dev.ts        # dashboard :5173, landing :4321, core :3000, app :3001
+
+# backends individually (no Docker)
+ADMIN_SECRET=dev PORT=3000 bun run apps/core/server-core.ts
+ADMIN_SECRET=dev PORT=3001 CORE_API_URL=http://127.0.0.1:3000 bun run apps/dashboard-api/server-app.ts
+
+# frontends — three environments: dev (vite/astro dev servers + proxy,
+# .env.development → localhost cross-links), docker (`build:docker`,
+# .env.docker → *.localhost), prod (`build`, *.stubbase.dev)
+cd sites/landing   && bun run build     # Astro SSG → dist/ (build:docker for the local stack)
+cd sites/dashboard && bun run build     # Vite SPA → dist/ (build:docker for the local stack)
+cd sites/dashboard && bunx vite         # dev server; proxies /api/app → :3001, /api/core → :3000
+
+# full local stack (Caddy on :80, *.localhost hosts)
+docker compose up --build
+
+# top-level build: verify + test the backends, then build both sites.
+# Maven-style reactor log; fail-fast, so a red module skips everything after it.
+bun run scripts/build.ts               # prod URLs → sites/*/dist/
+bun run scripts/build.ts --docker      # build:docker mode for the local stack
+bun run scripts/build.ts -pl core      # one module: core|dashboard-api|landing|dashboard
+bun run scripts/build.ts --skip-tests  # escape hatch; test goals report SKIPPED
+
+# deploy / syntax-check  (run the top-level build first — dist/ is gitignored)
+cd deploy && ansible-playbook --syntax-check -i inventory.ini.example deploy.yml
+STUBBASE_ADMIN_SECRET=... ansible-playbook -i inventory.ini deploy.yml
+```
+
+`scripts/build.ts` is the gate; Ansible only ships whatever `dist/` it finds, and **not deploying after a failed build is the operator's call** — the script deliberately leaves a previous `dist/` in place. The backends have no build step, so their reactor modules exist purely to run the zero-dependency check and the regression suite: that makes this script the only thing between a broken `server-core.ts` and production.
+
+Tests live in top-level `tests/`, run by `bun test` (built into Bun — no npm dependency). `tests/core.test.ts`, `tests/dashboard-api.test.ts` and `tests/starters.test.ts` are wired into the matching reactor modules (the last into `dashboard`); a suite that doesn't exist reports SKIPPED rather than failing the build. `tests/starters.test.ts` is the one suite that imports frontend code — the starter-example *data* in `sites/dashboard/src/lib/starters.ts`, which is kept free of React precisely so it can be seeded into a real core and have each card's advertised `?_expand=…` query verified rather than duplicated. `tests/helpers.ts` (outside bun test's glob) spawns each backend as a real process on an OS-assigned port against a scratch `TENANTS_DIR`/`DB_PATH` — the dashboard-api suite runs a real core alongside it, since the files proxy and draft model only mean anything end-to-end.
+
+**Keep them black-box.** Nothing imports server internals, so refactoring the pipeline, dispatcher or storage layer doesn't touch the tests — they fail only when observable behaviour changes. The invariant lists below are the spec; when you add an invariant, add the test. Verify a new test actually bites by breaking the invariant on purpose and watching it go red. Verify frontend changes with a production build plus a real-browser pass (dev server + headless Chrome), not just `tsc`.
+
+## Core Engine invariants (apps/core/server-core.ts)
+
+Breaking any of these is a correctness bug:
+
+- **Write-through**: every mutation updates the in-RAM array *and* immediately persists via the per-tenant `writeChain` promise chain (serializes `Bun.write` so concurrent mutations can't interleave a file). Never mutate RAM without persisting.
+- **Admin invalidation**: any `_admin` route that touches a file must call `evict(tenantId)` afterward so the next request lazy-loads fresh disk state.
+- **Name validation**: tenant ids and resource names must pass `NAME_RE` *before* any filesystem path is built — this is the only path-traversal defense.
+- **Eviction is safe** only because of write-through: eviction just drops the Map entry, it does not flush anything.
+- Admin auth uses hashed `timingSafeEqual` — keep it constant-time.
+- **CORS split**: public CRUD routes (and their error responses) send `Access-Control-Allow-Origin: *`, and the public preflight allows `authorization` (tenant JWTs ride that header); the `_admin` plane sends no CORS headers and *its* preflight must not allow the `authorization` header. Keep it that way.
+- **Tenant auth** (`config.json`, `AUTH_ENABLED`): per-tenant JWT signing keys are *derived* from `ADMIN_SECRET` (HMAC over the tenant id) — never stored on disk. `users.json` is the identity table; every response path for the `users` resource must strip `passwordHash` (`safeUser`). `auth` and `config` are reserved names, never CRUD resources.
+- CRUD requests flow through the middleware `PIPELINE` (`statusGuard → authGuard → chaosGuard → validationGuard → beforeWebhookGuard → coreOperation → afterWebhookGuard`); new per-request behavior belongs in a pipeline stage, not in the dispatcher. A stage returns a `Response` to abort, or `SKIP_REST` when it has already set `ctx.response`.
+- **Protected names**: `isPrivateFile` (config/stubbase/env/`draft_*`) never mounts as a servable resource, and `isProtectedResource` (those plus `_`/`.` prefixes) answers **403** on the public plane. Internal planes (`_admin`, `_notify`, `auth`, `openapi.json`) are dispatched *before* that check — keep them there or the blacklist will swallow them.
+- **QA chaos headers** (`x-stubbase-delay|status|error-rate|empty`) only act when the tenant sets `QA_MODE=true`, and `chaosGuard` runs *after* `authGuard` so simulation can never bypass auth. Delay is capped by `MAX_CHAOS_DELAY_MS`.
+- Schema validation is a **built-in** subset validator (`validateSchema`) — do not add ajv/zod; the backends stay dependency-free.
+- **Usage metering**: public-plane responses are counted in the `usage` Map (the `_admin` plane is not) and flushed to the Dashboard API's `/_internal/usage` every `USAGE_FLUSH_MS`, on eviction, and on shutdown. Counters deliberately live *outside* `activeTenants` so eviction can't drop them, and a failed flush folds its counts back in rather than losing them. `json()` sets `content-length` so metering never has to clone a body — keep it that way.
+- **Live request log**: every public-plane response gets an `x-correlation-id` and one entry in the tenant's capped in-RAM ring (`LOG_CAP`, oldest dropped first); bodies are truncated to `LOG_BODY_CHARS`. Nothing is written to disk. Like the usage counters, the ring and its SSE subscribers live **outside `activeTenants`** so an idle eviction can't blank a log someone is watching — eviction drops the ring only when nobody is subscribed. The `_admin` plane is never logged. `GET /<tenant>/_admin/sse-logs` replays the ring then streams; `GET /<tenant>/_admin/logs` returns the same ring as a one-shot snapshot (`_limit` takes the newest N) for callers that need the log as data inside one request — the AI Co-Pilot's diagnostics tool, which must not leave a subscriber behind on every call. Both are admin-authenticated and CORS-free like the rest of that plane, so browsers reach them only via the Dashboard API proxy. `json()` stashes its serialized body in a WeakMap so logging never clones a response body — keep that, for the same reason `content-length` exists.
+- **Virtual start/stop**: `PROJECT_STATUS=stopped|maintenance` makes every public surface 503 (`statusGuard` for CRUD, `statusBlocked()` in the auth/notify/openapi handlers — add the call to any new public route). `_admin` must stay reachable when stopped, or a stopped project could never be restarted.
+- **Draft model**: dashboard writes go to `draft_<name>.json`; `loadTenant` skips `draft_*` so staged files are never served, and `_admin/deploy` copies each draft over its live file then evicts. Only the core may write `TENANTS_DIR` (the dashboard's systemd unit can't), so deploy/flush live on the core admin plane and the dashboard calls them over HTTP.
+- **The SQLite projection is a projection, never the store.** The JSON arrays stay authoritative; `buildSqlMount` derives a read-only `:memory:` database from them on first SQL use, and `persist()` and `evict()` drop it so the next query rebuilds (~1ms). Never route CRUD through SQL: records are heterogeneous, so a schema taken from one row silently loses every key the other rows carry the moment a table is dumped back to disk — the mount unions keys across **all** rows for exactly that reason. It lives outside `activeTenants` with its own `SQL_IDLE_MS` timer, like the log ring, because an MCP session outlives tenant eviction.
+- **The SQL surface is read-only, and it takes two layers** — both load-bearing, neither decorative. `PRAGMA query_only = ON` is what stops writes, including ones the text check can't see (`WITH x AS (…) DELETE FROM …` starts with `WITH`). The "must start with SELECT or WITH" check is what stops `ATTACH`, which `query_only` does **not** block — without it an agent could attach the Dashboard API's `app.sqlite` on the same box and read its `users` and `sessions` tables. Removing either one is a security regression; `tests/core.test.ts` has a case for each.
+- **`passwordHash` is excluded at mount time, not filtered at read time.** `SELECT *` is a response path like any other, and a column that was never created cannot leak. `draft_*` and `config` are likewise never mounted, since `state.db` never holds them.
+- **MCP tenancy is pinned at connect time.** The tenant comes from the URL path when the SSE stream opens and is stored on the session; `POST …/mcp/message` refuses a session whose tenant doesn't match its path, and the JSON-RPC dispatch reads `session.tenantId`. Nothing inside a message may select a tenant — that is what keeps multiplexed sessions from cross-contaminating. MCP sits on the `_admin` plane so `ADMIN_SECRET` authorizes it and it stays CORS-free, unmetered, and unable to collide with a resource named `mcp`.
+- **Webhook SSRF guard**: tenant-supplied `HOOK_*` URLs are DNS-resolved and refused if they hit private/reserved addresses (`hookUrlBlocked`), with `redirect: "manual"` on the fetch. `HOOK_ALLOW_PRIVATE=true` bypasses this for the local stack only — never set it in production.
+- **Ownership (RBAC)**: authenticated POSTs stamp `userId`; non-admins may mutate only records they own (`userId === sub`, or their own `users` row) and cannot change `role`, drop their `passwordHash`, or reassign `userId` — admins bypass. Keep those preservation rules when touching PUT.
+- OAuth (`AUTH_GOOGLE_*`/`AUTH_GITHUB_*`) and the `_notify` proxy (`RESEND_*`/`TWILIO_*`) read tenant-owned credentials from `config.json`; upstream endpoint URLs are env-overridable strictly for mocking in dev/tests.
+
+## Dashboard API invariants (apps/dashboard-api/server-app.ts)
+
+- Auth is real: argon2id via `Bun.password` (OWASP params), opaque bearer session tokens stored **sha256-hashed** with TTL. Login must verify against a dummy hash when the email is unknown (no timing-based user enumeration).
+- Every `/projects*` route is scoped to the authenticated user — ownership-check before any core admin call.
+- The files proxy must keep the project's `resources` column in sync with what it creates/deletes on the core.
+- Browser CORS is allow-listed via `ALLOWED_ORIGINS` (default `https://app.stubbase.dev`) — never `*` on this service.
+- `GET /projects/<id>/live-logs` proxies the core's admin SSE stream after an ownership check, passing the upstream body through unbuffered and forwarding the client's abort signal (so a closed tab tears down the core-side subscriber). The SPA consumes it with `fetch` + `ReadableStream`, **not `EventSource`** — EventSource can't set an Authorization header, and moving the session token into the query string would leak it into proxy logs.
+- **Developer API keys are sha256-hashed, not argon2id — on purpose.** They are 256-bit CSPRNG secrets this service mints itself, so there is no dictionary for slow hashing to defend against, and salting would forbid the indexed lookup-by-hash that `developerKeyAuthorizes` depends on. Argon2 would instead force a scan-and-verify over the project's keys at ~19 MiB each, on every MCP message POST — a denial of service on the 1GB box. Same treatment as session tokens, for the same reason. User passwords keep argon2id.
+- **`GET|POST /projects/<id>/mcp/*` authenticates with a developer key, never a session token**, so it is dispatched *before* the session check in `route()`. The key lookup is scoped by `tenant_id`, so a valid key can only ever open its own project; the tenant always comes from the path. Revoking a key, or deleting the project, must invalidate it — `deleteProject` clears `developer_api_keys` so credentials never outlive the tenant id they name.
+- **Key ids are revoked with `WHERE id = ? AND tenant_id = ?`.** The ownership check alone is not enough: an attacker owns the project named in the URL, so `ownedProject()` passes, and only the tenant clause stops the id reaching another project's key.
+- **The MCP SSE proxy rewrites the first `endpoint` frame and nothing else.** The core names its own `_admin` path there, which no external client can reach; the proxy rebases it onto `/projects/<id>/mcp/message`, keeping it *relative* so it resolves against whatever origin the client used. Everything after that frame is forwarded byte-for-byte — buffering the stream would defeat the point of SSE.
+- `GET /projects/<id>/diagnostics` reports JSON files that fail to parse (live resources, their drafts, and `config`), read over the core's admin files plane — this service can't read `TENANTS_DIR` itself.
+- **The AI Co-Pilot is an agent loop, and this service owns it** (`POST /projects/<id>/ai/chat`). The provider returns either prose or a tool request; this service executes the tool, feeds the result back, and re-asks, bounded by `AI_MAX_TOOL_ROUNDS` with a final tool-less round so a turn always ends in a sentence. Four things are invariant: the **tenant comes from the authenticated path, never from a tool argument**; tool calls are executed only from a *live model reply*, never from the history the browser sent; every argument is validated like a request body (`stage_schema_drafts` writes `draft_*` only, `set_server_status` accepts only the two states its declaration advertises); and **the agent may not destroy data** — `delete_resources` only returns a `pendingConfirmation` naming resources that actually exist, and the deletion is carried out by the user's click against the ordinary files routes. Keep it that way: a tool that both decides *and* deletes turns a fuzzy "clear all data" into an irreversible one.
+- **A tool that cannot do what was asked must say so as a capability limit, not a schema error.** Told its arguments were malformed, a model retries with something structurally valid: refusing an empty `stage_schema_drafts` with "'tables' must be a non-empty array" is what once produced a fabricated `placeholders` table, a deploy, and a false "all data has been cleared". The refusal text names the right tool and forbids filler tables, and the persona's HONESTY rule forbids reporting work no tool performed. The conversation is stateless server-side — the SPA round-trips it — so `messages` is untrusted input with size and shape caps.
+
+## Layout / conventions
+
+- `apps/core/` and `apps/dashboard-api/`: one self-contained `.ts` file each plus `package.json` and `Dockerfile`. Config comes from env vars only (same knobs in docker-compose, systemd units, and dev). **ENVIRONMENT.md is the canonical env-var/tenant-config reference — update it when adding or changing any knob.**
+  - The one exception is `apps/dashboard-api/ai/` (provider-agnostic AI module: `ai.interface.ts`, `google-ai.service.ts`, `prompts.ts`, `index.ts`) — swapping AI providers must not touch routes. `IAIService.chat()` is deliberately one round-trip: the provider file is pure transport, and the agent loop stays in `server-app.ts`, which is the only side that knows about tenants. `prompts.ts` owns the persona *and* the tool catalogue (`CO_PILOT_TOOLS`) because both are the agent's capability surface, not a Google detail; the provider file translates them to the wire. Still zero npm dependencies. **Adding files here means updating both the Dockerfile `COPY` and the Ansible copy task**, or production ships a broken import.
+- **AI output is untrusted input**: generated table names are validated like any resource (`NAME_RE`, no `draft_`/`config`/`stubbase`/`env`/`auth`) before a path is built, non-scalar fields are dropped, and results are staged as `draft_*` only — a prompt injection must never overwrite tenant settings or go live unreviewed. `GOOGLE_AI_API_KEY` stays server-side, like `ADMIN_SECRET`.
+- **Google wire-format facts** worth not rediscovering: there is no `role: "function"` (tool results ride a `user` turn carrying a `functionResponse`); model parts must be echoed back **verbatim**, since Gemini 3 signs reasoning with `thoughtSignature` and 400s without it; `responseMimeType` is mutually exclusive with function calling; and a function declaration may use an open `{type: "OBJECT"}` for dynamic record shapes. `AI_MODEL_NAME` must name a model that supports function calling — the Gemma family does not.
+- `sites/landing/`: Astro 7 + Tailwind v4 + `@astrojs/sitemap`, zero client JS except the Home "Try it live" runner (FAQ accordion and the header's nav dropdowns are native `<details>`). Shared SEO head + JSON-LD lives in `src/layouts/BaseLayout.astro`; `src/layouts/Layout.astro` adds the Nav/Footer chrome around it.
+  - **Hub-and-spoke content**: hub pages (`/`, `/pricing`) are hardcoded `.astro`; the Solutions / Features / Compare spokes are Markdown in `src/content/<collection>/`, typed by the strict `seoSchema` in `src/content.config.ts` (Astro 7 loader API — config filename is `content.config.ts`, *not* the legacy `content/config.ts`) and rendered through `src/layouts/MarkdownLayout.astro`, which emits TechArticle + BreadcrumbList JSON-LD. Add a spoke by dropping in a `.md` file and one entry in `src/lib/nav.ts` (the single nav source of truth, read by both Nav and Footer).
+  - Copy on these pages is SEO/RAG-tuned: H2 wording, code blocks, and vocabulary are exact-match targets — don't reword them casually. Code fences are highlighted at build time by Shiki (`CodeBlock.astro` for hardcoded pages), never a client-side highlighter.
+- `sites/dashboard/`: Vite + React + TS SPA — shadcn/ui (add components with `npx shadcn@latest add …`; `bunx shadcn` hangs), Zustand for UI/auth state, TanStack Query for all server data (`src/lib/api.ts` is the only fetch layer). On logout: reset workspace store *and* `queryClient.clear()` so no cross-user cache leaks.
+- Design system (both frontends): dark-only zinc/emerald — `zinc-950` page, `zinc-900` surfaces, 1px `zinc-800` border on every surface, no shadows, emerald buttons always with **black** text, Inter (`font-sans`) + JetBrains Mono (`font-mono`) self-hosted via Fontsource, Lucide icons. shadcn theme tokens are mapped in `sites/dashboard/src/index.css` — restyle there, not per-component.
+- `sites/*/dist/` is gitignored; Ansible copies it from the local checkout, so **build both sites before deploying**.
+- `caddy/Caddyfile` (production, structure is spec-frozen) and `caddy/Caddyfile.dev` (local, mirrors it on `*.localhost`). Keep the two in sync when routes change.
+- `deploy/files/*.service`: sandboxed units — `ProtectSystem=strict` with exactly one `ReadWritePaths` each (core → tenants dir, app → SQLite dir). If a service needs a new writable path, add it there deliberately.
+- Secrets never go in unit files or git — only `/etc/stubbase/stubbase.env`, templated by Ansible from `STUBBASE_ADMIN_SECRET`.

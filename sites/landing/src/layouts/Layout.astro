@@ -1,0 +1,26 @@
+---
+// Global page wrapper: BaseLayout supplies the <head> (SEO meta + JSON-LD) and
+// the html/body shell; this adds the Header and Footer chrome so a page only has
+// to render its <main>.
+import BaseLayout from './BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Extra JSON-LD blocks, appended after the base SoftwareApplication schema. */
+  schema?: Record<string, unknown>[];
+  active?: 'solutions' | 'features' | 'compare' | 'pricing' | 'quick-start' | 'faqs' | 'contact';
+}
+
+const { title, description, schema = [], active } = Astro.props;
+---
+
+<BaseLayout title={title} description={description} schema={schema}>
+  <Nav active={active} />
+  <main>
+    <slot />
+  </main>
+  <Footer />
+</BaseLayout>

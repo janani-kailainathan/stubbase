@@ -1,0 +1,203 @@
+---
+# Deploy Stubbase to a fresh Ubuntu VPS (1GB RAM class).
+#
+#   STUBBASE_ADMIN_SECRET='...' ansible-playbook -i inventory.ini deploy.yml
+#
+# Idempotent: re-run to push updated app code, Caddyfile, or static sites.
+- name: Deploy Stubbase
+  hosts: stubbase
+  become: true
+  vars:
+    admin_secret: "{{ lookup('env', 'STUBBASE_ADMIN_SECRET') }}"
+
+  pre_tasks:
+    - name: Require an admin secret
+      ansible.builtin.assert:
+        that: admin_secret | length >= 16
+        fail_msg: >-
+          Set STUBBASE_ADMIN_SECRET (>= 16 chars) in the environment before
+          running, e.g. STUBBASE_ADMIN_SECRET="$(openssl rand -hex 32)".
+
+  tasks:
+    # ── 1. Base packages + Caddy (official apt repo) ──────────────
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name: [curl, ca-certificates, gnupg, debian-keyring, debian-archive-keyring, apt-transport-https, unzip]
+        state: present
+        update_cache: true
+
+    - name: Add Caddy repository signing key
+      ansible.builtin.get_url:
+        url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+        dest: /usr/share/keyrings/caddy-stable-archive-keyring.asc
+        mode: "0644"
+
+    - name: Add Caddy apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.asc]
+          https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+        filename: caddy-stable
+        state: present
+
+    - name: Install Caddy
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+        update_cache: true
+
+    # ── 2. Bun, natively (no Docker) ──────────────────────────────
+    - name: Install Bun to /usr/local/bin
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash
+        creates: /usr/local/bin/bun
+
+    # ── 3. User + directory layout ────────────────────────────────
+    - name: Create stubbase system user
+      ansible.builtin.user:
+        name: stubbase
+        system: true
+        shell: /usr/sbin/nologin
+        home: /opt/stubbase
+        create_home: false
+
+    - name: Create application and data directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.owner | default('root') }}"
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - { path: /opt/stubbase/core }
+        - { path: /opt/stubbase/app }
+        - { path: /etc/stubbase, mode: "0750", owner: stubbase }
+        - { path: /var/lib/stubbase, owner: stubbase }         # dashboard SQLite
+        - { path: /var/www/stubbase/tenants, owner: stubbase } # tenant JSON files
+        - { path: /var/www/stubbase-landing/dist }             # SSG (Caddy file_server)
+        - { path: /var/www/stubbase-dashboard/dist }           # SPA (Caddy try_files)
+
+    # ── 4. Application code + secrets ─────────────────────────────
+    - name: Deploy Core Tenant Engine
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../apps/core/{{ item }}"
+        dest: /opt/stubbase/core/{{ item }}
+        owner: stubbase
+        group: stubbase
+        mode: "0644"
+      loop: [server-core.ts, package.json]
+      notify: Restart stubbase-core
+
+    - name: Deploy Dashboard Backend
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../apps/dashboard-api/{{ item }}"
+        dest: /opt/stubbase/app/{{ item }}
+        owner: stubbase
+        group: stubbase
+        mode: "0644"
+      loop: [server-app.ts, package.json]
+      notify: Restart stubbase-app
+
+    # The AI provider module is a directory, not a single file — trailing slash
+    # copies its contents into /opt/stubbase/app/ai/.
+    - name: Deploy Dashboard Backend AI module
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../apps/dashboard-api/ai/"
+        dest: /opt/stubbase/app/ai/
+        owner: stubbase
+        group: stubbase
+        mode: "0644"
+      notify: Restart stubbase-app
+
+    - name: Write shared environment file (holds ADMIN_SECRET)
+      ansible.builtin.template:
+        src: templates/stubbase.env.j2
+        dest: /etc/stubbase/stubbase.env
+        owner: stubbase
+        group: stubbase
+        mode: "0600"
+      notify:
+        - Restart stubbase-core
+        - Restart stubbase-app
+
+    # ── 4b. Static sites (deploy prebuilt dist/ if present) ───────
+    - name: Deploy landing page (SSG dist)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../sites/landing/dist/"
+        dest: /var/www/stubbase-landing/dist/
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Deploy dashboard frontend (SPA dist)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../sites/dashboard/dist/"
+        dest: /var/www/stubbase-dashboard/dist/
+        mode: "0644"
+        directory_mode: "0755"
+
+    # ── 5. journald cap ───────────────────────────────────────────
+    # Both services log to the journal. On a 1GB VPS with a small disk an
+    # uncapped journal is a slow-motion outage, so hold it to 500M.
+    - name: Cap journald disk usage at 500M
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^\s*#?\s*SystemMaxUse\s*='
+        line: SystemMaxUse=500M
+        insertafter: '^\[Journal\]'
+        mode: "0644"
+      notify: Restart journald
+
+    # ── 6. systemd units ──────────────────────────────────────────
+    - name: Install systemd service units
+      ansible.builtin.copy:
+        src: "files/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        mode: "0644"
+      loop: [stubbase-core.service, stubbase-app.service]
+      register: units
+
+    - name: Enable and start services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: "{{ units.changed }}"
+      loop: [stubbase-core.service, stubbase-app.service]
+
+    # ── 7. Caddyfile (validated before install) + reload ──────────
+    - name: Install Caddyfile
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../caddy/Caddyfile"
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    - name: Enable and start Caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart journald
+      ansible.builtin.systemd_service:
+        name: systemd-journald
+        state: restarted
+
+    - name: Restart stubbase-core
+      ansible.builtin.systemd_service:
+        name: stubbase-core.service
+        state: restarted
+        daemon_reload: true
+
+    - name: Restart stubbase-app
+      ansible.builtin.systemd_service:
+        name: stubbase-app.service
+        state: restarted
+        daemon_reload: true
+
+    - name: Reload caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded

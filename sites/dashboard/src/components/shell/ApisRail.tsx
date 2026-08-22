@@ -1,0 +1,126 @@
+import { useState } from 'react'
+import { ChevronDown, Route } from 'lucide-react'
+import { useCurrentProject } from '@/hooks/projects'
+import { useWorkspaceStore, type Method } from '@/stores/workspace'
+import { UsagePanel } from './UsagePanel'
+
+export interface Endpoint {
+  resource: string
+  method: Method
+  /** Display path relative to the tenant base. */
+  path: string
+  needsId: boolean
+}
+
+export function endpointsFor(resources: string[]): Endpoint[] {
+  return resources.flatMap((resource): Endpoint[] => [
+    { resource, method: 'GET', path: `/${resource}`, needsId: false },
+    { resource, method: 'POST', path: `/${resource}`, needsId: false },
+    { resource, method: 'PUT', path: `/${resource}/{id}`, needsId: true },
+    { resource, method: 'DELETE', path: `/${resource}/{id}`, needsId: true },
+  ])
+}
+
+/**
+ * Colour carries the method, the way every REST client does it. Without it the
+ * rail is one undifferentiated column of chips and the verb is the slowest
+ * thing on screen to read.
+ */
+const METHOD_BADGE: Record<Method, string> = {
+  GET: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+  POST: 'border-sky-500/30 bg-sky-500/10 text-sky-400',
+  PUT: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  DELETE: 'border-rose-500/30 bg-rose-500/10 text-rose-400',
+}
+
+function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
+  const selection = useWorkspaceStore((s) => s.selection)
+  const select = useWorkspaceStore((s) => s.select)
+
+  const isSelected =
+    selection?.kind === 'api' &&
+    selection.resource === endpoint.resource &&
+    selection.method === endpoint.method
+
+  return (
+    <div
+      onClick={() => select({ kind: 'api', resource: endpoint.resource, method: endpoint.method })}
+      className={
+        isSelected
+          ? 'flex cursor-pointer items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 py-1.5 pr-2 pl-7'
+          : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-7 hover:bg-zinc-900'
+      }
+    >
+      <span
+        className={`w-14 shrink-0 rounded border px-1 py-0.5 text-center font-mono text-[10px] ${METHOD_BADGE[endpoint.method]}`}
+      >
+        {endpoint.method}
+      </span>
+      <span className="truncate font-mono text-xs text-zinc-300" title={endpoint.path}>
+        {endpoint.path}
+      </span>
+    </div>
+  )
+}
+
+export function ApisRail() {
+  const project = useCurrentProject()
+  const resources = project?.resources ?? []
+  // Collapsed groups, by resource name — everything starts expanded.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const toggle = (resource: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(resource)) next.delete(resource)
+      else next.add(resource)
+      return next
+    })
+
+  const grouped = resources.map((resource) => ({
+    resource,
+    endpoints: endpointsFor([resource]),
+  }))
+
+  return (
+    <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-zinc-800">
+      <div className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-2">
+        {/* Route, not Database: this rail lists REST endpoints. The database
+            icon belongs to the Files tree, which is where the data lives. */}
+        <Route className="h-3.5 w-3.5 text-emerald-500" />
+        <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">APIs</span>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3">
+        {grouped.map(({ resource, endpoints }) => {
+          const isOpen = !collapsed.has(resource)
+          return (
+            <div key={resource}>
+              <div
+                onClick={() => toggle(resource)}
+                className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-zinc-900"
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                />
+                <span className="truncate font-mono text-xs text-zinc-300">{resource}</span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-600">
+                  {endpoints.length}
+                </span>
+              </div>
+              {isOpen &&
+                endpoints.map((endpoint) => (
+                  <EndpointRow key={`${endpoint.method}:${endpoint.path}`} endpoint={endpoint} />
+                ))}
+            </div>
+          )
+        })}
+        {project && resources.length === 0 && (
+          <p className="px-3 py-1.5 font-mono text-xs text-zinc-600">No endpoints yet.</p>
+        )}
+      </div>
+
+      {project && <UsagePanel tenantId={project.tenantId} />}
+    </div>
+  )
+}

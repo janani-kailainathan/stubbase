@@ -1,0 +1,68 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const sections = [
+  {
+    h: '1. Acceptance of terms',
+    p: 'By accessing or using Stubbase, you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
+  },
+  {
+    h: '2. Use of service',
+    p: 'You may use Stubbase only in compliance with these terms and all applicable laws. You are responsible for all activity under your account.',
+  },
+  {
+    h: '3. Accounts',
+    p: 'You must provide accurate information when creating an account and keep your credentials secure. You are responsible for all actions taken under your account.',
+  },
+  {
+    h: '4. Payment & billing',
+    p: 'Paid plans are billed in advance on a recurring basis. Fees are non-refundable except as required by law.',
+  },
+  {
+    h: '5. Termination',
+    p: 'We may suspend or terminate access to Stubbase at any time for violation of these terms.',
+  },
+  {
+    h: '6. Limitation of liability',
+    p: 'Stubbase is provided "as is" without warranties of any kind. We are not liable for indirect, incidental, or consequential damages.',
+  },
+];
+---
+
+<BaseLayout
+  title="Terms of Service — Stubbase"
+  description="The terms of service governing use of Stubbase mock API hosting."
+>
+  <Nav />
+  <main>
+    <section>
+      <article class="mx-auto max-w-3xl px-6 py-20">
+        <h1 class="mb-3 text-4xl font-extrabold text-zinc-50">Terms of service</h1>
+        <p class="mb-12 font-mono text-sm text-zinc-500">Last updated: July 14, 2026</p>
+
+        <div class="flex flex-col gap-10">
+          {
+            sections.map((section) => (
+              <section>
+                <h2 class="mb-3 text-xl font-semibold text-zinc-50">{section.h}</h2>
+                <p class="text-sm leading-relaxed text-zinc-400">{section.p}</p>
+              </section>
+            ))
+          }
+          <section>
+            <h2 class="mb-3 text-xl font-semibold text-zinc-50">7. Contact</h2>
+            <p class="text-sm leading-relaxed text-zinc-400">
+              Questions about these terms? Reach out on{' '}
+              <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+                help@stubbase.dev
+              </a>.
+            </p>
+          </section>
+        </div>
+      </article>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

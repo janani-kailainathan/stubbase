@@ -1,0 +1,64 @@
+services:
+  # ── D. Core Tenant API ── api.stubbase.localhost → :3000
+  core:
+    build:
+      context: ./apps/core
+    environment:
+      PORT: "3000"
+      ADMIN_SECRET: dev-admin-secret-change-me
+      TENANTS_DIR: /data/tenants
+      # usage counters flush to the dashboard API, which owns the SQLite file.
+      # No depends_on: dashboard-api already depends on core, and a failed
+      # flush retains its counters for the next attempt.
+      USAGE_SINK_URL: http://dashboard-api:3001/_internal/usage
+    volumes:
+      # JSON writes from the engine land on the host so you can inspect them live
+      - ./tenants:/data/tenants
+    expose:
+      - "3000"
+    restart: unless-stopped
+
+  # ── C. Dashboard Backend ── api.app.stubbase.localhost → :3001
+  dashboard-api:
+    build:
+      context: ./apps/dashboard-api
+    environment:
+      PORT: "3001"
+      ADMIN_SECRET: dev-admin-secret-change-me
+      CORE_API_URL: http://core:3000
+      DB_PATH: /data/app.sqlite
+      ALLOWED_ORIGINS: http://app.stubbase.localhost
+      # What users (and the AI Co-Pilot) should call — this stack's public zone.
+      PUBLIC_API_BASE: http://api.stubbase.localhost
+      # From .env (gitignored — see .env.example). Unset = AI route answers 503.
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-models/gemini-3.5-flash-lite}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-120000}
+    volumes:
+      - dashboard-db:/data
+    expose:
+      - "3001"
+    depends_on:
+      - core
+    restart: unless-stopped
+
+  # ── Caddy ── routes all four zones on port 80
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - ./sites/landing/dist:/srv/landing:ro
+      - ./sites/dashboard/dist:/srv/dashboard:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - core
+      - dashboard-api
+    restart: unless-stopped
+
+volumes:
+  dashboard-db:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,82 @@
+---
+import { Plus, Minus } from 'lucide-astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const faqs = [
+  {
+    q: 'What exactly is a Mock API?',
+    a: 'A Mock API is a fake backend server that returns static JSON data instead of connecting to a real database. Frontend developers use them to build UIs before the backend is finished, and QA engineers use them to write predictable automated tests.',
+  },
+  {
+    q: 'How do I simulate a slow network connection?',
+    a: "With QA Mode enabled on a Pro QA project, send the 'x-stubbase-delay' header with your request. For example, fetching https://api.stubbase.dev/my-api/users with 'x-stubbase-delay: 3000' waits 3 seconds before returning the JSON, so you can test your loading spinners. Delays are sent as headers rather than URL parameters so Playwright or Cypress can inject them from the test runner without changing the URLs your frontend builds. The cap is 10 seconds.",
+  },
+  {
+    q: 'Can I test my error boundaries?',
+    a: "Yes. Pass the 'x-stubbase-status' header to force any HTTP status code, and 'x-stubbase-error-rate' to control how often it fires — 1.0 fails every request, 0.3 reproduces intermittent flakiness for retry and backoff logic. Both require QA Mode to be enabled on the project.",
+  },
+  {
+    q: 'Do my API endpoints expire?',
+    a: 'On the Free tier, generated endpoints are temporary and will be deleted after 24 hours. If you upgrade to Pro, your endpoints are persistent and will remain active forever for your CI/CD pipelines.',
+  },
+  {
+    q: 'Is there a limit to how much JSON I can mock?',
+    a: 'Free tier users are limited to standard file sizes suitable for prototyping. Pro users can mock larger payloads and utilize our dynamic data generation features to simulate hundreds of users at once.',
+  },
+];
+
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map((faq) => ({
+    '@type': 'Question',
+    name: faq.q,
+    acceptedAnswer: { '@type': 'Answer', text: faq.a },
+  })),
+};
+---
+
+<BaseLayout
+  title="FAQs — Stubbase"
+  description="Answers to common questions about Stubbase mock APIs: simulating slow networks, forcing HTTP errors, endpoint expiry, and payload limits."
+  schema={[faqSchema]}
+>
+  <Nav active="faqs" />
+  <main>
+    <section>
+      <div class="mx-auto max-w-2xl px-6 pt-20 pb-14 text-center">
+        <h1 class="mb-4 text-4xl font-extrabold text-zinc-50">Frequently asked questions</h1>
+        <p class="text-zinc-400">
+          Can't find the answer you're looking for? Reach out on{' '}
+          <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+            help@stubbase.dev
+          </a>
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-16">
+        {
+          faqs.map((faq, i) => (
+            <details
+              class="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900"
+              name="faq"
+              open={i === 0}
+            >
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                <h2 class="font-semibold text-zinc-50">{faq.q}</h2>
+                <Plus class="h-5 w-5 shrink-0 text-zinc-500 group-open:hidden" />
+                <Minus class="hidden h-5 w-5 shrink-0 text-zinc-500 group-open:block" />
+              </summary>
+              <p class="px-6 pb-6 text-sm leading-relaxed text-zinc-400">{faq.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

@@ -1,0 +1,113 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+// Simulation is header-driven only — there is no ?delay= / ?status= query
+// parameter. Test logic belongs in your runner's request headers, never in the
+// URLs your frontend code builds.
+const DELAY_EXAMPLE = `// Wait 500ms before returning data
+await fetch('https://api.stubbase.dev/<tenant>/users', {
+  headers: {
+    'x-stubbase-delay': '500'
+  }
+});`;
+
+const FAILURE_EXAMPLE = `// Return 503 for 30% of requests — retry and backoff testing
+await fetch('https://api.stubbase.dev/<tenant>/users', {
+  headers: {
+    'x-stubbase-status': '503',
+    'x-stubbase-error-rate': '0.3'
+  }
+});`;
+---
+
+<BaseLayout
+  title="Quick Start — Stubbase"
+  description="Fetch a public Stubbase API in one line of code, then simulate latency and HTTP errors with a single query parameter."
+>
+  <Nav active="quick-start" />
+  <main>
+    <section>
+      <div class="mx-auto max-w-2xl px-6 pt-20 pb-12 text-center">
+        <h1 class="text-5xl font-extrabold text-zinc-50">Quick Start</h1>
+      </div>
+    </section>
+
+    <section class="border-b border-zinc-800">
+      <div class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
+        <article class="flex items-start gap-5 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <div
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 font-mono font-bold text-emerald-500"
+          >
+            1
+          </div>
+          <div class="w-full">
+            <h2 class="mb-2 font-semibold text-zinc-50">Fetch a Public API</h2>
+            <p class="mb-4 text-sm leading-relaxed text-zinc-400">
+              Don't want to create an account? Just copy one of our public URLs directly into your
+              React, Vue, or iOS app.
+            </p>
+            <div class="overflow-x-auto rounded-md border border-zinc-800 bg-black p-4">
+              <code class="font-mono text-sm whitespace-nowrap text-zinc-300">
+                <span class="text-purple-400">const</span> res = <span class="text-purple-400">await</span> fetch(<span class="text-sky-300">'https://api.stubbase.dev/public/users'</span>);<br />
+                <span class="text-purple-400">const</span> data = <span class="text-purple-400">await</span> res.json();
+              </code>
+            </div>
+          </div>
+        </article>
+
+        <article class="flex items-start gap-5 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <div
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 font-mono font-bold text-emerald-500"
+          >
+            2
+          </div>
+          <div class="w-full">
+            <h2 class="mb-2 font-semibold text-zinc-50">Simulate Latency (Pro QA)</h2>
+            <p class="mb-4 text-sm leading-relaxed text-zinc-400">
+              Send the <code class="rounded bg-zinc-800 px-1 font-mono text-emerald-400"
+                >x-stubbase-delay</code
+              > header to force the server to wait before responding. Because it's a header, Playwright
+              and Cypress can inject it from the test runner — your frontend URLs stay clean.
+            </p>
+            <CodeBlock code={DELAY_EXAMPLE} lang="js" filename="latency.test.js" />
+          </div>
+        </article>
+
+        <article class="flex items-start gap-5 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <div
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 font-mono font-bold text-emerald-500"
+          >
+            3
+          </div>
+          <div class="w-full">
+            <h2 class="mb-2 font-semibold text-zinc-50">Force HTTP Errors (Pro QA)</h2>
+            <p class="mb-4 text-sm leading-relaxed text-zinc-400">
+              <code class="rounded bg-zinc-800 px-1 font-mono text-emerald-400"
+                >x-stubbase-status</code
+              > picks the status code and <code
+                class="rounded bg-zinc-800 px-1 font-mono text-emerald-400">x-stubbase-error-rate</code
+              > sets how often it fires — <code
+                class="rounded bg-zinc-800 px-1 font-mono text-emerald-400">1.0</code
+              > for every request, <code class="rounded bg-zinc-800 px-1 font-mono text-emerald-400"
+                >0.3</code
+              > to reproduce intermittent flakiness.
+            </p>
+            <CodeBlock code={FAILURE_EXAMPLE} lang="js" filename="errors.test.js" />
+          </div>
+        </article>
+
+        <p class="text-sm leading-relaxed text-zinc-500">
+          Simulation headers only take effect once <strong class="text-zinc-300">QA Mode</strong> is enabled
+          on the project — that gate is what stops anyone who guesses the header names from disrupting
+          a live API. Delays are capped at 10 seconds. The shared
+          <code class="rounded bg-zinc-800 px-1 font-mono text-emerald-400">/public</code> demo endpoints
+          serve data only and ignore these headers.
+        </p>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

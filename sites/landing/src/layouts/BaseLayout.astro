@@ -1,0 +1,68 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/600.css';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Extra JSON-LD blocks (e.g. FAQPage) appended after the base SoftwareApplication schema. */
+  schema?: Record<string, unknown>[];
+}
+
+const { title, description, schema = [] } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+
+const softwareApplicationSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Stubbase',
+  url: Astro.site?.toString(),
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Web',
+  description:
+    'Stubbase generates instant mock REST APIs from JSON. Test edge cases, simulate latency, and force HTTP errors in Cypress, Playwright, and Jest pipelines.',
+  offers: {
+    '@type': 'AggregateOffer',
+    lowPrice: '0',
+    highPrice: '29',
+    priceCurrency: 'USD',
+    offerCount: 3,
+  },
+};
+
+const jsonLdBlocks = [softwareApplicationSchema, ...schema];
+---
+
+<!doctype html>
+<html lang="en" class="bg-zinc-950">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/png" href="/stubbase-logo.png" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <meta name="theme-color" content="#09090B" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Stubbase" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL('/dashboard-ui.png', Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    {jsonLdBlocks.map((block) => (
+      <script type="application/ld+json" set:html={JSON.stringify(block)} />
+    ))}
+  </head>
+  <body class="bg-zinc-950 font-sans text-zinc-400 antialiased">
+    <slot />
+  </body>
+</html>
