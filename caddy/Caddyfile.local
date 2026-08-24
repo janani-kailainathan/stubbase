@@ -1,0 +1,40 @@
+# Local dry run against a bare VM (Multipass etc.), not docker-compose.
+# *.localhost resolves to loopback automatically in every browser/OS resolver,
+# and the explicit http:// scheme keeps Caddy from attempting an ACME cert.
+# Paths match the real VPS layout deploy.yml creates (/var/www/...) — unlike
+# Caddyfile.dev, which targets the docker-compose bind mounts (/srv/...).
+
+http://stubbase.localhost {
+	root * /var/www/stubbase-landing/dist
+	file_server
+}
+
+http://www.stubbase.localhost {
+	redir http://stubbase.localhost{uri} permanent
+}
+
+http://app.stubbase.localhost {
+	root * /var/www/stubbase-dashboard/dist
+	try_files {path} /index.html
+	file_server
+}
+
+http://api.app.stubbase.localhost {
+	reverse_proxy 127.0.0.1:3001
+	handle_errors 502 {
+		header Access-Control-Allow-Origin http://app.stubbase.localhost
+		root * /var/www/stubbase-error
+		rewrite * /maintenance.html
+		file_server
+	}
+}
+
+http://api.stubbase.localhost {
+	reverse_proxy 127.0.0.1:3000
+	handle_errors 502 {
+		header Access-Control-Allow-Origin *
+		root * /var/www/stubbase-error
+		rewrite * /maintenance.html
+		file_server
+	}
+}

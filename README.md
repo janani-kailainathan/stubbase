@@ -214,6 +214,63 @@ Production layout:
 /etc/caddy/Caddyfile               4-zone routing
 ```
 
+### Dry-running a deploy locally (Multipass)
+
+No VPS yet, but want to see the real `deploy.yml` run — real `apt`-installed Caddy, native Bun, sandboxed systemd units, the actual folder layout — before it matters? Run it against a disposable local VM instead. This exercises everything except DNS/Let's Encrypt (a local VM has no public IP, so TLS is skipped by design — see below).
+
+**1. Install Multipass and create the VM** (sized to the same 1GB-RAM class as the real target, so memory behavior is representative):
+
+```bash
+brew install --cask multipass
+multipass launch 22.04 --name stubbase-test --cpus 1 --memory 1G --disk 6G
+```
+
+On macOS, the first time you reach the VM's IP you may need to approve **System Settings → Privacy & Security → Local Network** for Terminal — without it, `ping`/`ssh` to the VM fail with `No route to host` even though the VM itself is running fine.
+
+**2. Trust your SSH key on the VM** (Ansible needs real key auth, not Multipass's internal one):
+
+```bash
+multipass exec stubbase-test -- cloud-init status --wait   # wait for boot to finish
+cat ~/.ssh/id_ed25519.pub | multipass exec stubbase-test -- bash -c \
+  'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'
+```
+
+**3. Point Ansible at it.** `deploy/inventory.local.ini` (gitignored) mirrors `inventory.ini.example`, just aimed at the VM's IP (`multipass list` to confirm it):
+
+```ini
+[stubbase]
+192.168.252.2 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_ed25519
+```
+
+**4. Build the frontends in docker mode** (bakes in `*.stubbase.localhost` URLs instead of production ones), then deploy with `caddyfile_src` overridden to the local-VM Caddyfile variant:
+
+```bash
+bun run scripts/build.ts --docker
+cd deploy
+STUBBASE_ADMIN_SECRET="$(openssl rand -hex 32)" ansible-playbook -i inventory.local.ini deploy.yml -e caddyfile_src=Caddyfile.local
+```
+
+`caddyfile_src` defaults to `Caddyfile` (production), so a real VPS deploy is unaffected unless you pass this override. `caddy/Caddyfile.local` routes the same four zones on `*.stubbase.localhost` with an explicit `http://` scheme — since auto-HTTPS only ever activates for bare (schemeless) hostnames, Caddy never attempts an ACME cert here at all. (It's a separate file from `Caddyfile.dev` because that one targets docker-compose's bind-mount paths, `/srv/...` — this one matches the real VPS layout deploy.yml creates, `/var/www/...`.)
+
+**5. Browse it** — no `/etc/hosts` edits needed, `*.localhost` always resolves to loopback:
+
+```bash
+ssh -f -N -L 8080:127.0.0.1:80 ubuntu@192.168.252.2   # background tunnel, leave running
+open http://stubbase.localhost:8080                    # landing
+open http://app.stubbase.localhost:8080                # dashboard
+curl http://api.stubbase.localhost:8080/demo/todos     # core API
+```
+
+**Start / stop / tear down:**
+
+```bash
+multipass stop stubbase-test      # pause — disk kept, resume later
+multipass start stubbase-test     # resume where you left off
+multipass delete stubbase-test && multipass purge   # full teardown, reclaims disk
+```
+
+`stop`/`start` is enough between test sessions. Use `delete && purge` (then `launch` again) when you want to verify the playbook against a genuinely fresh box — that's what actually exercises its idempotency guards (e.g. `creates: /usr/local/bin/bun`) the same way a brand-new VPS would.
+
 ## Configuration
 
 **See [ENVIRONMENT.md](ENVIRONMENT.md)** for the complete reference — every

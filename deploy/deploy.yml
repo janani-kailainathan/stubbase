@@ -3,12 +3,22 @@
 #
 #   STUBBASE_ADMIN_SECRET='...' ansible-playbook -i inventory.ini deploy.yml
 #
+# Local dry run against a Multipass VM (no public DNS, so no Let's Encrypt):
+# build the frontends with `--docker` first, then
+#   STUBBASE_ADMIN_SECRET='...' ansible-playbook -i inventory.local.ini deploy.yml \
+#     -e caddyfile_src=Caddyfile.local
+# caddyfile_src stays "Caddyfile" (production) unless overridden — Caddyfile.local's
+# site blocks are all explicit `http://`, so Caddy never attempts an ACME cert.
+# (Caddyfile.dev is the docker-compose variant — different bind-mount paths, not
+# for a bare-VM deploy.)
+#
 # Idempotent: re-run to push updated app code, Caddyfile, or static sites.
 - name: Deploy Stubbase
   hosts: stubbase
   become: true
   vars:
     admin_secret: "{{ lookup('env', 'STUBBASE_ADMIN_SECRET') }}"
+    caddyfile_src: Caddyfile
 
   pre_tasks:
     - name: Require an admin secret
@@ -174,7 +184,7 @@
     # ── 7. Caddyfile (validated before install) + reload ──────────
     - name: Install Caddyfile
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../caddy/Caddyfile"
+        src: "{{ playbook_dir }}/../caddy/{{ caddyfile_src }}"
         dest: /etc/caddy/Caddyfile
         mode: "0644"
         validate: /usr/bin/caddy validate --adapter caddyfile --config %s

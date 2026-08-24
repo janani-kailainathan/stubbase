@@ -9,3 +9,5 @@ tenants/*
 # Local Compose secrets (GOOGLE_AI_API_KEY). Never commit real keys.
 .env
 sites/*/.env.local
+deploy/inventory.ini
+deploy/inventory.local.ini
