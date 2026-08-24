@@ -19,8 +19,20 @@ http://app.stubbase.localhost {
 
 http://api.app.stubbase.localhost {
 	reverse_proxy dashboard-api:3001
+	handle_errors 502 {
+		header Access-Control-Allow-Origin http://app.stubbase.localhost
+		root * /srv/error
+		rewrite * /maintenance.html
+		file_server
+	}
 }
 
 http://api.stubbase.localhost {
 	reverse_proxy core:3000
+	handle_errors 502 {
+		header Access-Control-Allow-Origin *
+		root * /srv/error
+		rewrite * /maintenance.html
+		file_server
+	}
 }

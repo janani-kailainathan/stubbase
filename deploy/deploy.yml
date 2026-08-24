@@ -76,6 +76,7 @@
         - { path: /var/www/stubbase/tenants, owner: stubbase } # tenant JSON files
         - { path: /var/www/stubbase-landing/dist }             # SSG (Caddy file_server)
         - { path: /var/www/stubbase-dashboard/dist }           # SPA (Caddy try_files)
+        - { path: /var/www/stubbase-error }                    # 502 fallback (Caddy handle_errors)
 
     # ── 4. Application code + secrets ─────────────────────────────
     - name: Deploy Core Tenant Engine
@@ -121,6 +122,12 @@
         - Restart stubbase-app
 
     # ── 4b. Static sites (deploy prebuilt dist/ if present) ───────
+    - name: Deploy maintenance page (Caddy handle_errors fallback)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../caddy/maintenance.html"
+        dest: /var/www/stubbase-error/maintenance.html
+        mode: "0644"
+
     - name: Deploy landing page (SSG dist)
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../sites/landing/dist/"

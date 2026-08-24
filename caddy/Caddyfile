@@ -19,8 +19,20 @@ app.stubbase.dev {
 
 api.app.stubbase.dev {
 	reverse_proxy 127.0.0.1:3001
+	handle_errors 502 {
+		header Access-Control-Allow-Origin https://app.stubbase.dev
+		root * /var/www/stubbase-error
+		rewrite * /maintenance.html
+		file_server
+	}
 }
 
 api.stubbase.dev {
 	reverse_proxy 127.0.0.1:3000
+	handle_errors 502 {
+		header Access-Control-Allow-Origin *
+		root * /var/www/stubbase-error
+		rewrite * /maintenance.html
+		file_server
+	}
 }

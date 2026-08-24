@@ -51,6 +51,7 @@ services:
       - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
       - ./sites/landing/dist:/srv/landing:ro
       - ./sites/dashboard/dist:/srv/dashboard:ro
+      - ./caddy/maintenance.html:/srv/error/maintenance.html:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
