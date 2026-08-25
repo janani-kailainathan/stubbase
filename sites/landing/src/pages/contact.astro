@@ -4,7 +4,7 @@ import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 
 const inputClass =
-  'rounded-md border border-zinc-800 bg-black px-4 py-2.5 text-sm text-zinc-50 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none';
+  'rounded-md border border-border-c bg-field px-4 py-2.5 text-sm text-foreground placeholder-subtle focus:border-primary focus:outline-none';
 ---
 
 <BaseLayout
@@ -15,11 +15,11 @@ const inputClass =
   <main>
     <section>
       <div class="mx-auto max-w-xl px-6 pt-20 pb-14 text-center">
-        <h1 class="mb-4 text-4xl font-extrabold text-zinc-50">Contact us</h1>
-        <p class="text-zinc-400">
+        <h1 class="mb-4 text-4xl font-extrabold text-foreground">Contact us</h1>
+        <p class="text-muted-foreground">
           We'd love to hear from you! Send us a message and we will get back to you. Alternatively,
           email us at{' '}
-          <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+          <a href="mailto:help@stubbase.dev" class="text-primary-accent hover:text-primary-accent-hover">
             help@stubbase.dev
           </a>.
         </p>
@@ -28,13 +28,13 @@ const inputClass =
 
     <section>
       <div class="mx-auto max-w-xl px-6 py-16">
-        <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-8">
+        <div class="rounded-xl border border-border-c bg-card p-8">
           <form class="flex flex-col gap-5" method="post">
             <div class="grid grid-cols-2 gap-4">
               <div class="flex flex-col gap-1.5">
                 <label
                   for="first-name"
-                  class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                  class="text-xs font-semibold tracking-wide text-subtle uppercase"
                 >
                   First name
                 </label>
@@ -43,7 +43,7 @@ const inputClass =
               <div class="flex flex-col gap-1.5">
                 <label
                   for="last-name"
-                  class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                  class="text-xs font-semibold tracking-wide text-subtle uppercase"
                 >
                   Last name
                 </label>
@@ -51,7 +51,7 @@ const inputClass =
               </div>
             </div>
             <div class="flex flex-col gap-1.5">
-              <label for="email" class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+              <label for="email" class="text-xs font-semibold tracking-wide text-subtle uppercase">
                 Email
               </label>
               <input id="email" name="email" type="email" required class={inputClass} />
@@ -59,33 +59,33 @@ const inputClass =
             <div class="flex flex-col gap-1.5">
               <label
                 for="company"
-                class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                class="text-xs font-semibold tracking-wide text-subtle uppercase"
               >
                 Company
               </label>
               <input id="company" name="company" type="text" class={inputClass} />
             </div>
             <fieldset class="flex flex-col gap-2.5">
-              <legend class="mb-2.5 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+              <legend class="mb-2.5 text-xs font-semibold tracking-wide text-subtle uppercase">
                 How many API requests do you need monthly?
               </legend>
-              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
-                <input type="radio" name="requests" value="lt-10k" class="accent-emerald-500" />
+              <label class="flex items-center gap-2.5 text-sm text-emphasis">
+                <input type="radio" name="requests" value="lt-10k" class="accent-primary" />
                 Less than 10,000
               </label>
-              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
-                <input type="radio" name="requests" value="10k-100k" class="accent-emerald-500" />
+              <label class="flex items-center gap-2.5 text-sm text-emphasis">
+                <input type="radio" name="requests" value="10k-100k" class="accent-primary" />
                 Between 10,000 and 100,000
               </label>
-              <label class="flex items-center gap-2.5 text-sm text-zinc-300">
-                <input type="radio" name="requests" value="gt-100k" class="accent-emerald-500" />
+              <label class="flex items-center gap-2.5 text-sm text-emphasis">
+                <input type="radio" name="requests" value="gt-100k" class="accent-primary" />
                 More than 100,000, or enterprise scale
               </label>
             </fieldset>
             <div class="flex flex-col gap-1.5">
               <label
                 for="message"
-                class="text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+                class="text-xs font-semibold tracking-wide text-subtle uppercase"
               >
                 How can we help you?
               </label>
@@ -98,7 +98,7 @@ const inputClass =
             </div>
             <button
               type="submit"
-              class="mt-2 rounded-md bg-emerald-500 py-3 font-semibold text-black transition-colors hover:bg-emerald-600"
+              class="mt-2 rounded-md bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
             >
               Submit
             </button>

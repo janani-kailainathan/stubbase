@@ -37,7 +37,7 @@ const jsonLdBlocks = [softwareApplicationSchema, ...schema];
 ---
 
 <!doctype html>
-<html lang="en" class="bg-zinc-950">
+<html lang="en" class="bg-background">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -46,7 +46,7 @@ const jsonLdBlocks = [softwareApplicationSchema, ...schema];
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/png" href="/stubbase-logo.png" />
     <link rel="sitemap" href="/sitemap-index.xml" />
-    <meta name="theme-color" content="#09090B" />
+    <meta id="theme-color" name="theme-color" content="#09090B" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Stubbase" />
@@ -61,8 +61,59 @@ const jsonLdBlocks = [softwareApplicationSchema, ...schema];
     {jsonLdBlocks.map((block) => (
       <script type="application/ld+json" set:html={JSON.stringify(block)} />
     ))}
+
+    {/*
+      Resolves the theme before first paint, so there is no flash of the wrong
+      one. Must stay `is:inline` and stay in <head>: a bundled or deferred script
+      runs after the browser has already painted.
+
+      Stored choice wins; otherwise the OS preference decides. The class is
+      always stamped explicitly (never left off), so `dark:` and `light:` never
+      have to interpret an absent class. The click handler is delegated from
+      `document`, which already exists here, so one listener serves every toggle
+      on the page.
+    */}
+    <script is:inline>
+      (function () {
+        var root = document.documentElement;
+        var stored = null;
+        try {
+          stored = localStorage.getItem('stubbase-theme');
+        } catch (err) {
+          /* Private mode or blocked storage — fall through to the OS preference. */
+        }
+        var theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+
+        function apply(next) {
+          root.classList.remove('light', 'dark');
+          root.classList.add(next);
+          var meta = document.getElementById('theme-color');
+          if (meta) meta.setAttribute('content', next === 'light' ? '#FAFAFA' : '#09090B');
+        }
+
+        apply(theme);
+
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          if (!target || !target.closest) return;
+          if (!target.closest('[data-theme-toggle]')) return;
+          var next = root.classList.contains('light') ? 'dark' : 'light';
+          apply(next);
+          try {
+            localStorage.setItem('stubbase-theme', next);
+          } catch (err) {
+            /* Choice will not survive a reload; the toggle still works. */
+          }
+        });
+      })();
+    </script>
   </head>
-  <body class="bg-zinc-950 font-sans text-zinc-400 antialiased">
+  <body class="bg-background font-sans text-muted-foreground antialiased">
     <slot />
   </body>
 </html>

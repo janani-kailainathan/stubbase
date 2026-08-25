@@ -5,6 +5,302 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Theme is resolved by the inline pre-paint script in BaseLayout.astro, which
+   stamps `.dark` or `.light` on <html> before first paint. Both classes are
+   always explicit, so `dark:` never has to guess. */
+@custom-variant dark (&:is(.dark *));
+/* Base `:root` is dark, so "not light" is the state to target for anything that
+   must also be right in the unstamped (JS-off) state — e.g. the toggle icon. */
+@custom-variant light (&:is(.light *));
+
+/* ---------------------------------------------------------------------------
+   Semantic tokens.
+
+   Dark lives on the bare `:root` on purpose: it is the brand default, and it
+   makes the no-JS / non-JS-crawler path render exactly what this site rendered
+   before light mode existed. Light is the opt-in layer, applied either by the
+   pre-paint script (`.light`) or, with JS off, by the OS preference.
+
+   Component styles read ONLY these tokens — never a zinc/emerald literal — so
+   restyling happens here, the way it does in the dashboard's index.css.
+   --------------------------------------------------------------------------- */
+:root {
+  /* Layer 1 — surfaces & text */
+  --background: var(--color-zinc-950);
+  --foreground: var(--color-zinc-50);
+  --card: var(--color-zinc-900);
+  --section: color-mix(in oklab, var(--color-zinc-900) 30%, transparent);
+  --chrome: color-mix(in oklab, var(--color-zinc-900) 50%, transparent);
+  --muted: var(--color-zinc-800);
+  --muted-hover: color-mix(in oklab, var(--color-zinc-800) 50%, transparent);
+  --muted-strong: var(--color-zinc-700);
+  --border-c: var(--color-zinc-800);
+  --border-strong: var(--color-zinc-700);
+  --border-faint: color-mix(in oklab, var(--color-zinc-800) 50%, transparent);
+  --emphasis: var(--color-zinc-300);
+  --muted-foreground: var(--color-zinc-400);
+  --subtle: var(--color-zinc-500);
+  /* Dimmer than --subtle: decorative only (list markers). Never body text. */
+  --faint: var(--color-zinc-600);
+
+  /* Layer 2 — brand.
+     Dark gets away with one emerald: emerald-500 works as a fill AND as text on
+     zinc-950. Light cannot — see --primary-ink below. */
+  --primary: var(--color-emerald-500);
+  --primary-hover: var(--color-emerald-600);
+  --primary-foreground: var(--color-black);
+  --primary-ink: var(--color-emerald-400);
+  --primary-ink-hover: var(--color-emerald-300);
+  /* A second emerald ramp really is in use: icons, eyebrows and mailto links sit
+     at 500 and hover to 400, while resource links sit at 400 and hover to 300.
+     Both collapse onto emerald-700/800 in light, but keeping them apart is what
+     lets dark come out of this migration unchanged. */
+  --primary-accent: var(--color-emerald-500);
+  --primary-accent-hover: var(--color-emerald-400);
+  --ring: var(--color-emerald-500);
+
+  /* Tinted callouts. Held as their own tokens rather than `bg-primary/10`,
+     because a fixed alpha does not read the same over zinc-950 as over white —
+     each theme tunes its own strength. */
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
+  --primary-soft-border: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);
+  --primary-soft-ink: var(--color-emerald-400);
+
+  /* Inverted control (the "Run script" button): deliberately opposite the page,
+     so it flips ends when the page does. */
+  --contrast: var(--color-zinc-100);
+  --contrast-hover: var(--color-white);
+  --contrast-foreground: var(--color-black);
+
+  /* Layer 3 — code surface and hand-rolled syntax colors.
+     Shiki-highlighted blocks carry their own dual-theme colors (see below);
+     these serve the hand-written <pre> on the Home page and the runtime
+     highlighter in index.astro's script. */
+  --code-bg: var(--color-black);
+  --code-fg: var(--color-zinc-300);
+  /* Deeper than --chrome: the Base URL bar sits on a card, not on the page. */
+  --chrome-deep: color-mix(in oklab, var(--color-black) 50%, transparent);
+  /* Form fields. Black on dark, white on light — a field must read as a well. */
+  --field: var(--color-black);
+  /* These serve two highlighters. In the JS snippet, -fn is the function name
+     and -str the string literal; in the JSON output, -fn is a string VALUE and
+     -str the key. Two colours, two contexts — matching the original design. */
+  --syntax-fn: var(--color-sky-300);
+  --syntax-str: var(--color-emerald-400);
+  --syntax-num: var(--color-amber-300);
+  --syntax-bool: var(--color-purple-400);
+  --syntax-punct: var(--color-zinc-500);
+
+  /* Ambient hero glow. Light needs far less of it — a blurred emerald wash that
+     reads as atmosphere on near-black reads as a smudge on near-white. */
+  --glow-opacity: 0.15;
+
+  --scrollbar-thumb: var(--color-zinc-700);
+}
+
+/* JS off: honour the OS preference. `:not(.dark)` lets an explicit dark choice
+   still win once the pre-paint script has run. */
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --background: var(--color-zinc-50);
+    --foreground: var(--color-zinc-950);
+    --card: var(--color-white);
+    --section: var(--color-white);
+    --chrome: var(--color-zinc-100);
+    --muted: var(--color-zinc-100);
+    --muted-hover: var(--color-zinc-100);
+  --muted-strong: var(--color-zinc-200);
+    --muted-strong: var(--color-zinc-200);
+    --border-c: var(--color-zinc-200);
+    --border-strong: var(--color-zinc-300);
+    --border-faint: var(--color-zinc-200);
+    --emphasis: var(--color-zinc-700);
+    --muted-foreground: var(--color-zinc-600);
+    --subtle: var(--color-zinc-500);
+    --faint: var(--color-zinc-400);
+
+    --primary: var(--color-emerald-500);
+    --primary-hover: var(--color-emerald-600);
+    --primary-foreground: var(--color-black);
+    --primary-ink: var(--color-emerald-700);
+    --primary-ink-hover: var(--color-emerald-800);
+    --primary-accent: var(--color-emerald-700);
+    --primary-accent-hover: var(--color-emerald-800);
+    --ring: var(--color-emerald-600);
+
+    --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+    --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
+    --primary-soft-ink: var(--color-emerald-700);
+
+    --contrast: var(--color-zinc-900);
+    --contrast-hover: var(--color-zinc-950);
+    --contrast-foreground: var(--color-zinc-50);
+
+    --code-bg: var(--color-white);
+    --code-fg: var(--color-zinc-700);
+    --chrome-deep: var(--color-zinc-100);
+    --field: var(--color-white);
+    --syntax-fn: var(--color-sky-700);
+    --syntax-str: var(--color-emerald-700);
+    --syntax-num: var(--color-amber-700);
+    --syntax-bool: var(--color-violet-700);
+    --syntax-punct: var(--color-zinc-500);
+
+    --glow-opacity: 0.1;
+
+    --scrollbar-thumb: var(--color-zinc-300);
+  }
+}
+
+/* Explicit light choice (pre-paint script or toggle). */
+:root.light {
+  --background: var(--color-zinc-50);
+  --foreground: var(--color-zinc-950);
+  --card: var(--color-white);
+  --section: var(--color-white);
+  --chrome: var(--color-zinc-100);
+  --muted: var(--color-zinc-100);
+  --muted-hover: var(--color-zinc-100);
+  --border-c: var(--color-zinc-200);
+  --border-strong: var(--color-zinc-300);
+  --border-faint: var(--color-zinc-200);
+  --emphasis: var(--color-zinc-700);
+  --muted-foreground: var(--color-zinc-600);
+  --subtle: var(--color-zinc-500);
+  --faint: var(--color-zinc-400);
+
+  --primary: var(--color-emerald-500);
+  --primary-hover: var(--color-emerald-600);
+  --primary-foreground: var(--color-black);
+  --primary-ink: var(--color-emerald-700);
+  --primary-ink-hover: var(--color-emerald-800);
+  --primary-accent: var(--color-emerald-700);
+  --primary-accent-hover: var(--color-emerald-800);
+  --ring: var(--color-emerald-600);
+
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+  --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
+  --primary-soft-ink: var(--color-emerald-700);
+
+  --contrast: var(--color-zinc-900);
+  --contrast-hover: var(--color-zinc-950);
+  --contrast-foreground: var(--color-zinc-50);
+
+  --code-bg: var(--color-white);
+  --code-fg: var(--color-zinc-700);
+  --chrome-deep: var(--color-zinc-100);
+  --field: var(--color-white);
+  --syntax-fn: var(--color-sky-700);
+  --syntax-str: var(--color-emerald-700);
+  --syntax-num: var(--color-amber-700);
+  --syntax-bool: var(--color-violet-700);
+  --syntax-punct: var(--color-zinc-500);
+
+  --glow-opacity: 0.1;
+
+  --scrollbar-thumb: var(--color-zinc-300);
+}
+
+/* Expose the tokens as Tailwind utilities: bg-card, text-muted-foreground,
+   border-border-c, text-syntax-fn, and so on. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-section: var(--section);
+  --color-chrome: var(--chrome);
+  --color-muted: var(--muted);
+  --color-muted-hover: var(--muted-hover);
+  --color-muted-strong: var(--muted-strong);
+  --color-border-c: var(--border-c);
+  --color-border-strong: var(--border-strong);
+  --color-border-faint: var(--border-faint);
+  --color-emphasis: var(--emphasis);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-faint: var(--faint);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-ink-hover: var(--primary-ink-hover);
+  --color-primary-accent: var(--primary-accent);
+  --color-primary-accent-hover: var(--primary-accent-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-border: var(--primary-soft-border);
+  --color-primary-soft-ink: var(--primary-soft-ink);
+  --color-ring: var(--ring);
+
+  --color-contrast: var(--contrast);
+  --color-contrast-hover: var(--contrast-hover);
+  --color-contrast-foreground: var(--contrast-foreground);
+
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-chrome-deep: var(--chrome-deep);
+  --color-field: var(--field);
+  --color-syntax-fn: var(--syntax-fn);
+  --color-syntax-str: var(--syntax-str);
+  --color-syntax-num: var(--syntax-num);
+  --color-syntax-bool: var(--syntax-bool);
+  --color-syntax-punct: var(--syntax-punct);
+}
+
 html {
   scroll-behavior: smooth;
+  /* Scrollbars, form controls and spinners are drawn by the browser; without
+     this they render in the wrong theme's chrome. */
+  color-scheme: dark;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not(.dark) {
+    color-scheme: light;
+  }
+}
+
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* The hero's ambient wash. Opacity is a token because the two themes need very
+   different amounts of it. */
+.hero-glow {
+  opacity: var(--glow-opacity);
+}
+
+/* Shiki is configured with a light/dark theme pair (astro.config.mjs and
+   CodeBlock.astro) under `defaultColor: 'dark'`, so each token's dark color is
+   written inline and the light one rides along as `--shiki-light`. Only light
+   needs overriding here.
+
+   Colour only: Shiki emits `--shiki-light-font-style` and friends just when a
+   token actually differs, so binding those unconditionally would blank the
+   italics on every token that does not. */
+:root.light .astro-code,
+:root.light .astro-code span {
+  color: var(--shiki-light) !important;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) .astro-code,
+  :root:not(.dark) .astro-code span {
+    color: var(--shiki-light) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

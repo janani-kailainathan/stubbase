@@ -2,7 +2,8 @@
 // Highlighted code block for the hardcoded hub pages. Uses Astro's built-in
 // Shiki `<Code>` component, so highlighting happens at build time and the page
 // still ships zero client JS. Markdown fences in the spoke pages are highlighted
-// by the same Shiki theme (configured in astro.config.mjs).
+// by the same Shiki theme pair (configured in astro.config.mjs) — keep the two
+// in step, or hub and spoke code blocks drift apart.
 import { Code } from 'astro:components';
 import { Terminal, FileJson, FileCode2 } from 'lucide-astro';
 
@@ -18,13 +19,18 @@ const { code, lang = 'bash', filename } = Astro.props;
 const Icon = lang === 'json' ? FileJson : lang === 'bash' ? Terminal : FileCode2;
 ---
 
-<figure class="overflow-hidden rounded-xl border border-zinc-800 bg-black">
-  <figcaption class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-4 py-3">
-    <Icon class="h-4 w-4 text-zinc-500" />
-    <span class="font-mono text-xs text-zinc-500">{filename ?? lang}</span>
+<figure class="overflow-hidden rounded-xl border border-border-c bg-code-bg">
+  <figcaption class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
+    <Icon class="h-4 w-4 text-subtle" />
+    <span class="font-mono text-xs text-subtle">{filename ?? lang}</span>
   </figcaption>
   <div class="overflow-x-auto p-5 text-sm leading-relaxed">
-    <Code code={code.trim()} lang={lang} theme="github-dark" />
+    <Code
+      code={code.trim()}
+      lang={lang}
+      themes={{ light: 'github-light', dark: 'github-dark' }}
+      defaultColor="dark"
+    />
   </div>
 </figure>
 

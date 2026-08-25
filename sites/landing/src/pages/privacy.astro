@@ -35,23 +35,23 @@ const sections = [
   <main>
     <section>
       <article class="mx-auto max-w-3xl px-6 py-20">
-        <h1 class="mb-3 text-4xl font-extrabold text-zinc-50">Privacy policy</h1>
-        <p class="mb-12 font-mono text-sm text-zinc-500">Last updated: July 14, 2026</p>
+        <h1 class="mb-3 text-4xl font-extrabold text-foreground">Privacy policy</h1>
+        <p class="mb-12 font-mono text-sm text-subtle">Last updated: July 14, 2026</p>
 
         <div class="flex flex-col gap-10">
           {
             sections.map((section) => (
               <section>
-                <h2 class="mb-3 text-xl font-semibold text-zinc-50">{section.h}</h2>
-                <p class="text-sm leading-relaxed text-zinc-400">{section.p}</p>
+                <h2 class="mb-3 text-xl font-semibold text-foreground">{section.h}</h2>
+                <p class="text-sm leading-relaxed text-muted-foreground">{section.p}</p>
               </section>
             ))
           }
           <section>
-            <h2 class="mb-3 text-xl font-semibold text-zinc-50">6. Contact</h2>
-            <p class="text-sm leading-relaxed text-zinc-400">
+            <h2 class="mb-3 text-xl font-semibold text-foreground">6. Contact</h2>
+            <p class="text-sm leading-relaxed text-muted-foreground">
               Questions about this policy? Reach out on{' '}
-              <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+              <a href="mailto:help@stubbase.dev" class="text-primary-accent hover:text-primary-accent-hover">
                 help@stubbase.dev
               </a>.
             </p>

@@ -51,15 +51,15 @@ const breadcrumbSchema = {
   schema={[articleSchema, breadcrumbSchema]}
 >
   <article>
-    <header class="border-b border-zinc-800">
+    <header class="border-b border-border-c">
       <div class="mx-auto max-w-3xl px-6 pt-16 pb-14">
-        <nav aria-label="Breadcrumb" class="mb-6 flex items-center gap-2 text-sm text-zinc-500">
-          <a href="/" class="transition-colors hover:text-zinc-300">Home</a>
+        <nav aria-label="Breadcrumb" class="mb-6 flex items-center gap-2 text-sm text-subtle">
+          <a href="/" class="transition-colors hover:text-emphasis">Home</a>
           <span aria-hidden="true">/</span>
-          <span class="text-zinc-400">{group.label}</span>
+          <span class="text-muted-foreground">{group.label}</span>
         </nav>
-        <h1 class="mb-5 text-4xl leading-tight font-extrabold text-zinc-50">{h1}</h1>
-        <p class="text-lg leading-relaxed text-zinc-400">{subheadline}</p>
+        <h1 class="mb-5 text-4xl leading-tight font-extrabold text-foreground">{h1}</h1>
+        <p class="text-lg leading-relaxed text-muted-foreground">{subheadline}</p>
       </div>
     </header>
 
@@ -72,9 +72,9 @@ const breadcrumbSchema = {
 
   {
     siblings.length > 0 && (
-      <section class="border-t border-zinc-800 bg-zinc-900/30">
+      <section class="border-t border-border-c bg-section">
         <div class="mx-auto max-w-3xl px-6 py-14">
-          <h2 class="mb-6 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          <h2 class="mb-6 text-xs font-semibold tracking-wide text-subtle uppercase">
             More in {group.label}
           </h2>
           <ul class="grid gap-4 sm:grid-cols-2">
@@ -82,7 +82,7 @@ const breadcrumbSchema = {
               <li>
                 <a
                   href={link.href}
-                  class="block rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-sm font-medium text-zinc-50 transition-colors hover:border-zinc-700 hover:bg-zinc-800"
+                  class="block rounded-xl border border-border-c bg-card p-5 text-sm font-medium text-foreground transition-colors hover:border-border-strong hover:bg-muted"
                 >
                   {link.label}
                 </a>
@@ -97,7 +97,9 @@ const breadcrumbSchema = {
 
 <style is:global>
   /* Markdown body styling. Hand-written instead of @tailwindcss/typography so the
-     dark zinc/emerald tokens stay in one place and the site gains no dependency. */
+     design tokens stay in one place and the site gains no dependency. Reads the
+     semantic tokens from global.css only — no zinc/emerald literals — so both
+     themes follow from that one file. */
   .prose-stubbase > * + * {
     margin-top: 1.25rem;
   }
@@ -113,29 +115,29 @@ const breadcrumbSchema = {
     font-size: 1.5rem;
     line-height: 2rem;
     font-weight: 800;
-    color: var(--color-zinc-50);
+    color: var(--foreground);
   }
 
   .prose-stubbase h3 {
     margin-top: 2rem;
     font-size: 1.125rem;
     font-weight: 600;
-    color: var(--color-zinc-50);
+    color: var(--foreground);
   }
 
   .prose-stubbase p,
   .prose-stubbase li {
     line-height: 1.75;
-    color: var(--color-zinc-400);
+    color: var(--muted-foreground);
   }
 
   .prose-stubbase strong {
     font-weight: 600;
-    color: var(--color-zinc-50);
+    color: var(--foreground);
   }
 
   .prose-stubbase em {
-    color: var(--color-zinc-300);
+    color: var(--emphasis);
   }
 
   .prose-stubbase ul,
@@ -152,7 +154,7 @@ const breadcrumbSchema = {
   }
 
   .prose-stubbase li::marker {
-    color: var(--color-zinc-600);
+    color: var(--faint);
   }
 
   .prose-stubbase li + li {
@@ -160,23 +162,23 @@ const breadcrumbSchema = {
   }
 
   .prose-stubbase a {
-    color: var(--color-emerald-400);
+    color: var(--primary-ink);
     text-decoration: underline;
     text-underline-offset: 4px;
   }
 
   .prose-stubbase a:hover {
-    color: var(--color-emerald-300);
+    color: var(--primary-ink-hover);
   }
 
   /* Inline code. */
   .prose-stubbase :not(pre) > code {
     border-radius: 0.25rem;
-    background-color: var(--color-zinc-800);
+    background-color: var(--muted);
     padding: 0.125rem 0.375rem;
     font-family: var(--font-mono);
     font-size: 0.875em;
-    color: var(--color-emerald-400);
+    color: var(--primary-ink);
   }
 
   /* Shiki-highlighted fenced blocks: multimodal crawlers look for <pre><code>,
@@ -186,8 +188,9 @@ const breadcrumbSchema = {
     margin-top: 1.5rem;
     margin-bottom: 1.5rem;
     border-radius: 0.75rem;
-    border: 1px solid var(--color-zinc-800);
-    background-color: #000 !important;
+    border: 1px solid var(--border-c);
+    /* !important overrides the background Shiki writes inline. */
+    background-color: var(--code-bg) !important;
     padding: 1.25rem;
     font-family: var(--font-mono);
     font-size: 0.875rem;
@@ -197,6 +200,6 @@ const breadcrumbSchema = {
   .prose-stubbase hr {
     margin-top: 2.5rem;
     margin-bottom: 2.5rem;
-    border-color: var(--color-zinc-800);
+    border-color: var(--border-c);
   }
 </style>

@@ -21,12 +21,12 @@ const columns = [
 ];
 ---
 
-<footer class="border-t border-zinc-800 bg-zinc-950">
+<footer class="border-t border-border-c bg-background">
   <div class="mx-auto max-w-7xl px-6 py-14">
     <div class="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
       <div class="lg:col-span-1">
         <img src="/stubbase-logo-text-dark.png" alt="Stubbase" class="mb-4 h-7" />
-        <p class="max-w-xs text-sm leading-relaxed text-zinc-500">
+        <p class="max-w-xs text-sm leading-relaxed text-subtle">
           Stubbase is a zero-config, instant backend engine. Generate persistent, relational REST
           APIs via JSON or AI to unblock frontend development and deterministic QA testing.
         </p>
@@ -35,7 +35,7 @@ const columns = [
       {
         columns.map((column) => (
           <nav aria-label={column.heading}>
-            <p class="mb-4 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+            <p class="mb-4 text-xs font-semibold tracking-wide text-subtle uppercase">
               {column.heading}
             </p>
             <ul class="space-y-3">
@@ -43,7 +43,7 @@ const columns = [
                 <li>
                   <a
                     href={link.href}
-                    class="text-sm text-zinc-400 transition-colors hover:text-zinc-50"
+                    class="text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {link.label}
                   </a>
@@ -56,17 +56,17 @@ const columns = [
     </div>
 
     <div
-      class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-zinc-800 pt-8"
+      class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-border-c pt-8"
     >
-      <p class="text-sm text-zinc-500">© 2026 Stubbase. stubbase.dev</p>
+      <p class="text-sm text-subtle">© 2026 Stubbase. stubbase.dev</p>
       <nav class="flex flex-wrap gap-6" aria-label="Legal">
-        <a href="/" class="text-sm text-zinc-400 transition-colors hover:text-zinc-50">Home</a>
-        <a href="/pricing" class="text-sm text-zinc-400 transition-colors hover:text-zinc-50">
+        <a href="/" class="text-sm text-muted-foreground transition-colors hover:text-foreground">Home</a>
+        <a href="/pricing" class="text-sm text-muted-foreground transition-colors hover:text-foreground">
           Pricing
         </a>
         {
           LEGAL_LINKS.map((link) => (
-            <a href={link.href} class="text-sm text-zinc-400 transition-colors hover:text-zinc-50">
+            <a href={link.href} class="text-sm text-muted-foreground transition-colors hover:text-foreground">
               {link.label}
             </a>
           ))

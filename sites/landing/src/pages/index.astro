@@ -54,19 +54,19 @@ const pipeline = [
   title="Stubbase — The Instant Backend for Frontend & QA Teams"
   description="Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero database configuration. Built for autonomous frontend development and deterministic chaos testing."
 >
-  <section class="relative overflow-hidden border-b border-zinc-800">
+  <section class="relative overflow-hidden border-b border-border-c">
     <div
-      class="pointer-events-none absolute top-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-emerald-500 opacity-15 blur-[120px]"
+      class="hero-glow pointer-events-none absolute top-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-primary blur-[120px]"
     >
     </div>
     <div class="relative mx-auto max-w-5xl px-6 pt-24 pb-20 text-center">
-      <p class="mb-4 text-xs font-semibold tracking-wide text-emerald-500 uppercase">
+      <p class="mb-4 text-xs font-semibold tracking-wide text-primary-accent uppercase">
         No login required. Generate an endpoint in 2 seconds.
       </p>
-      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-zinc-50">
+      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-foreground">
         The Instant Backend for<br />Frontend &amp; QA Teams
       </h1>
-      <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-zinc-400">
+      <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
         Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero
         database configuration. Built for autonomous frontend development and deterministic chaos
         testing.
@@ -75,13 +75,13 @@ const pipeline = [
       <div class="flex items-center justify-center gap-4">
         <a
           href={APP_URL}
-          class="inline-block rounded-md bg-emerald-500 px-6 py-3 font-semibold text-black transition-colors hover:bg-emerald-600"
+          class="inline-block rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           Generate API (Free)
         </a>
         <a
           href="#free-resources"
-          class="inline-block rounded-md border border-zinc-800 bg-zinc-900 px-6 py-3 font-semibold text-zinc-50 transition-colors hover:bg-zinc-800"
+          class="inline-block rounded-md border border-border-c bg-card px-6 py-3 font-semibold text-foreground transition-colors hover:bg-muted"
         >
           Use Public APIs
         </a>
@@ -89,38 +89,38 @@ const pipeline = [
 
       <div class="relative mx-auto mt-14 max-w-5xl">
         <div
-          class="absolute -inset-1 rounded-xl bg-gradient-to-r from-emerald-500/20 to-zinc-800/20 opacity-50 blur-lg"
+          class="absolute -inset-1 rounded-xl bg-gradient-to-r from-primary/20 to-muted/20 opacity-50 blur-lg"
         >
         </div>
         <div
-          class="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl"
+          class="relative overflow-hidden rounded-xl border border-border-c bg-background p-2 shadow-2xl"
         >
           <img
             src="/dashboard-ui.png"
             alt="Stubbase Dashboard UI"
-            class="w-full rounded-lg border border-zinc-800/50"
+            class="w-full rounded-lg border border-border-faint"
           />
         </div>
       </div>
     </div>
   </section>
 
-  <section class="border-b border-zinc-800">
+  <section class="border-b border-border-c">
     <div class="mx-auto max-w-5xl px-6 py-20">
-      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Stop Writing Boilerplate APIs</h2>
-      <p class="mb-12 max-w-3xl leading-relaxed text-zinc-400">
+      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Stop Writing Boilerplate APIs</h2>
+      <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
         Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
         testing teams to unblock themselves instantly.
       </p>
       <div class="grid gap-6 md:grid-cols-3">
         {
           capabilities.map(({ Icon, title, copy }) => (
-            <article class="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Icon class="h-5 w-5 text-emerald-500" />
+            <article class="rounded-xl border border-border-c bg-card p-6">
+              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft">
+                <Icon class="h-5 w-5 text-primary-accent" />
               </div>
-              <h3 class="mb-2 font-semibold text-zinc-50">{title}</h3>
-              <p class="text-sm leading-relaxed text-zinc-400">{copy}</p>
+              <h3 class="mb-2 font-semibold text-foreground">{title}</h3>
+              <p class="text-sm leading-relaxed text-muted-foreground">{copy}</p>
             </article>
           ))
         }
@@ -128,22 +128,22 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="border-b border-zinc-800 bg-zinc-900/30">
+  <section class="border-b border-border-c bg-section">
     <div class="mx-auto max-w-5xl px-6 py-20">
-      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">A Complete API Pipeline</h2>
-      <p class="mb-12 max-w-3xl leading-relaxed text-zinc-400">
+      <h2 class="mb-4 text-3xl font-extrabold text-foreground">A Complete API Pipeline</h2>
+      <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
         Every endpoint deployed on Stubbase routes through our dynamic middleware pipeline,
         controlled entirely via your dashboard.
       </p>
       <ul class="grid gap-6 md:grid-cols-3">
         {
           pipeline.map(({ Icon, name, copy }) => (
-            <li class="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Icon class="h-5 w-5 text-emerald-500" />
+            <li class="rounded-xl border border-border-c bg-card p-6">
+              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft">
+                <Icon class="h-5 w-5 text-primary-accent" />
               </div>
-              <h3 class="mb-2 font-semibold text-zinc-50">{name}</h3>
-              <p class="text-sm leading-relaxed text-zinc-400">{copy}</p>
+              <h3 class="mb-2 font-semibold text-foreground">{name}</h3>
+              <p class="text-sm leading-relaxed text-muted-foreground">{copy}</p>
             </li>
           ))
         }
@@ -151,28 +151,28 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="border-b border-zinc-800 bg-zinc-950">
+  <section class="border-b border-border-c bg-background">
     <div class="mx-auto max-w-3xl px-6 py-24 text-center">
-      <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Try it live</h2>
-      <p class="mb-8 text-zinc-400">
+      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Try it live</h2>
+      <p class="mb-8 text-muted-foreground">
         Run this code here, in your console, or from any frontend application.
       </p>
 
-      <div class="mb-6 overflow-hidden rounded-xl border border-zinc-800 bg-black text-left shadow-xl">
-        <div class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-4 py-3">
-          <Terminal class="h-4 w-4 text-zinc-500" />
-          <span class="font-mono text-xs text-zinc-500">fetch.js</span>
+      <div class="mb-6 overflow-hidden rounded-xl border border-border-c bg-code-bg text-left shadow-xl">
+        <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
+          <Terminal class="h-4 w-4 text-subtle" />
+          <span class="font-mono text-xs text-subtle">fetch.js</span>
         </div>
         <pre
-          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-zinc-300"><code><span class="text-sky-300">fetch</span>(<span class="text-emerald-400">'{CORE_URL}/public/users/1'</span>)
-  .<span class="text-sky-300">then</span>(response =&gt; response.<span class="text-sky-300">json</span>())
-  .<span class="text-sky-300">then</span>(json =&gt; console.<span class="text-sky-300">log</span>(json))</code></pre>
+          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-emphasis"><code><span class="text-syntax-fn">fetch</span>(<span class="text-syntax-str">'{CORE_URL}/public/users/1'</span>)
+  .<span class="text-syntax-fn">then</span>(response =&gt; response.<span class="text-syntax-fn">json</span>())
+  .<span class="text-syntax-fn">then</span>(json =&gt; console.<span class="text-syntax-fn">log</span>(json))</code></pre>
       </div>
 
       <div class="mb-6 text-left">
         <button
           id="run-script-btn"
-          class="flex items-center gap-2 rounded-md bg-zinc-100 px-5 py-2 text-sm font-semibold text-black shadow-sm transition-colors hover:bg-white"
+          class="flex items-center gap-2 rounded-md bg-contrast px-5 py-2 text-sm font-semibold text-contrast-foreground shadow-sm transition-colors hover:bg-contrast-hover"
         >
           <span class="flex items-center gap-2 data-[hidden]:hidden" data-state="idle">
             <Play class="h-4 w-4" /> Run script
@@ -181,63 +181,63 @@ const pipeline = [
             <Loader class="h-4 w-4 animate-spin" /> Running...
           </span>
           <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="done">
-            <Check class="h-4 w-4 text-emerald-500" /> Done
+            <Check class="h-4 w-4 text-primary-accent" /> Done
           </span>
         </button>
       </div>
 
       <div
         id="output-container"
-        class="hidden overflow-hidden rounded-xl border border-zinc-800 bg-black text-left shadow-xl"
+        class="hidden overflow-hidden rounded-xl border border-border-c bg-code-bg text-left shadow-xl"
       >
-        <div class="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50 px-4 py-3">
-          <FileJson class="h-4 w-4 text-zinc-500" />
-          <span class="font-mono text-xs text-zinc-500">Output</span>
+        <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
+          <FileJson class="h-4 w-4 text-subtle" />
+          <span class="font-mono text-xs text-subtle">Output</span>
         </div>
         <div
           id="script-output"
-          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-zinc-300"
+          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-emphasis"
         >
         </div>
       </div>
 
-      <p id="success-msg" class="mt-6 hidden text-left text-sm text-zinc-400">
+      <p id="success-msg" class="mt-6 hidden text-left text-sm text-muted-foreground">
         Congrats! You've made your first call to Stubbase. 🎉
       </p>
     </div>
   </section>
 
-  <section id="free-resources" class="border-b border-zinc-800 bg-zinc-900/30">
+  <section id="free-resources" class="border-b border-border-c bg-section">
     <div class="mx-auto max-w-4xl px-6 py-20">
       <div class="mb-12 text-center">
-        <h2 class="mb-4 text-3xl font-extrabold text-zinc-50">Free Resources</h2>
-        <p class="text-zinc-400">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Free Resources</h2>
+        <p class="text-muted-foreground">
           Stubbase comes with a set of 6 common resources for quick frontend prototyping.<br />
           No account required.
         </p>
       </div>
 
       <div class="mx-auto max-w-2xl">
-        <div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm">
+        <div class="overflow-hidden rounded-xl border border-border-c bg-card shadow-sm">
           <div
-            class="flex items-center justify-between border-b border-zinc-800 bg-black/50 px-6 py-4"
+            class="flex items-center justify-between border-b border-border-c bg-chrome-deep px-6 py-4"
           >
-            <span class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Base URL</span>
-            <code class="font-mono text-sm text-zinc-300">{CORE_URL}/public</code>
+            <span class="text-xs font-semibold tracking-wide text-subtle uppercase">Base URL</span>
+            <code class="font-mono text-sm text-emphasis">{CORE_URL}/public</code>
           </div>
 
           {
             publicResources.map((resource, i) => (
               <div
-                class={`group flex items-center justify-between px-6 py-4 transition-colors hover:bg-zinc-800/50 ${i < publicResources.length - 1 ? 'border-b border-zinc-800' : ''}`}
+                class={`group flex items-center justify-between px-6 py-4 transition-colors hover:bg-muted-hover ${i < publicResources.length - 1 ? 'border-b border-border-c' : ''}`}
               >
                 <a
                   href={`${CORE_URL}/public${resource.path}`}
-                  class="font-mono text-sm text-emerald-400 underline-offset-4 hover:text-emerald-300 hover:underline"
+                  class="font-mono text-sm text-primary-ink underline-offset-4 hover:text-primary-ink-hover hover:underline"
                 >
                   {resource.path}
                 </a>
-                <span class="text-sm text-zinc-400 transition-colors group-hover:text-zinc-300">
+                <span class="text-sm text-muted-foreground transition-colors group-hover:text-emphasis">
                   {resource.count}
                 </span>
               </div>
@@ -245,10 +245,10 @@ const pipeline = [
           }
         </div>
 
-        <div class="mt-8 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
-          <p class="text-sm text-emerald-400">
+        <div class="mt-8 rounded-lg border border-primary-soft-border bg-primary-soft p-4 text-center">
+          <p class="text-sm text-primary-ink">
             <strong>Need custom fields?</strong> Edit these APIs in the{' '}
-            <a href={APP_URL} class="font-semibold underline hover:text-emerald-300">
+            <a href={APP_URL} class="font-semibold underline hover:text-primary-ink-hover">
               Stubbase Dashboard
             </a>{' '}
             to add delays, errors, or your own data.
@@ -260,12 +260,12 @@ const pipeline = [
 
   <section>
     <div class="mx-auto max-w-6xl px-6 py-20">
-      <h2 class="mb-12 text-3xl font-extrabold text-zinc-50">Explore Stubbase</h2>
+      <h2 class="mb-12 text-3xl font-extrabold text-foreground">Explore Stubbase</h2>
       <div class="grid gap-10 md:grid-cols-3">
         {
           NAV_GROUPS.map((group) => (
             <div>
-              <p class="mb-4 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+              <p class="mb-4 text-xs font-semibold tracking-wide text-subtle uppercase">
                 {group.label}
               </p>
               <ul class="space-y-3">
@@ -273,7 +273,7 @@ const pipeline = [
                   <li>
                     <a
                       href={link.href}
-                      class="group flex items-center gap-2 text-sm text-zinc-300 transition-colors hover:text-emerald-400"
+                      class="group flex items-center gap-2 text-sm text-emphasis transition-colors hover:text-primary-accent-hover"
                     >
                       {link.label}
                       <ArrowRight class="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -305,8 +305,8 @@ const pipeline = [
       span.classList.toggle('flex', span.dataset.state === state);
     });
     if (state === 'done' && btn) {
-      btn.classList.remove('bg-zinc-100', 'hover:bg-white', 'text-black');
-      btn.classList.add('border', 'border-zinc-800', 'bg-zinc-900', 'text-zinc-50');
+      btn.classList.remove('bg-contrast', 'hover:bg-contrast-hover', 'text-contrast-foreground');
+      btn.classList.add('border', 'border-border-c', 'bg-card', 'text-foreground');
     }
   }
 
@@ -319,12 +319,12 @@ const pipeline = [
       /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
     return json.replace(tokenRe, (match, str, colon, boolNull, num, punct) => {
       if (str) {
-        const cls = colon ? 'text-emerald-400' : 'text-sky-300';
+        const cls = colon ? 'text-syntax-str' : 'text-syntax-fn';
         return `<span class="${cls}">${str}</span>${colon ?? ''}`;
       }
-      if (boolNull) return `<span class="text-purple-400">${boolNull}</span>`;
-      if (num) return `<span class="text-amber-300">${num}</span>`;
-      if (punct) return `<span class="text-zinc-500">${punct}</span>`;
+      if (boolNull) return `<span class="text-syntax-bool">${boolNull}</span>`;
+      if (num) return `<span class="text-syntax-num">${num}</span>`;
+      if (punct) return `<span class="text-subtle">${punct}</span>`;
       return match;
     });
   }

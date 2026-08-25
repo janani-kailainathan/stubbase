@@ -47,10 +47,10 @@ const faqSchema = {
   <main>
     <section>
       <div class="mx-auto max-w-2xl px-6 pt-20 pb-14 text-center">
-        <h1 class="mb-4 text-4xl font-extrabold text-zinc-50">Frequently asked questions</h1>
-        <p class="text-zinc-400">
+        <h1 class="mb-4 text-4xl font-extrabold text-foreground">Frequently asked questions</h1>
+        <p class="text-muted-foreground">
           Can't find the answer you're looking for? Reach out on{' '}
-          <a href="mailto:help@stubbase.dev" class="text-emerald-500 hover:text-emerald-400">
+          <a href="mailto:help@stubbase.dev" class="text-primary-accent hover:text-primary-accent-hover">
             help@stubbase.dev
           </a>
         </p>
@@ -62,16 +62,16 @@ const faqSchema = {
         {
           faqs.map((faq, i) => (
             <details
-              class="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900"
+              class="group overflow-hidden rounded-xl border border-border-c bg-card"
               name="faq"
               open={i === 0}
             >
               <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
-                <h2 class="font-semibold text-zinc-50">{faq.q}</h2>
-                <Plus class="h-5 w-5 shrink-0 text-zinc-500 group-open:hidden" />
-                <Minus class="hidden h-5 w-5 shrink-0 text-zinc-500 group-open:block" />
+                <h2 class="font-semibold text-foreground">{faq.q}</h2>
+                <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+                <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
               </summary>
-              <p class="px-6 pb-6 text-sm leading-relaxed text-zinc-400">{faq.a}</p>
+              <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
             </details>
           ))
         }

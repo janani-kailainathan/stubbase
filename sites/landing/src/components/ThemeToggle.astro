@@ -1,0 +1,28 @@
+---
+// Theme switch. Carries no script of its own: the click is handled by the
+// delegated listener in BaseLayout's inline pre-paint script, which is what
+// keeps the site's client-JS budget to that one block (see CLAUDE.md).
+//
+// Both icons are rendered and CSS picks one, so the correct icon is present in
+// the very first paint rather than swapped in afterwards. `light:` is the
+// variant that flips, not `dark:`, because the base (unstamped, JS-off) state of
+// this site is dark — see the token block in global.css.
+import { Sun, Moon } from 'lucide-astro';
+
+interface Props {
+  class?: string;
+}
+
+const { class: className = '' } = Astro.props;
+---
+
+<button
+  type="button"
+  data-theme-toggle
+  aria-label="Switch between light and dark theme"
+  title="Switch theme"
+  class={`flex cursor-pointer items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${className}`}
+>
+  <Sun class="block h-4 w-4 light:hidden" />
+  <Moon class="hidden h-4 w-4 light:block" />
+</button>

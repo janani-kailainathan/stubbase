@@ -61,11 +61,11 @@ const tiers = [
 
 const ctaClass = {
   solid:
-    'rounded-md bg-emerald-500 py-3 text-center text-sm font-semibold text-black transition-colors hover:bg-emerald-600',
+    'rounded-md bg-primary py-3 text-center text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover',
   outline:
-    'rounded-md border border-emerald-500 py-3 text-center text-sm font-semibold text-emerald-500 transition-colors hover:bg-emerald-500/10',
+    'rounded-md border border-primary py-3 text-center text-sm font-semibold text-primary-accent transition-colors hover:bg-primary-soft',
   muted:
-    'rounded-md border border-zinc-700 bg-zinc-800 py-3 text-center text-sm font-semibold text-zinc-50 transition-colors hover:bg-zinc-700',
+    'rounded-md border border-border-strong bg-muted py-3 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted-strong',
 } as const;
 
 const offerSchema = {
@@ -93,10 +93,10 @@ const offerSchema = {
 >
   <section>
     <div class="mx-auto max-w-3xl px-6 pt-20 pb-10 text-center">
-      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-zinc-50">
+      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-foreground">
         Transparent API Pricing for Developers and Teams
       </h1>
-      <p class="text-lg leading-relaxed text-zinc-400">
+      <p class="text-lg leading-relaxed text-muted-foreground">
         Flat, predictable limits. Start mocking APIs for free, upgrade for continuous CI/CD
         reliability and AI features.
       </p>
@@ -105,7 +105,7 @@ const offerSchema = {
 
   <section>
     <div class="mx-auto max-w-6xl px-6 py-16">
-      <h2 class="mb-10 text-center text-3xl font-extrabold text-zinc-50">Feature Tiers</h2>
+      <h2 class="mb-10 text-center text-3xl font-extrabold text-foreground">Feature Tiers</h2>
 
       <div class="grid gap-6 md:grid-cols-3">
         {
@@ -113,24 +113,24 @@ const offerSchema = {
             <article
               class={
                 tier.featured
-                  ? 'relative flex flex-col overflow-hidden rounded-xl border border-emerald-500 bg-zinc-900 p-8 shadow-lg shadow-emerald-500/5'
-                  : 'flex flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-8'
+                  ? 'relative flex flex-col overflow-hidden rounded-xl border border-primary bg-card p-8 shadow-lg shadow-primary/5'
+                  : 'flex flex-col rounded-xl border border-border-c bg-card p-8'
               }
             >
               {tier.featured && (
-                <p class="absolute top-0 right-0 rounded-bl-lg bg-emerald-500 px-3 py-1 text-[10px] font-bold tracking-wider text-black uppercase">
+                <p class="absolute top-0 right-0 rounded-bl-lg bg-primary px-3 py-1 text-[10px] font-bold tracking-wider text-primary-foreground uppercase">
                   Most Popular
                 </p>
               )}
 
-              <h3 class="mb-2 flex items-center gap-2 text-xl font-semibold text-zinc-50">
+              <h3 class="mb-2 flex items-center gap-2 text-xl font-semibold text-foreground">
                 {tier.name}
-                {tier.name === 'Pro + AI' && <Sparkles class="h-5 w-5 text-emerald-400" />}
+                {tier.name === 'Pro + AI' && <Sparkles class="h-5 w-5 text-primary-ink" />}
               </h3>
-              <p class="mb-6 text-sm font-medium text-zinc-400">{tier.tagline}</p>
-              <p class="mb-6 text-4xl font-extrabold text-zinc-50">
+              <p class="mb-6 text-sm font-medium text-muted-foreground">{tier.tagline}</p>
+              <p class="mb-6 text-4xl font-extrabold text-foreground">
                 {tier.price}
-                <span class="text-base font-medium text-zinc-500">{tier.period}</span>
+                <span class="text-base font-medium text-subtle">{tier.period}</span>
               </p>
               <a href={APP_URL} class={`mb-8 ${ctaClass[tier.cta.style as keyof typeof ctaClass]}`}>
                 {tier.cta.label}
@@ -139,10 +139,10 @@ const offerSchema = {
               <dl class="space-y-4">
                 {tier.specs.map((spec) => (
                   <div class="flex gap-3">
-                    <Check class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    <Check class="mt-0.5 h-4 w-4 shrink-0 text-primary-accent" />
                     <div>
-                      <dt class="text-sm font-semibold text-zinc-50">{spec.label}</dt>
-                      <dd class="text-sm leading-relaxed text-zinc-400">{spec.value}</dd>
+                      <dt class="text-sm font-semibold text-foreground">{spec.label}</dt>
+                      <dd class="text-sm leading-relaxed text-muted-foreground">{spec.value}</dd>
                     </div>
                   </div>
                 ))}
