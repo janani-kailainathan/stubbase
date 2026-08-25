@@ -32,16 +32,16 @@ export default function Login() {
     <AuthLayout>
       <div className="mb-8 text-center">
         <AuthLogo />
-        <h1 className="mb-2 text-2xl font-extrabold text-zinc-50">Log in to your account</h1>
-        <p className="text-sm text-zinc-400">
+        <h1 className="mb-2 text-2xl font-extrabold text-foreground">Log in to your account</h1>
+        <p className="text-sm text-muted-foreground">
           New here?{' '}
-          <Link to="/signup" className="text-emerald-500 hover:text-emerald-400">
+          <Link to="/signup" className="text-primary-accent hover:text-primary-ink">
             Create an account
           </Link>
         </p>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8">
+      <div className="rounded-xl border border-border bg-card p-8">
         <form className="flex flex-col gap-5" onSubmit={submit}>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="email" className={authLabelClass}>
@@ -62,7 +62,7 @@ export default function Login() {
               <label htmlFor="password" className={authLabelClass}>
                 Password
               </label>
-              <a href="#" className="text-xs text-emerald-500 hover:text-emerald-400">
+              <a href="#" className="text-xs text-primary-accent hover:text-primary-ink">
                 Forgot password?
               </a>
             </div>
@@ -79,7 +79,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={pending}
-            className="mt-1 rounded-md bg-emerald-500 py-3 font-semibold text-black transition-colors hover:bg-emerald-600 disabled:opacity-60"
+            className="mt-1 rounded-md bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
             {pending ? 'Logging in…' : 'Log in'}
           </button>

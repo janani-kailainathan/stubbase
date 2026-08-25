@@ -46,6 +46,60 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+
+  /* Stubbase tokens beyond the shadcn set. Utilities follow the names:
+     bg-panel, text-subtle, border-border-soft, text-syntax-key, and so on. */
+  --color-panel: var(--panel);
+  --color-panel-strong: var(--panel-strong);
+  --color-border-soft: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-border-stronger: var(--border-stronger);
+
+  --color-heading: var(--heading);
+  --color-emphasis: var(--emphasis);
+  --color-body: var(--body);
+  --color-subtle: var(--subtle);
+  --color-faint: var(--faint);
+  --color-faintest: var(--faintest);
+  --color-ghost: var(--ghost);
+
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-ink-hover: var(--primary-ink-hover);
+  --color-primary-accent: var(--primary-accent);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-weak: var(--primary-soft-weak);
+  --color-primary-soft-border: var(--primary-soft-border);
+  --color-primary-soft-border-strong: var(--primary-soft-border-strong);
+
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-emphasis: var(--danger-emphasis);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-fill-hover: var(--danger-fill-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-weak: var(--danger-soft-weak);
+  --color-danger-soft-border: var(--danger-soft-border);
+
+  --color-warning-ink: var(--warning-ink);
+  --color-warning-emphasis: var(--warning-emphasis);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-weak: var(--warning-soft-weak);
+  --color-warning-soft-border: var(--warning-soft-border);
+
+  --color-info-ink: var(--info-ink);
+  --color-info-emphasis: var(--info-emphasis);
+  --color-info-soft: var(--info-soft);
+  --color-info-soft-border: var(--info-soft-border);
+
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-syntax-key: var(--syntax-key);
+  --color-syntax-str: var(--syntax-str);
+  --color-syntax-num: var(--syntax-num);
+  --color-syntax-bool: var(--syntax-bool);
+  --color-syntax-punct: var(--syntax-punct);
+  --color-syntax-invalid: var(--syntax-invalid);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -55,42 +109,143 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ---------------------------------------------------------------------------
+   Stubbase design tokens.
+
+   `:root` is light and `.dark` is dark — shadcn's convention, kept because the
+   ui/ primitives already lean on `dark:` variants. Unlike the landing site there
+   is no JS-off path to protect: this is a SPA, so nothing renders before the
+   pre-paint script in index.html has stamped an explicit class.
+
+   Three layers, and only the first inverts cleanly:
+     1. surfaces + the zinc text ramp — mechanical, but never flip the elevation
+        (dark cards are LIGHTER than the page, so light keeps white cards on a
+        zinc-50 page rather than a grey card on white);
+     2. brand emerald — one value does fill AND text duty in dark, which light
+        cannot do: emerald-500 is 8.3:1 as a fill under black text but 2.5:1 as
+        text on white, hence --primary-ink/--primary-accent at emerald-700;
+     3. status (rose/amber/sky) and syntax — re-picked per theme, never stepped
+        uniformly, since amber-400 is 1.7:1 on white where sky-400 is 2.1:1.
+
+   Every colour a component uses must come from here. The correctness check when
+   editing is that DARK RENDERS UNCHANGED.
+   --------------------------------------------------------------------------- */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: var(--color-zinc-50);
+  --foreground: var(--color-zinc-950);
+  --card: var(--color-white);
+  --card-foreground: var(--color-zinc-950);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-zinc-950);
+  --primary: var(--color-emerald-500);
+  --primary-foreground: var(--color-black);
+  --secondary: var(--color-zinc-100);
+  --secondary-foreground: var(--color-zinc-900);
+  --muted: var(--color-zinc-100);
+  --muted-foreground: var(--color-zinc-600);
+  --accent: var(--color-zinc-100);
+  --accent-foreground: var(--color-zinc-900);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: var(--color-zinc-200);
+  --input: var(--color-zinc-200);
+  --ring: var(--color-emerald-600);
+  --chart-1: var(--color-emerald-600);
+  --chart-2: var(--color-sky-600);
+  --chart-3: var(--color-violet-600);
+  --chart-4: var(--color-amber-600);
+  --chart-5: var(--color-rose-600);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: var(--color-zinc-50);
+  --sidebar-foreground: var(--color-zinc-600);
+  --sidebar-primary: var(--color-emerald-600);
+  --sidebar-primary-foreground: var(--color-black);
+  --sidebar-accent: var(--color-white);
+  --sidebar-accent-foreground: var(--color-zinc-950);
+  --sidebar-border: var(--color-zinc-200);
+  --sidebar-ring: var(--color-emerald-600);
+
+  /* Panels. Dark layers these as translucent zinc over the page; light cannot
+     copy that (white/40 over zinc-50 is invisible), so they resolve to solid. */
+  --panel: var(--color-white);
+  --panel-strong: var(--color-white);
+
+  /* Borders, three weights. */
+  --border-soft: var(--color-zinc-200);
+  --border-strong: var(--color-zinc-300);
+  --border-stronger: var(--color-zinc-400);
+
+  /* The zinc text ramp — eight steps, brightest first. The two dimmest text
+     steps deliberately COMPRESS here: a straight inversion would put ~51 uses
+     of --faint at 2.9:1 on white, so light trades a little separation for
+     legibility while dark keeps all eight distinct. */
+  --heading: var(--color-zinc-900);
+  --emphasis: var(--color-zinc-800);
+  --body: var(--color-zinc-700);
+  --subtle: var(--color-zinc-500);
+  --faint: var(--color-zinc-500);
+  --faintest: var(--color-zinc-400);
+  --ghost: var(--color-zinc-300);
+
+  /* Brand. --primary stays emerald-500 as a fill in BOTH themes, so "emerald
+     buttons always with black text" survives; only the text roles move. */
+  --primary-hover: var(--color-emerald-600);
+  --primary-ink: var(--color-emerald-700);
+  --primary-ink-hover: var(--color-emerald-800);
+  --primary-accent: var(--color-emerald-700);
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+  --primary-soft-weak: color-mix(in oklab, var(--color-emerald-500) 8%, transparent);
+  --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
+  --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
+
+  /* Status families. Tinted fills and borders are their own tokens rather than
+     `/10` modifiers: a fixed alpha does not read the same over zinc-950 as over
+     white, so each theme sets its own strength. */
+  --danger-ink: var(--color-rose-600);
+  --danger-emphasis: var(--color-rose-700);
+  --danger-solid: var(--color-rose-600);
+  --danger-fill: var(--color-rose-600);
+  --danger-fill-hover: var(--color-rose-700);
+  --danger-soft: color-mix(in oklab, var(--color-rose-500) 12%, transparent);
+  --danger-soft-weak: color-mix(in oklab, var(--color-rose-500) 8%, transparent);
+  --danger-soft-border: color-mix(in oklab, var(--color-rose-600) 35%, transparent);
+
+  --warning-ink: var(--color-amber-700);
+  --warning-emphasis: var(--color-amber-700);
+  --warning-soft: color-mix(in oklab, var(--color-amber-500) 14%, transparent);
+  --warning-soft-weak: color-mix(in oklab, var(--color-amber-500) 9%, transparent);
+  --warning-soft-border: color-mix(in oklab, var(--color-amber-600) 35%, transparent);
+
+  --info-ink: var(--color-sky-700);
+  --info-emphasis: var(--color-sky-700);
+  --info-soft: color-mix(in oklab, var(--color-sky-500) 12%, transparent);
+  --info-soft-border: color-mix(in oklab, var(--color-sky-600) 35%, transparent);
+
+  /* Editor / terminal surfaces and the syntax palette. Shared by the read-only
+     renderer (lib/json-highlight.tsx) and the CodeMirror theme (JsonEditor.tsx)
+     so flipping into edit mode never recolours the document. */
+  --code-bg: var(--color-white);
+  --code-fg: var(--color-zinc-800);
+  --syntax-key: var(--color-emerald-700);
+  --syntax-str: var(--color-sky-700);
+  --syntax-num: var(--color-amber-700);
+  --syntax-bool: var(--color-violet-700);
+  --syntax-punct: var(--color-zinc-500);
+  --syntax-invalid: var(--color-rose-600);
+  --editor-active-line: color-mix(in oklab, var(--color-black) 4%, transparent);
+  --editor-selection: color-mix(in oklab, var(--color-emerald-600) 20%, transparent);
+  --editor-selection-weak: color-mix(in oklab, var(--color-emerald-600) 12%, transparent);
+
+  color-scheme: light;
+  --scrollbar-thumb: var(--color-zinc-300);
+  --scrollbar-thumb-hover: var(--color-zinc-400);
+  --selection-bg: color-mix(in oklab, var(--color-emerald-500) 28%, transparent);
+  --selection-fg: var(--color-zinc-950);
 }
 
-/* Stubbase design system: zinc surfaces, emerald accent (black text on emerald). */
+/* Stubbase design system: zinc surfaces, emerald accent (black text on emerald).
+   Mirror of the :root block above — every token here holds the exact literal it
+   replaced in the components, which is what makes "dark renders unchanged" a
+   checkable property rather than a hope. */
 .dark {
   --background: var(--color-zinc-950);
   --foreground: var(--color-zinc-50);
@@ -124,6 +279,62 @@
   --sidebar-border: var(--color-zinc-800);
   --sidebar-ring: var(--color-emerald-500);
 
+  --panel: color-mix(in oklab, var(--color-zinc-900) 40%, transparent);
+  --panel-strong: color-mix(in oklab, var(--color-zinc-900) 60%, transparent);
+
+  --border-soft: color-mix(in oklab, var(--color-zinc-800) 60%, transparent);
+  --border-strong: var(--color-zinc-700);
+  --border-stronger: var(--color-zinc-600);
+
+  --heading: var(--color-zinc-100);
+  --emphasis: var(--color-zinc-200);
+  --body: var(--color-zinc-300);
+  --subtle: var(--color-zinc-500);
+  --faint: var(--color-zinc-600);
+  --faintest: var(--color-zinc-700);
+  --ghost: var(--color-zinc-800);
+
+  --primary-hover: var(--color-emerald-600);
+  --primary-ink: var(--color-emerald-400);
+  --primary-ink-hover: var(--color-emerald-300);
+  --primary-accent: var(--color-emerald-500);
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
+  --primary-soft-weak: color-mix(in oklab, var(--color-emerald-500) 5%, transparent);
+  --primary-soft-border: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
+  --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-500) 40%, transparent);
+
+  --danger-ink: var(--color-rose-400);
+  --danger-emphasis: var(--color-rose-300);
+  --danger-solid: var(--color-rose-500);
+  --danger-fill: var(--color-rose-500);
+  --danger-fill-hover: var(--color-rose-600);
+  --danger-soft: color-mix(in oklab, var(--color-rose-500) 10%, transparent);
+  --danger-soft-weak: color-mix(in oklab, var(--color-rose-500) 5%, transparent);
+  --danger-soft-border: color-mix(in oklab, var(--color-rose-500) 30%, transparent);
+
+  --warning-ink: var(--color-amber-400);
+  --warning-emphasis: var(--color-amber-300);
+  --warning-soft: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
+  --warning-soft-weak: color-mix(in oklab, var(--color-amber-500) 5%, transparent);
+  --warning-soft-border: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
+
+  --info-ink: var(--color-sky-400);
+  --info-emphasis: var(--color-sky-300);
+  --info-soft: color-mix(in oklab, var(--color-sky-500) 10%, transparent);
+  --info-soft-border: color-mix(in oklab, var(--color-sky-500) 30%, transparent);
+
+  --code-bg: var(--color-black);
+  --code-fg: var(--color-zinc-200);
+  --syntax-key: var(--color-emerald-400);
+  --syntax-str: var(--color-sky-300);
+  --syntax-num: var(--color-amber-300);
+  --syntax-bool: var(--color-purple-400);
+  --syntax-punct: var(--color-zinc-500);
+  --syntax-invalid: var(--color-rose-400);
+  --editor-active-line: color-mix(in oklab, var(--color-white) 2.5%, transparent);
+  --editor-selection: color-mix(in oklab, var(--color-emerald-400) 15%, transparent);
+  --editor-selection-weak: color-mix(in oklab, var(--color-emerald-400) 9%, transparent);
+
   /* Scrollbars, form controls and spinners are drawn by the browser. Without
      this they render in the OS light theme — a bright seam down every zinc
      surface. Everything below only refines what this already gets right. */
@@ -131,6 +342,8 @@
 
   --scrollbar-thumb: var(--color-zinc-700);
   --scrollbar-thumb-hover: var(--color-zinc-600);
+  --selection-bg: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
+  --selection-fg: var(--color-zinc-50);
 }
 
 @layer base {
@@ -148,8 +361,8 @@
      of this palette. Inline rename pre-selects the project name, so it is on
      screen every time someone renames something. */
   ::selection {
-    background-color: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
-    color: var(--color-zinc-50);
+    background-color: var(--selection-bg);
+    color: var(--selection-fg);
   }
 
   /* Scrollbars are part of the design system — styled here, not per-component,

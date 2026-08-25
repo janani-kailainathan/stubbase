@@ -88,7 +88,7 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
       <button
         onClick={() => startEdit(stringify(data ?? []))}
         disabled={data === undefined}
-        className="cursor-pointer px-2 py-1 font-mono text-xs text-zinc-500 transition-colors hover:text-emerald-500 disabled:opacity-50"
+        className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
       >
         Edit
       </button>
@@ -98,7 +98,7 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
     <div className="flex items-center gap-1.5">
       <button
         onClick={stopEdit}
-        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-zinc-500 transition-colors hover:text-zinc-50"
+        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-foreground"
       >
         <X className="h-3.5 w-3.5" />
         Cancel
@@ -107,11 +107,11 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
         onClick={onSave}
         disabled={save.isPending}
         title={`Save (${SAVE_HINT})`}
-        className="flex cursor-pointer items-center gap-1 rounded bg-emerald-500 px-2 py-1 font-mono text-xs text-black transition-colors hover:bg-emerald-600 disabled:opacity-60"
+        className="flex cursor-pointer items-center gap-1 rounded bg-primary px-2 py-1 font-mono text-xs text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         <Check className="h-3.5 w-3.5" />
         {save.isPending ? 'Saving…' : 'Save'}
-        <span className="text-black/50">{SAVE_HINT}</span>
+        <span className="text-primary-foreground/50">{SAVE_HINT}</span>
       </button>
     </div>
   )
@@ -127,7 +127,7 @@ function ResourceView({ tenantId, resource }: { tenantId: string; resource: stri
     return (
       <Suspense
         fallback={
-          <div className="min-h-0 flex-1 bg-black p-4 font-mono text-xs text-zinc-600">
+          <div className="min-h-0 flex-1 bg-code-bg p-4 font-mono text-xs text-faint">
             Loading editor&hellip;
           </div>
         }
@@ -138,9 +138,9 @@ function ResourceView({ tenantId, resource }: { tenantId: string; resource: stri
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-black p-4">
-      {isLoading && <p className="font-mono text-xs text-zinc-600">Loading…</p>}
-      {error && <p className="font-mono text-xs text-rose-400">Could not load: {error.message}</p>}
+    <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
+      {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
+      {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
       {data !== undefined && <JsonHighlight raw={stringify(data)} />}
     </div>
   )
@@ -169,27 +169,27 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
   return (
     <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
       <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded border border-zinc-800 bg-black px-1.5 py-0.5 font-mono text-[10px] text-emerald-500">
+        <span className="shrink-0 rounded border border-border bg-code-bg px-1.5 py-0.5 font-mono text-[10px] text-primary-accent">
           {endpoint.method}
         </span>
-        <span className="truncate font-mono text-sm text-zinc-200">{url}</span>
+        <span className="truncate font-mono text-sm text-emphasis">{url}</span>
       </div>
       <div>
-        <div className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+        <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">
           Headers
         </div>
         {hasBody ? (
           <div className="flex gap-2 font-mono text-xs">
-            <span className="text-zinc-500">Content-Type:</span>
-            <span className="text-sky-300">application/json</span>
+            <span className="text-subtle">Content-Type:</span>
+            <span className="text-syntax-str">application/json</span>
           </div>
         ) : (
-          <span className="font-mono text-xs text-zinc-600">None required</span>
+          <span className="font-mono text-xs text-faint">None required</span>
         )}
       </div>
       {endpoint.method === 'GET' && (
         <div>
-          <div className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">
             Query params
           </div>
           <div className="space-y-1">
@@ -203,27 +203,27 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
               ['<field>', 'value', 'exact-match filter on any record field'],
             ].map(([name, value, note]) => (
               <div key={name} className="flex gap-2 font-mono text-xs">
-                <span className="text-zinc-500">{name}:</span>
-                <span className={name.startsWith('_') ? 'text-amber-300' : 'text-sky-300'}>
+                <span className="text-subtle">{name}:</span>
+                <span className={name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'}>
                   {value}
                 </span>
-                <span className="text-zinc-600">— {note}</span>
+                <span className="text-faint">— {note}</span>
               </div>
             ))}
-            <div className="pt-1 font-mono text-xs text-zinc-600">
+            <div className="pt-1 font-mono text-xs text-faint">
               Total row count is returned in the X-Total-Count header.
             </div>
           </div>
         </div>
       )}
       <div>
-        <div className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">Body</div>
+        <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">Body</div>
         {hasBody ? (
-          <div className="rounded-md border border-zinc-800 bg-black p-3">
+          <div className="rounded-md border border-border bg-code-bg p-3">
             <JsonHighlight raw={sampleBody(data)} />
           </div>
         ) : (
-          <span className="font-mono text-xs text-zinc-600">No body</span>
+          <span className="font-mono text-xs text-faint">No body</span>
         )}
       </div>
     </div>
@@ -248,11 +248,11 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
   if (endpoint.method !== 'GET') {
     return (
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        <p className="font-mono text-xs text-zinc-500">
+        <p className="font-mono text-xs text-subtle">
           Mutating requests run against your live data — fire them from your app, tests, or curl:
         </p>
-        <div className="overflow-x-auto rounded-md border border-zinc-800 bg-black p-3">
-          <pre className="font-mono text-xs leading-relaxed whitespace-pre text-zinc-300">
+        <div className="overflow-x-auto rounded-md border border-border bg-code-bg p-3">
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre text-body">
             {curlFor(endpoint, tenantId, data)}
           </pre>
         </div>
@@ -266,11 +266,11 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
     <div className="min-h-0 flex-1 overflow-auto p-4">
       {live.status === 'idle' && (
         <div className="flex h-full flex-col items-center justify-center gap-3">
-          <Zap className="h-8 w-8 text-zinc-800" />
-          <span className="font-mono text-xs text-zinc-600">No requests fired yet.</span>
+          <Zap className="h-8 w-8 text-ghost" />
+          <span className="font-mono text-xs text-faint">No requests fired yet.</span>
           <button
             onClick={() => runLive(tenantId, endpoint.resource)}
-            className="flex cursor-pointer items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 font-mono text-xs font-semibold text-black transition-colors hover:bg-emerald-600"
+            className="flex cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             <Rocket className="h-3.5 w-3.5" />
             Run request
@@ -279,8 +279,8 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
       )}
       {live.status === 'loading' && (
         <div className="flex h-full flex-col items-center justify-center gap-3">
-          <Zap className="h-8 w-8 animate-pulse text-emerald-500" />
-          <span className="font-mono text-xs text-zinc-500">Sending request&hellip;</span>
+          <Zap className="h-8 w-8 animate-pulse text-primary-accent" />
+          <span className="font-mono text-xs text-subtle">Sending request&hellip;</span>
         </div>
       )}
       {result && (
@@ -289,22 +289,22 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
             <span
               className={
                 result.ok
-                  ? 'rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs text-emerald-400'
-                  : 'rounded border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 font-mono text-xs text-rose-400'
+                  ? 'rounded border border-primary-soft-border bg-primary-soft px-2 py-0.5 font-mono text-xs text-primary-ink'
+                  : 'rounded border border-danger-soft-border bg-danger-soft px-2 py-0.5 font-mono text-xs text-danger-ink'
               }
             >
               {result.status || 'ERR'}
             </span>
-            <span className="font-mono text-xs text-zinc-500">{result.latencyMs}ms</span>
+            <span className="font-mono text-xs text-subtle">{result.latencyMs}ms</span>
             <span className="flex-1" />
             <button
               onClick={() => runLive(tenantId, endpoint.resource)}
-              className="cursor-pointer px-2 py-1 font-mono text-xs text-zinc-500 transition-colors hover:text-emerald-500"
+              className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent"
             >
               Run again
             </button>
           </div>
-          <div className="rounded-md border border-zinc-800 bg-black p-3">
+          <div className="rounded-md border border-border bg-code-bg p-3">
             <JsonHighlight raw={result.body} />
           </div>
         </div>
@@ -358,10 +358,10 @@ export function EditorPane() {
           : label
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-zinc-800">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
         {/* The mode toggle lives in the top bar; name the mode here instead. */}
-        <span className="truncate font-mono text-xs text-zinc-400">{paneLabel}</span>
+        <span className="truncate font-mono text-xs text-muted-foreground">{paneLabel}</span>
         {editorMode && (
           <div className="flex items-center gap-3">
             {selection?.kind === 'resource' && tenantId && (
@@ -401,7 +401,7 @@ export function EditorPane() {
               <StarterExamples tenantId={tenantId} />
             ) : (
               <div className="flex min-h-0 flex-1 items-center justify-center">
-                <p className="font-mono text-xs text-zinc-600">
+                <p className="font-mono text-xs text-faint">
                   {project ? 'Select a file or endpoint.' : 'Create a project to get started.'}
                 </p>
               </div>

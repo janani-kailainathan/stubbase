@@ -32,19 +32,19 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     const key = `${keyPrefix}-${match.index}`
     if (match[1] !== undefined) {
       out.push(
-        <code key={key} className="rounded bg-zinc-950 px-1 py-0.5 text-emerald-300">
+        <code key={key} className="rounded bg-background px-1 py-0.5 text-primary-ink-hover">
           {match[1]}
         </code>,
       )
     } else if (match[2] !== undefined) {
       out.push(
-        <strong key={key} className="font-semibold text-zinc-100">
+        <strong key={key} className="font-semibold text-heading">
           {match[2]}
         </strong>,
       )
     } else {
       out.push(
-        <em key={key} className="text-zinc-300 italic">
+        <em key={key} className="text-body italic">
           {match[3]}
         </em>,
       )
@@ -57,14 +57,14 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
 
 function CodeBlock({ code, lang }: { code: string; lang: string }) {
   return (
-    <div className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
+    <div className="overflow-hidden rounded-md border border-border bg-background">
       {lang && (
-        <div className="border-b border-zinc-800 px-2.5 py-1 font-mono text-[10px] text-zinc-600">
+        <div className="border-b border-border px-2.5 py-1 font-mono text-[10px] text-faint">
           {lang}
         </div>
       )}
       {/* Long lines scroll inside the block; the chat column must not. */}
-      <pre className="overflow-x-auto p-2.5 font-mono text-[11px] leading-relaxed text-zinc-200">
+      <pre className="overflow-x-auto p-2.5 font-mono text-[11px] leading-relaxed text-emphasis">
         {code.replace(/\n$/, '')}
       </pre>
     </div>
@@ -119,7 +119,7 @@ function prose(text: string, keyPrefix: string): ReactNode[] {
       flushList()
       const key = `${keyPrefix}-h${blocks.length}`
       blocks.push(
-        <p key={key} className="font-semibold text-zinc-100">
+        <p key={key} className="font-semibold text-heading">
           {inline(heading[1], key)}
         </p>,
       )

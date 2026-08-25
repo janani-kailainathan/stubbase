@@ -35,11 +35,12 @@ import {
   useRenameProject,
   type Project,
 } from '@/hooks/projects'
+import { ThemeToggle } from '@/components/shell/ThemeToggle'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore, type PaneMode } from '@/stores/workspace'
 
 const dialogInputClass =
-  'w-full rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-2 font-mono text-xs text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none'
+  'w-full rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-heading placeholder-faint focus:border-primary focus:outline-none'
 
 export function NewProjectDialog() {
   const open = useWorkspaceStore((s) => s.newProjectOpen)
@@ -70,8 +71,8 @@ export function NewProjectDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="w-80 border-zinc-800 bg-zinc-900 p-4" showCloseButton={false}>
-        <DialogTitle className="text-sm font-semibold text-zinc-50">New project</DialogTitle>
+      <DialogContent className="w-80 border-border bg-card p-4" showCloseButton={false}>
+        <DialogTitle className="text-sm font-semibold text-foreground">New project</DialogTitle>
         <input
           type="text"
           autoFocus
@@ -85,13 +86,13 @@ export function NewProjectDialog() {
         />
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-zinc-400 hover:text-zinc-100"
+            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
             onClick={() => setOpen(false)}
           >
             Cancel
           </button>
           <button
-            className="rounded-md bg-emerald-500 px-3 py-1.5 font-mono text-xs font-semibold text-black hover:bg-emerald-600 disabled:opacity-60"
+            className="rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
             disabled={createProject.isPending}
             onClick={submit}
           >
@@ -145,26 +146,26 @@ function DeleteProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-96 border-zinc-800 bg-zinc-900 p-4" showCloseButton={false}>
-        <DialogTitle className="text-sm font-semibold text-zinc-50">Delete {name}?</DialogTitle>
+      <DialogContent className="w-96 border-border bg-card p-4" showCloseButton={false}>
+        <DialogTitle className="text-sm font-semibold text-foreground">Delete {name}?</DialogTitle>
 
         {running ? (
           // The API is serving. Say so plainly and offer the way forward rather
           // than a disabled button with no explanation.
-          <div className="flex gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <p className="font-mono text-[11px] leading-relaxed text-amber-300">
+          <div className="flex gap-2.5 rounded-md border border-warning-soft-border bg-warning-soft-weak p-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning-ink" />
+            <p className="font-mono text-[11px] leading-relaxed text-warning-emphasis">
               This project is running. Deleting it would take a live API down under whatever is
               calling it — stop it first.
             </p>
           </div>
         ) : (
-          <p className="font-mono text-xs leading-relaxed text-zinc-400">
+          <p className="font-mono text-xs leading-relaxed text-muted-foreground">
             This deletes{' '}
-            <span className="text-zinc-200">
+            <span className="text-emphasis">
               {resourceCount} resource file{resourceCount === 1 ? '' : 's'}
             </span>{' '}
-            and its settings, and takes <span className="text-zinc-200">/{tenantId}</span> offline
+            and its settings, and takes <span className="text-emphasis">/{tenantId}</span> offline
             for good. It cannot be undone.
           </p>
         )}
@@ -172,14 +173,14 @@ function DeleteProjectDialog({
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
             autoFocus
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-zinc-400 hover:text-zinc-100"
+            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </button>
           {running ? (
             <button
-              className="flex items-center gap-1.5 rounded-md border border-zinc-800 px-3 py-1.5 font-mono text-xs text-zinc-300 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-mono text-xs text-body transition-colors hover:border-danger-fill/40 hover:text-danger-emphasis disabled:opacity-60"
               disabled={stop.isPending}
               onClick={() => stop.mutate()}
             >
@@ -188,7 +189,7 @@ function DeleteProjectDialog({
             </button>
           ) : (
             <button
-              className="flex items-center gap-1.5 rounded-md bg-rose-500 px-3 py-1.5 font-mono text-xs font-semibold text-black transition-colors hover:bg-rose-600 disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-md bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
               disabled={deleteProject.isPending}
               onClick={submit}
             >
@@ -269,7 +270,7 @@ function InlineRename({
         // Sized to the text: a fixed width would make everything beside it jump
         // the moment you start editing.
         style={{ width: `${Math.max(6, name.length + 1)}ch` }}
-        className="rounded-none border-b border-emerald-500/60 bg-transparent text-sm font-medium text-zinc-50 focus:outline-none disabled:opacity-60"
+        className="rounded-none border-b border-primary/60 bg-transparent text-sm font-medium text-foreground focus:outline-none disabled:opacity-60"
       />
       <button
         title="Save"
@@ -277,7 +278,7 @@ function InlineRename({
         disabled={rename.isPending}
         onMouseDown={keepFocus}
         onClick={commit}
-        className="cursor-pointer text-emerald-500 transition-colors hover:text-emerald-400 disabled:opacity-60"
+        className="cursor-pointer text-primary-accent transition-colors hover:text-primary-ink disabled:opacity-60"
       >
         <Check className="h-3.5 w-3.5" />
       </button>
@@ -286,7 +287,7 @@ function InlineRename({
         aria-label="Cancel rename"
         onMouseDown={keepFocus}
         onClick={cancel}
-        className="cursor-pointer text-zinc-500 transition-colors hover:text-zinc-200"
+        className="cursor-pointer text-subtle transition-colors hover:text-emphasis"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -333,10 +334,10 @@ function ModeToggle() {
             title={disabled ? `Available once the API is live (currently ${status})` : undefined}
             className={
               disabled
-                ? 'cursor-not-allowed rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-zinc-700'
+                ? 'cursor-not-allowed rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-faintest'
                 : paneMode === mode
-                  ? 'cursor-pointer rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 font-mono text-xs text-emerald-400'
-                  : 'cursor-pointer rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-zinc-500 hover:text-zinc-200'
+                  ? 'cursor-pointer rounded-md border border-primary-soft-border bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
+                  : 'cursor-pointer rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-subtle hover:text-emphasis'
             }
           >
             {label}
@@ -423,7 +424,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
       <button
         onClick={() => deploy.mutate()}
         disabled={!tenantId || busy}
-        className="flex cursor-pointer items-center gap-1.5 rounded-l-md bg-emerald-500 px-3 py-1.5 font-mono text-xs font-semibold text-black transition-colors hover:bg-emerald-600 disabled:opacity-60"
+        className="flex cursor-pointer items-center gap-1.5 rounded-l-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         {/* Progress lives on the icon, not the label. Swapping the word to
             "Deploying…" and back inside ~50ms stutters; the word only changes
@@ -449,16 +450,16 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
           <button
             title="More actions"
             disabled={!tenantId || busy}
-            className="flex cursor-pointer items-center rounded-r-md border-l border-black/20 bg-emerald-500 px-1.5 text-black transition-colors hover:bg-emerald-600 disabled:opacity-60"
+            className="flex cursor-pointer items-center rounded-r-md border-l border-black/20 bg-primary px-1.5 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44 border-zinc-800 bg-zinc-900 p-1.5">
+        <DropdownMenuContent align="end" className="w-44 border-border bg-card p-1.5">
           <DropdownMenuItem
             onSelect={() => toggleStatus.mutate()}
             className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs ${
-              stopped ? 'text-emerald-400' : 'text-rose-300'
+              stopped ? 'text-primary-ink' : 'text-danger-emphasis'
             }`}
           >
             {stopped ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
@@ -483,9 +484,9 @@ function StatusBadge({ tenantId }: { tenantId: string }) {
   return (
     <span
       title={stopped ? 'Public endpoints answer 503' : 'Public endpoints are serving'}
-      className="flex shrink-0 items-center gap-1.5 font-mono text-xs text-zinc-500"
+      className="flex shrink-0 items-center gap-1.5 font-mono text-xs text-subtle"
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${stopped ? 'bg-zinc-600' : 'bg-emerald-500'}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${stopped ? 'bg-border-stronger' : 'bg-primary'}`} />
       {stopped ? status : 'live'}
     </span>
   )
@@ -505,9 +506,9 @@ export function TopBar() {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
 
   return (
-    <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-zinc-800 bg-zinc-950 px-5">
+    <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-background px-5">
       <img src="/stubbase-logo-text.png" alt="Stubbase" className="h-5 w-auto" />
-      <ChevronRight className="h-3.5 w-3.5 text-zinc-700" />
+      <ChevronRight className="h-3.5 w-3.5 text-faintest" />
       {/* `group` so the rename pencil can reveal on hover of the whole block. */}
       <div className="group flex items-center gap-2">
         {current && renaming ? (
@@ -519,12 +520,12 @@ export function TopBar() {
         ) : (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
-            <button className="flex cursor-pointer items-center gap-1 text-sm font-medium text-zinc-50 select-none">
+            <button className="flex cursor-pointer items-center gap-1 text-sm font-medium text-foreground select-none">
               {current?.name ?? (isLoading ? 'Loading…' : 'No project')}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56 border-zinc-800 bg-zinc-900 p-1.5">
-            <DropdownMenuLabel className="px-2 py-1 text-[10px] font-semibold tracking-wide text-zinc-600 uppercase">
+          <DropdownMenuContent align="start" className="w-56 border-border bg-card p-1.5">
+            <DropdownMenuLabel className="px-2 py-1 text-[10px] font-semibold tracking-wide text-faint uppercase">
               Projects
             </DropdownMenuLabel>
             {(projects ?? []).map((p) => (
@@ -532,23 +533,23 @@ export function TopBar() {
                 key={p.tenantId}
                 onSelect={() => setProject(p.tenantId)}
                 className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${
-                  p.tenantId === current?.tenantId ? 'bg-zinc-800/80' : ''
+                  p.tenantId === current?.tenantId ? 'bg-muted/80' : ''
                 }`}
               >
                 <div
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${p.color} text-[10px] font-bold text-black`}
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${p.color} text-[10px] font-bold text-primary-foreground`}
                 >
                   {p.name[0]?.toUpperCase()}
                 </div>
                 <span
                   className={`flex-1 truncate font-mono text-xs ${
-                    p.tenantId === current?.tenantId ? 'text-zinc-100' : 'text-zinc-300'
+                    p.tenantId === current?.tenantId ? 'text-heading' : 'text-body'
                   }`}
                 >
                   {p.name}
                 </span>
                 {p.tenantId === current?.tenantId && (
-                  <Check className="h-3 w-3 shrink-0 text-emerald-500" />
+                  <Check className="h-3 w-3 shrink-0 text-primary-accent" />
                 )}
                 <button
                   title={`Delete ${p.name}`}
@@ -567,18 +568,18 @@ export function TopBar() {
                   /* Always visible, unlike the rename pencil: the menu is an
                      explicit surface you had to open, so the action should be
                      findable without hunting for it by hovering. */
-                  className="shrink-0 cursor-pointer text-zinc-700 transition-colors hover:text-rose-400"
+                  className="shrink-0 cursor-pointer text-faintest transition-colors hover:text-danger-ink"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator className="my-1 bg-zinc-800" />
+            <DropdownMenuSeparator className="my-1 bg-muted" />
             <DropdownMenuItem
               onSelect={() => setNewProjectOpen(true)}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-zinc-400 hover:text-zinc-100"
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-heading"
             >
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-dashed border-zinc-600">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-dashed border-border-stronger">
                 <Plus className="h-3 w-3" />
               </div>
               <span className="font-mono text-xs">New project</span>
@@ -594,7 +595,7 @@ export function TopBar() {
             /* Hidden until the name is hovered (or the button is keyboard
                focused). Opacity rather than display, so revealing it never
                shifts the status badge sitting next to it. */
-            className="cursor-pointer text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-zinc-200 focus-visible:opacity-100"
+            className="cursor-pointer text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-emphasis focus-visible:opacity-100"
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -619,10 +620,11 @@ export function TopBar() {
       <span className="flex-1" />
       <ModeToggle />
       <DeployControls tenantId={current?.tenantId} />
+      <ThemeToggle />
       <button
         title={`Log out${user ? ` (${user.email})` : ''}`}
         onClick={logout}
-        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
+        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
       >
         <LogOut className="h-3.5 w-3.5" />
       </button>

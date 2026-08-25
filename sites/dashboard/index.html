@@ -1,11 +1,37 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/stubbase-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#09090B" />
+    <meta id="theme-color" name="theme-color" content="#09090B" />
     <title>Stubbase Dashboard</title>
+    <!--
+      Resolves the theme before the bundle loads, so the shell never paints in
+      the wrong one. Stored choice wins, else the OS preference. The class is
+      always stamped explicitly — the shadcn ui/ primitives key off `dark:`,
+      which needs `.dark` actually present rather than merely implied.
+      Keep in sync with src/lib/theme.ts, which owns it from here on.
+    -->
+    <script>
+      (function () {
+        var stored = null
+        try {
+          stored = localStorage.getItem('stubbase-theme')
+        } catch (err) {
+          /* Private mode or blocked storage — fall through to the OS preference. */
+        }
+        var theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark'
+        document.documentElement.classList.add(theme)
+        var meta = document.getElementById('theme-color')
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#FAFAFA' : '#09090B')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

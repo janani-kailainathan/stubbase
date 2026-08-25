@@ -27,10 +27,10 @@ export function endpointsFor(resources: string[]): Endpoint[] {
  * thing on screen to read.
  */
 const METHOD_BADGE: Record<Method, string> = {
-  GET: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
-  POST: 'border-sky-500/30 bg-sky-500/10 text-sky-400',
-  PUT: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  DELETE: 'border-rose-500/30 bg-rose-500/10 text-rose-400',
+  GET: 'border-primary-soft-border bg-primary-soft text-primary-ink',
+  POST: 'border-info-soft-border bg-info-soft text-info-ink',
+  PUT: 'border-warning-soft-border bg-warning-soft text-warning-emphasis',
+  DELETE: 'border-danger-soft-border bg-danger-soft text-danger-ink',
 }
 
 function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
@@ -47,8 +47,8 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
       onClick={() => select({ kind: 'api', resource: endpoint.resource, method: endpoint.method })}
       className={
         isSelected
-          ? 'flex cursor-pointer items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 py-1.5 pr-2 pl-7'
-          : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-7 hover:bg-zinc-900'
+          ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-7'
+          : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-7 hover:bg-card'
       }
     >
       <span
@@ -56,7 +56,7 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
       >
         {endpoint.method}
       </span>
-      <span className="truncate font-mono text-xs text-zinc-300" title={endpoint.path}>
+      <span className="truncate font-mono text-xs text-body" title={endpoint.path}>
         {endpoint.path}
       </span>
     </div>
@@ -83,12 +83,12 @@ export function ApisRail() {
   }))
 
   return (
-    <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-zinc-800">
+    <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-border">
       <div className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-2">
         {/* Route, not Database: this rail lists REST endpoints. The database
             icon belongs to the Files tree, which is where the data lives. */}
-        <Route className="h-3.5 w-3.5 text-emerald-500" />
-        <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">APIs</span>
+        <Route className="h-3.5 w-3.5 text-primary-accent" />
+        <span className="text-xs font-semibold tracking-wide text-subtle uppercase">APIs</span>
       </div>
 
       <div className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3">
@@ -98,13 +98,13 @@ export function ApisRail() {
             <div key={resource}>
               <div
                 onClick={() => toggle(resource)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-zinc-900"
+                className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-card"
               >
                 <ChevronDown
-                  className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                  className={`h-3.5 w-3.5 shrink-0 text-subtle transition-transform ${isOpen ? '' : '-rotate-90'}`}
                 />
-                <span className="truncate font-mono text-xs text-zinc-300">{resource}</span>
-                <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-600">
+                <span className="truncate font-mono text-xs text-body">{resource}</span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">
                   {endpoints.length}
                 </span>
               </div>
@@ -116,7 +116,7 @@ export function ApisRail() {
           )
         })}
         {project && resources.length === 0 && (
-          <p className="px-3 py-1.5 font-mono text-xs text-zinc-600">No endpoints yet.</p>
+          <p className="px-3 py-1.5 font-mono text-xs text-faint">No endpoints yet.</p>
         )}
       </div>
 

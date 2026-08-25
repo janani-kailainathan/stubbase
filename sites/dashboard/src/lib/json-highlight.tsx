@@ -24,26 +24,26 @@ export function JsonHighlight({ raw }: { raw: string }) {
     if (m.index > last) nodes.push(text.slice(last, m.index))
     if (str) {
       nodes.push(
-        <span key={key++} className={colon ? 'text-emerald-400' : 'text-sky-300'}>
+        <span key={key++} className={colon ? 'text-syntax-key' : 'text-syntax-str'}>
           {str}
         </span>,
         colon ?? '',
       )
     } else if (boolNull) {
       nodes.push(
-        <span key={key++} className="text-purple-400">
+        <span key={key++} className="text-syntax-bool">
           {boolNull}
         </span>,
       )
     } else if (num) {
       nodes.push(
-        <span key={key++} className="text-amber-300">
+        <span key={key++} className="text-syntax-num">
           {num}
         </span>,
       )
     } else if (punct) {
       nodes.push(
-        <span key={key++} className="text-zinc-500">
+        <span key={key++} className="text-syntax-punct">
           {punct}
         </span>,
       )

@@ -23,7 +23,7 @@ function highlightValue(value: string): ReactNode[] {
   for (const m of value.matchAll(/\d+/g)) {
     if (m.index! > last) nodes.push(value.slice(last, m.index))
     nodes.push(
-      <span key={key++} className="text-amber-300">
+      <span key={key++} className="text-syntax-num">
         {m[0]}
       </span>,
     )
@@ -41,7 +41,7 @@ function EnvHighlight({ text, mask }: { text: string; mask: boolean }) {
         const nl = i < lines.length - 1 ? '\n' : ''
         if (line.trim().startsWith('#'))
           return (
-            <span key={i} className="text-zinc-600">
+            <span key={i} className="text-faint">
               {line}
               {nl}
             </span>
@@ -49,7 +49,7 @@ function EnvHighlight({ text, mask }: { text: string; mask: boolean }) {
         const m = line.match(/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/)
         if (!m)
           return (
-            <span key={i} className="text-zinc-300">
+            <span key={i} className="text-body">
               {line}
               {nl}
             </span>
@@ -58,9 +58,9 @@ function EnvHighlight({ text, mask }: { text: string; mask: boolean }) {
         return (
           <span key={i}>
             {m[1]}
-            <span className="text-zinc-100">{m[2]}</span>
-            <span className="text-zinc-500">{m[3]}</span>
-            <span className="text-zinc-300">{highlightValue(value)}</span>
+            <span className="text-heading">{m[2]}</span>
+            <span className="text-subtle">{m[3]}</span>
+            <span className="text-body">{highlightValue(value)}</span>
             {nl}
           </span>
         )
@@ -104,7 +104,7 @@ export function EnvActions({ tenantId }: { tenantId: string }) {
       <button
         onClick={() => startEdit(configToEnvText(data ?? {}))}
         disabled={data === undefined}
-        className="cursor-pointer px-2 py-1 font-mono text-xs text-zinc-500 transition-colors hover:text-emerald-500 disabled:opacity-50"
+        className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
       >
         Edit
       </button>
@@ -114,7 +114,7 @@ export function EnvActions({ tenantId }: { tenantId: string }) {
     <div className="flex items-center gap-1.5">
       <button
         onClick={stopEdit}
-        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-zinc-500 transition-colors hover:text-zinc-50"
+        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-foreground"
       >
         <X className="h-3.5 w-3.5" />
         Cancel
@@ -123,11 +123,11 @@ export function EnvActions({ tenantId }: { tenantId: string }) {
         onClick={onSave}
         disabled={save.isPending}
         title={`Save (${SAVE_HINT})`}
-        className="flex cursor-pointer items-center gap-1 rounded bg-emerald-500 px-2 py-1 font-mono text-xs text-black transition-colors hover:bg-emerald-600 disabled:opacity-60"
+        className="flex cursor-pointer items-center gap-1 rounded bg-primary px-2 py-1 font-mono text-xs text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         <Check className="h-3.5 w-3.5" />
         {save.isPending ? 'Saving…' : 'Save'}
-        <span className="text-black/50">{SAVE_HINT}</span>
+        <span className="text-primary-foreground/50">{SAVE_HINT}</span>
       </button>
     </div>
   )
@@ -148,25 +148,25 @@ export function EnvView({ tenantId }: { tenantId: string }) {
         onChange={(e) => changeDraft(e.target.value)}
         spellCheck={false}
         placeholder={'AUTH_ENABLED=true\nAUTH_PUBLIC_ROUTES=posts,comments'}
-        className="min-h-0 w-full flex-1 resize-none bg-black p-4 font-mono text-[13px] text-zinc-100 placeholder-zinc-700 focus:outline-none"
+        className="min-h-0 w-full flex-1 resize-none bg-code-bg p-4 font-mono text-[13px] text-heading placeholder-faintest focus:outline-none"
       />
     )
   }
 
   const text = data ? configToEnvText(data) : ''
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-black p-4">
-      {isLoading && <p className="font-mono text-xs text-zinc-600">Loading…</p>}
-      {error && <p className="font-mono text-xs text-rose-400">Could not load: {error.message}</p>}
+    <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
+      {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
+      {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
       {data !== undefined &&
         (text.trim() ? (
           <EnvHighlight text={text} mask />
         ) : (
           <div className="space-y-1 font-mono text-[13px] leading-relaxed">
-            <p className="text-zinc-600"># No environment variables yet.</p>
-            <p className="text-zinc-600"># Click Edit and try e.g.</p>
-            <p className="text-zinc-700">AUTH_ENABLED=true</p>
-            <p className="text-zinc-700">AUTH_PUBLIC_ROUTES=posts</p>
+            <p className="text-faint"># No environment variables yet.</p>
+            <p className="text-faint"># Click Edit and try e.g.</p>
+            <p className="text-faintest">AUTH_ENABLED=true</p>
+            <p className="text-faintest">AUTH_PUBLIC_ROUTES=posts</p>
           </div>
         ))}
     </div>

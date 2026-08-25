@@ -43,8 +43,8 @@ function NewResourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-80 border-zinc-800 bg-zinc-900 p-4" showCloseButton={false}>
-        <DialogTitle className="text-sm font-semibold text-zinc-50">New resource</DialogTitle>
+      <DialogContent className="w-80 border-border bg-card p-4" showCloseButton={false}>
+        <DialogTitle className="text-sm font-semibold text-foreground">New resource</DialogTitle>
         <input
           type="text"
           autoFocus
@@ -54,20 +54,20 @@ function NewResourceDialog({
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
           }}
-          className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-2 font-mono text-xs text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none"
+          className="w-full rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-heading placeholder-faint focus:border-primary focus:outline-none"
         />
-        <p className="font-mono text-[10px] text-zinc-600">
+        <p className="font-mono text-[10px] text-faint">
           Mounts CRUD routes at /{tenantId}/&lt;name&gt;
         </p>
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-zinc-400 hover:text-zinc-100"
+            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </button>
           <button
-            className="rounded-md bg-emerald-500 px-3 py-1.5 font-mono text-xs font-semibold text-black hover:bg-emerald-600 disabled:opacity-60"
+            className="rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
             disabled={createResource.isPending}
             onClick={submit}
           >
@@ -90,10 +90,10 @@ export function FilesSidebar() {
   const resources = project?.resources ?? []
 
   return (
-    <div className="flex min-h-0 w-72 shrink-0 flex-col border-r border-zinc-800">
+    <div className="flex min-h-0 w-72 shrink-0 flex-col border-r border-border">
       <div className="flex shrink-0 items-center gap-2 px-3 pt-4 pb-2">
-        <Folder className="h-3.5 w-3.5 text-emerald-500" />
-        <span className="flex-1 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+        <Folder className="h-3.5 w-3.5 text-primary-accent" />
+        <span className="flex-1 text-xs font-semibold tracking-wide text-subtle uppercase">
           Files
         </span>
         {/* Not implemented: tenant storage is flat JSON files, with no folders
@@ -103,7 +103,7 @@ export function FilesSidebar() {
           <button
             disabled
             aria-label="New folder (unavailable)"
-            className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded-md text-zinc-700"
+            className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded-md text-faintest"
           >
             <FolderPlus className="h-3.5 w-3.5" />
           </button>
@@ -112,7 +112,7 @@ export function FilesSidebar() {
           title="New resource"
           onClick={() => setNewOpen(true)}
           disabled={!project}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-40"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading disabled:opacity-40"
         >
           <FilePlus className="h-3.5 w-3.5" />
         </button>
@@ -127,14 +127,14 @@ export function FilesSidebar() {
       )}
       <div className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3">
         <div
-          className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-zinc-900"
+          className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-card"
           onClick={toggleData}
         >
           <ChevronDown
-            className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${dataExpanded ? '' : '-rotate-90'}`}
+            className={`h-3.5 w-3.5 text-subtle transition-transform ${dataExpanded ? '' : '-rotate-90'}`}
           />
-          <Database className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-          <span className="font-mono text-xs text-zinc-300">data</span>
+          <Database className="h-3.5 w-3.5 shrink-0 text-info-ink" />
+          <span className="font-mono text-xs text-body">data</span>
         </div>
         {dataExpanded &&
           resources.map((resource) => {
@@ -144,30 +144,30 @@ export function FilesSidebar() {
                 key={resource}
                 className={
                   isSelected
-                    ? 'flex cursor-pointer items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 py-1.5 pr-2 pl-8'
-                    : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-8 hover:bg-zinc-900'
+                    ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                    : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
                 }
                 onClick={() => select({ kind: 'resource', resource })}
               >
-                <span className="shrink-0 font-mono text-xs text-rose-400">{'{}'}</span>
-                <span className="truncate font-mono text-xs text-zinc-300">{resource}.json</span>
+                <span className="shrink-0 font-mono text-xs text-danger-ink">{'{}'}</span>
+                <span className="truncate font-mono text-xs text-body">{resource}.json</span>
               </div>
             )
           })}
         {dataExpanded && project && resources.length === 0 && (
-          <p className="px-8 py-1.5 font-mono text-xs text-zinc-600">No resources yet.</p>
+          <p className="px-8 py-1.5 font-mono text-xs text-faint">No resources yet.</p>
         )}
         {project && (
           <div
             className={
               selection?.kind === 'env'
-                ? 'flex cursor-pointer items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5'
-                : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent px-2 py-1.5 hover:bg-zinc-900'
+                ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft px-2 py-1.5'
+                : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent px-2 py-1.5 hover:bg-card'
             }
             onClick={() => select({ kind: 'env' })}
           >
-            <AlignLeft className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-            <span className="font-mono text-xs text-zinc-300">.env</span>
+            <AlignLeft className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <span className="font-mono text-xs text-body">.env</span>
           </div>
         )}
       </div>

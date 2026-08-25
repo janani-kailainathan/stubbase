@@ -35,9 +35,9 @@ const shortDay = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex-1 rounded-md border border-zinc-800 bg-black px-3 py-2">
-      <div className="font-mono text-sm text-zinc-100">{value}</div>
-      <div className="mt-0.5 text-[10px] tracking-wide text-zinc-600 uppercase">{label}</div>
+    <div className="flex-1 rounded-md border border-border bg-code-bg px-3 py-2">
+      <div className="font-mono text-sm text-heading">{value}</div>
+      <div className="mt-0.5 text-[10px] tracking-wide text-faint uppercase">{label}</div>
     </div>
   )
 }
@@ -52,7 +52,7 @@ function RequestsChart({ series }: { series: { date: string; requests: number }[
 
   return (
     <div>
-      <div className="flex h-14 items-end gap-[2px] border-b border-zinc-800">
+      <div className="flex h-14 items-end gap-[2px] border-b border-border">
         {series.map((d) => (
           <div
             key={d.date}
@@ -62,15 +62,15 @@ function RequestsChart({ series }: { series: { date: string; requests: number }[
             <div
               className={
                 d.requests > 0
-                  ? 'w-full rounded-t-[3px] bg-emerald-500 transition-colors group-hover:bg-emerald-400'
-                  : 'w-full rounded-t-[3px] bg-zinc-800/60'
+                  ? 'w-full rounded-t-[3px] bg-primary transition-colors group-hover:bg-primary-ink'
+                  : 'w-full rounded-t-[3px] bg-muted/60'
               }
               style={{ height: d.requests > 0 ? `${Math.max(8, (d.requests / peak) * 100)}%` : '2px' }}
             />
           </div>
         ))}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-zinc-600">
+      <div className="mt-1 flex justify-between font-mono text-[10px] text-faint">
         <span>{shortDay(series[0].date)}</span>
         <span>peak {formatCount(peak)}/day</span>
         <span>{shortDay(series[series.length - 1].date)}</span>
@@ -85,17 +85,17 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
   const hasTraffic = series.some((d) => d.requests > 0)
 
   return (
-    <div className="shrink-0 border-t border-zinc-800 px-4 py-3">
+    <div className="shrink-0 border-t border-border px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <Activity className="h-3.5 w-3.5 text-emerald-500" />
-        <span className="flex-1 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+        <Activity className="h-3.5 w-3.5 text-primary-accent" />
+        <span className="flex-1 text-xs font-semibold tracking-wide text-subtle uppercase">
           Usage
         </span>
-        <span className="font-mono text-[10px] text-zinc-600">this month</span>
+        <span className="font-mono text-[10px] text-faint">this month</span>
       </div>
 
-      {isLoading && <p className="font-mono text-xs text-zinc-600">Loading…</p>}
-      {error && <p className="font-mono text-xs text-rose-400">Unavailable</p>}
+      {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
+      {error && <p className="font-mono text-xs text-danger-ink">Unavailable</p>}
 
       {data && (
         <div className="space-y-2.5">
@@ -106,7 +106,7 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
           {hasTraffic ? (
             <RequestsChart series={series} />
           ) : (
-            <p className="font-mono text-[10px] text-zinc-600">
+            <p className="font-mono text-[10px] text-faint">
               No traffic yet — call your API to see it here.
             </p>
           )}

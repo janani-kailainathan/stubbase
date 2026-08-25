@@ -33,13 +33,13 @@ export default function Editor() {
   const empty = !isLoading && !error && projects?.length === 0
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-zinc-950 font-sans text-zinc-400">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-background font-sans text-muted-foreground">
       <TopBar />
       {empty ? (
         <NoProjects />
       ) : error ? (
         <div className="flex min-h-0 flex-1 items-center justify-center">
-          <p className="font-mono text-xs text-rose-400">
+          <p className="font-mono text-xs text-danger-ink">
             Could not reach the Dashboard API: {error.message}
           </p>
         </div>

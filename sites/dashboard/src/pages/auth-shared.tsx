@@ -2,13 +2,13 @@ import type { ReactNode } from 'react'
 import { LANDING_URL } from '@/lib/api'
 
 export const authInputClass =
-  'rounded-md border border-zinc-800 bg-black px-4 py-2.5 text-sm text-zinc-50 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none'
+  'rounded-md border border-border bg-code-bg px-4 py-2.5 text-sm text-foreground placeholder-subtle focus:border-primary focus:outline-none'
 
-export const authLabelClass = 'text-xs font-semibold tracking-wide text-zinc-500 uppercase'
+export const authLabelClass = 'text-xs font-semibold tracking-wide text-subtle uppercase'
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-6 py-16 font-sans">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-16 font-sans">
       <div className="w-full max-w-sm">{children}</div>
     </div>
   )

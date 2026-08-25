@@ -43,8 +43,8 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-auto p-6">
       <div className="text-center">
-        <p className="text-sm font-medium text-zinc-200">This project is empty</p>
-        <p className="mt-1.5 font-mono text-xs text-zinc-500">
+        <p className="text-sm font-medium text-emphasis">This project is empty</p>
+        <p className="mt-1.5 font-mono text-xs text-subtle">
           Start from a working API, describe one in the AI pane, or add your own from Files.
         </p>
       </div>
@@ -57,14 +57,14 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
               key={starter.id}
               onClick={() => void pick(starter)}
               disabled={busy}
-              className="flex cursor-pointer flex-col gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-3 text-left transition-colors hover:border-emerald-500/40 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex cursor-pointer flex-col gap-2 rounded-md border border-border bg-panel p-3 text-left transition-colors hover:border-primary-soft-border-strong hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
             >
               <span className="flex items-center gap-2">
-                <Icon className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                <span className="truncate text-xs font-medium text-zinc-100">{starter.title}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
+                <span className="truncate text-xs font-medium text-heading">{starter.title}</span>
               </span>
-              <span className="font-mono text-[10px] text-zinc-500">{starter.blurb}</span>
-              <span className="font-mono text-[10px] break-words text-zinc-400">
+              <span className="font-mono text-[10px] text-subtle">{starter.blurb}</span>
+              <span className="font-mono text-[10px] break-words text-muted-foreground">
                 {Object.keys(starter.resources).join(' · ')}
               </span>
               {starter.features.length > 0 && (
@@ -74,7 +74,7 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
                     return (
                       <span
                         key={feature}
-                        className="flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5 font-mono text-[10px] text-emerald-500/90"
+                        className="flex items-center gap-1 rounded border border-primary/20 bg-primary-soft-weak px-1.5 py-0.5 font-mono text-[10px] text-primary-accent/90"
                       >
                         <FeatureIcon className="h-2.5 w-2.5" />
                         {label}
@@ -83,7 +83,7 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
                   })}
                 </span>
               )}
-              <span className="mt-auto pt-1 font-mono text-[10px] text-zinc-700">
+              <span className="mt-auto pt-1 font-mono text-[10px] text-faintest">
                 {names(starter)} · {countRecords(starter)} records
               </span>
             </button>

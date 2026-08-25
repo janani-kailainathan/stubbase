@@ -38,10 +38,10 @@ function ToolCard({
   children?: React.ReactNode
 }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-900/40 p-2.5">
+    <div className="rounded-md border border-border bg-panel p-2.5">
       <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-        <span className="font-mono text-[11px] text-zinc-300">{title}</span>
+        <Icon className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
+        <span className="font-mono text-[11px] text-body">{title}</span>
       </div>
       {children && <div className="mt-2 space-y-1.5">{children}</div>}
     </div>
@@ -54,7 +54,7 @@ function Warnings({ warnings }: { warnings: unknown }) {
   return (
     <ul className="space-y-0.5">
       {items.map((w) => (
-        <li key={w} className="font-mono text-[10px] text-amber-400/80">
+        <li key={w} className="font-mono text-[10px] text-warning-ink/80">
           {w}
         </li>
       ))}
@@ -67,20 +67,20 @@ function StagedTables({ result }: { result: Record<string, unknown> }) {
   return (
     <ToolCard icon={Table2} title="Staged schema drafts">
       {staged.map((t) => (
-        <div key={t.name} className="rounded-md border border-zinc-800 bg-black px-3 py-2">
+        <div key={t.name} className="rounded-md border border-border bg-code-bg px-3 py-2">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-xs text-emerald-400">{t.name}.json</span>
-            <span className="font-mono text-[10px] text-zinc-500">
+            <span className="font-mono text-xs text-primary-ink">{t.name}.json</span>
+            <span className="font-mono text-[10px] text-subtle">
               {t.records} record{t.records === 1 ? '' : 's'}
             </span>
           </div>
-          <div className="mt-1 truncate font-mono text-[10px] text-zinc-600">
+          <div className="mt-1 truncate font-mono text-[10px] text-faint">
             {list(t.fields).join(' · ')}
           </div>
         </div>
       ))}
       <Warnings warnings={result.warnings} />
-      <p className="font-mono text-[10px] text-zinc-600">
+      <p className="font-mono text-[10px] text-faint">
         Staged as drafts — press Deploy to publish them to your live API.
       </p>
     </ToolCard>
@@ -92,9 +92,9 @@ function Deployed({ result }: { result: Record<string, unknown> }) {
   return (
     <ToolCard icon={Rocket} title="Deployed to production">
       {promoted.length > 0 ? (
-        <p className="font-mono text-[10px] text-zinc-500">{promoted.join(' · ')} are now live.</p>
+        <p className="font-mono text-[10px] text-subtle">{promoted.join(' · ')} are now live.</p>
       ) : (
-        <p className="font-mono text-[10px] text-zinc-600">Nothing was staged, so nothing changed.</p>
+        <p className="font-mono text-[10px] text-faint">Nothing was staged, so nothing changed.</p>
       )}
     </ToolCard>
   )
@@ -108,7 +108,7 @@ function StatusChanged({ result }: { result: Record<string, unknown> }) {
       icon={active ? Play : CircleStop}
       title={active ? 'API started' : 'API stopped'}
     >
-      <p className="font-mono text-[10px] text-zinc-500">{str(result.note)}</p>
+      <p className="font-mono text-[10px] text-subtle">{str(result.note)}</p>
     </ToolCard>
   )
 }
@@ -118,12 +118,12 @@ function Diagnostics({ result }: { result: Record<string, unknown> }) {
   const recent = list(result.recentRequests)
   return (
     <ToolCard icon={Activity} title="Read diagnostics">
-      <p className="font-mono text-[10px] text-zinc-500">
+      <p className="font-mono text-[10px] text-subtle">
         Status {str(result.status) ?? 'unknown'} · {String(result.filesChecked ?? 0)} file(s) checked
         {recent.length > 0 ? ` · ${recent.length} recent request(s)` : ' · no recent traffic'}
       </p>
       {syntaxErrors.map((e) => (
-        <p key={e.file} className="font-mono text-[10px] text-rose-400/90">
+        <p key={e.file} className="font-mono text-[10px] text-danger-ink/90">
           {e.file}: {e.message}
         </p>
       ))}
@@ -183,22 +183,22 @@ function ConfirmDeletion({
   if (settled)
     return (
       <ToolCard icon={Trash2} title={settled === 'done' ? copy.done : 'Cancelled'}>
-        <p className="font-mono text-[10px] text-zinc-500">
+        <p className="font-mono text-[10px] text-subtle">
           {settled === 'done' ? copy.doneDetail : 'Nothing was changed.'}
         </p>
       </ToolCard>
     )
 
   return (
-    <div className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2.5">
+    <div className="rounded-md border border-danger-soft-border bg-danger-soft-weak p-2.5">
       <div className="flex items-center gap-2">
-        <Trash2 className="h-3.5 w-3.5 shrink-0 text-rose-400" />
-        <span className="font-mono text-[11px] text-rose-300">{copy.title}</span>
+        <Trash2 className="h-3.5 w-3.5 shrink-0 text-danger-ink" />
+        <span className="font-mono text-[11px] text-danger-emphasis">{copy.title}</span>
       </div>
-      <p className="mt-2 font-mono text-[10px] text-zinc-400">{names.join(' · ')}</p>
-      <p className="mt-1 font-mono text-[10px] text-zinc-500">{copy.detail}</p>
+      <p className="mt-2 font-mono text-[10px] text-muted-foreground">{names.join(' · ')}</p>
+      <p className="mt-1 font-mono text-[10px] text-subtle">{copy.detail}</p>
       {apply.isError && (
-        <p className="mt-1 font-mono text-[10px] text-rose-400">{apply.error.message}</p>
+        <p className="mt-1 font-mono text-[10px] text-danger-ink">{apply.error.message}</p>
       )}
       <div className="mt-2.5 flex gap-2">
         <button
@@ -214,7 +214,7 @@ function ConfirmDeletion({
             )
           }
           disabled={apply.isPending}
-          className="cursor-pointer rounded-md bg-rose-500 px-2.5 py-1 font-mono text-[11px] text-black transition-colors hover:bg-rose-600 disabled:opacity-50"
+          className="cursor-pointer rounded-md bg-danger-fill px-2.5 py-1 font-mono text-[11px] text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-50"
         >
           {apply.isPending ? copy.busy : copy.confirm}
         </button>
@@ -224,7 +224,7 @@ function ConfirmDeletion({
             notice('Cancelled — nothing was deleted.', 'cancelled')
           }}
           disabled={apply.isPending}
-          className="cursor-pointer rounded-md border border-zinc-800 px-2.5 py-1 font-mono text-[11px] text-zinc-400 transition-colors hover:text-zinc-100 disabled:opacity-50"
+          className="cursor-pointer rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-50"
         >
           Cancel
         </button>
@@ -259,7 +259,7 @@ function ToolResult({
   if (failure)
     return (
       <ToolCard icon={TriangleAlert} title={`${name} failed`}>
-        <p className="font-mono text-[10px] text-rose-400/90">{failure}</p>
+        <p className="font-mono text-[10px] text-danger-ink/90">{failure}</p>
         <Warnings warnings={result.warnings} />
       </ToolCard>
     )
@@ -292,7 +292,7 @@ function Turn({ turn, tenantId }: { turn: ChatTurn; tenantId: string | undefined
     if (!text) return null
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg bg-emerald-500 px-4 py-2 font-mono text-xs break-words whitespace-pre-wrap text-black">
+        <div className="max-w-[80%] rounded-lg bg-primary px-4 py-2 font-mono text-xs break-words whitespace-pre-wrap text-primary-foreground">
           {text}
         </div>
       </div>
@@ -325,7 +325,7 @@ function Turn({ turn, tenantId }: { turn: ChatTurn; tenantId: string | undefined
   if (!text) return null
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2.5 font-mono text-xs leading-relaxed break-words text-zinc-200">
+      <div className="max-w-[85%] rounded-lg border border-border bg-card px-4 py-2.5 font-mono text-xs leading-relaxed break-words text-emphasis">
         <Markdown text={text} />
       </div>
     </div>
@@ -336,9 +336,9 @@ function Entry({ entry, tenantId }: { entry: ChatEntry; tenantId: string | undef
   if (entry.kind === 'error')
     return (
       <div className="flex justify-start">
-        <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2">
-          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
-          <span className="font-mono text-xs text-rose-300">{entry.text}</span>
+        <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-danger-soft-border bg-danger-soft px-4 py-2">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger-ink" />
+          <span className="font-mono text-xs text-danger-emphasis">{entry.text}</span>
         </div>
       </div>
     )
@@ -348,9 +348,9 @@ function Entry({ entry, tenantId }: { entry: ChatEntry; tenantId: string | undef
     return (
       <div className="flex items-center gap-2 px-1">
         <Info
-          className={`h-3 w-3 shrink-0 ${entry.tone === 'done' ? 'text-zinc-500' : 'text-zinc-600'}`}
+          className={`h-3 w-3 shrink-0 ${entry.tone === 'done' ? 'text-subtle' : 'text-faint'}`}
         />
-        <span className="font-mono text-[10px] text-zinc-500">{entry.text}</span>
+        <span className="font-mono text-[10px] text-subtle">{entry.text}</span>
       </div>
     )
 
@@ -367,7 +367,7 @@ function ExamplePrompts() {
 
   return (
     <div className="w-full max-w-xl">
-      <p className="mb-2 text-center font-mono text-[10px] tracking-wide text-zinc-700 uppercase">
+      <p className="mb-2 text-center font-mono text-[10px] tracking-wide text-faintest uppercase">
         Try one
       </p>
       <div className="flex flex-col gap-2">
@@ -375,13 +375,13 @@ function ExamplePrompts() {
           <button
             key={example.label}
             onClick={() => setInput(example.prompt)}
-            className="group flex cursor-pointer flex-col gap-1 rounded-md border border-zinc-800 bg-zinc-900/40 p-2.5 text-left transition-colors hover:border-emerald-500/40 hover:bg-zinc-900"
+            className="group flex cursor-pointer flex-col gap-1 rounded-md border border-border bg-panel p-2.5 text-left transition-colors hover:border-primary-soft-border-strong hover:bg-card"
           >
             <span className="flex items-baseline gap-2">
-              <span className="font-mono text-xs text-zinc-200">{example.label}</span>
-              <span className="font-mono text-[10px] text-zinc-600">{example.hint}</span>
+              <span className="font-mono text-xs text-emphasis">{example.label}</span>
+              <span className="font-mono text-[10px] text-faint">{example.hint}</span>
             </span>
-            <span className="font-mono text-[10px] text-zinc-500">{example.prompt}</span>
+            <span className="font-mono text-[10px] text-subtle">{example.prompt}</span>
           </button>
         ))}
       </div>
@@ -412,10 +412,10 @@ export function AiChat({ tenantId }: { tenantId: string | undefined }) {
     // on one would generate tables alongside data that is already there.
     const isBlankProject = project !== undefined && project.resources.length === 0
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-auto bg-black p-6">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-auto bg-code-bg p-6">
         <div className="flex flex-col items-center gap-3">
-          <Sparkles className="h-7 w-7 text-zinc-700" />
-          <span className="max-w-sm text-center font-mono text-xs text-zinc-600">
+          <Sparkles className="h-7 w-7 text-faintest" />
+          <span className="max-w-sm text-center font-mono text-xs text-faint">
             Ask for an API, a fix, or a deploy — the Co-Pilot can read your logs and change your
             project.
           </span>
@@ -426,14 +426,14 @@ export function AiChat({ tenantId }: { tenantId: string | undefined }) {
   }
 
   return (
-    <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-black p-4">
+    <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-code-bg p-4">
       {entries.map((e) => (
         <Entry key={e.id} entry={e} tenantId={tenantId} />
       ))}
       {isThinking && (
         <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 animate-pulse text-emerald-500" />
-          <span className="font-mono text-xs text-zinc-500">
+          <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary-accent" />
+          <span className="font-mono text-xs text-subtle">
             Working&hellip; this can take a few seconds.
           </span>
         </div>
@@ -476,7 +476,7 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
   }
 
   return (
-    <div className="flex shrink-0 gap-2 border-t border-zinc-800 p-3">
+    <div className="flex shrink-0 gap-2 border-t border-border p-3">
       <input
         type="text"
         value={input}
@@ -486,12 +486,12 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
         }}
         disabled={!tenantId || chat.isPending}
         placeholder={chat.isPending ? 'Working…' : 'Ask the AI Co-Pilot…'}
-        className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-black px-3 py-2 font-mono text-xs text-zinc-200 placeholder-zinc-600 focus:border-emerald-500/50 focus:outline-none disabled:opacity-60"
+        className="min-w-0 flex-1 rounded-md border border-border bg-code-bg px-3 py-2 font-mono text-xs text-emphasis placeholder-faint focus:border-primary/50 focus:outline-none disabled:opacity-60"
       />
       <button
         onClick={send}
         disabled={!tenantId || chat.isPending || !input.trim()}
-        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-emerald-500 text-black transition-colors hover:bg-emerald-600 disabled:opacity-40"
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-40"
       >
         <ArrowUp className="h-4 w-4" />
       </button>

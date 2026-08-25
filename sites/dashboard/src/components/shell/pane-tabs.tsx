@@ -18,8 +18,8 @@ export function PaneTab({
       onClick={onClick}
       className={
         active
-          ? 'cursor-pointer rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-mono text-xs text-emerald-400'
-          : 'cursor-pointer rounded-md border border-transparent px-2.5 py-1 font-mono text-xs text-zinc-500 hover:text-zinc-200'
+          ? 'cursor-pointer rounded-md border border-primary-soft-border bg-primary-soft px-2.5 py-1 font-mono text-xs text-primary-ink'
+          : 'cursor-pointer rounded-md border border-transparent px-2.5 py-1 font-mono text-xs text-subtle hover:text-emphasis'
       }
     >
       {label}
