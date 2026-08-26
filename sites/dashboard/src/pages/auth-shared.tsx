@@ -17,7 +17,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 export function AuthLogo() {
   return (
     <a href={LANDING_URL} className="mb-6 inline-flex items-center">
-      <img src="/stubbase-logo-text.png" alt="Stubbase" className="h-8" />
+      <img src="/stubbase-logo-text-light.png" alt="Stubbase" className="h-8 dark:hidden" />
+      <img src="/stubbase-logo-text.png" alt="Stubbase" className="hidden h-8 dark:block" />
     </a>
   )
 }

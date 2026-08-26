@@ -507,7 +507,16 @@ export function TopBar() {
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-background px-5">
-      <img src="/stubbase-logo-text.png" alt="Stubbase" className="h-5 w-auto" />
+      <img
+        src="/stubbase-logo-text-light.png"
+        alt="Stubbase"
+        className="h-5 w-auto dark:hidden"
+      />
+      <img
+        src="/stubbase-logo-text.png"
+        alt="Stubbase"
+        className="hidden h-5 w-auto dark:block"
+      />
       <ChevronRight className="h-3.5 w-3.5 text-faintest" />
       {/* `group` so the rename pencil can reveal on hover of the whole block. */}
       <div className="group flex items-center gap-2">

@@ -183,7 +183,10 @@
   --body: var(--color-zinc-700);
   --subtle: var(--color-zinc-500);
   --faint: var(--color-zinc-500);
-  --faintest: var(--color-zinc-400);
+  /* Carries real 10px labels, so it compresses onto --faint rather than stepping
+     down again: zinc-400 is 2.52:1 on this page where zinc-500 is 4.62:1. --ghost
+     stays a step dimmer because its only use is a decorative empty-state icon. */
+  --faintest: var(--color-zinc-500);
   --ghost: var(--color-zinc-300);
 
   /* Brand. --primary stays emerald-500 as a fill in BOTH themes, so "emerald
@@ -200,7 +203,10 @@
   /* Status families. Tinted fills and borders are their own tokens rather than
      `/10` modifiers: a fixed alpha does not read the same over zinc-950 as over
      white, so each theme sets its own strength. */
-  --danger-ink: var(--color-rose-600);
+  /* Error text at 10-12px, so it must clear AA: rose-600 is 4.32:1 on --background
+     and 4.10:1 on --muted. rose-700 is 5.80:1, and collapsing onto --danger-emphasis
+     is the same compression the neutral ramp makes in this theme. */
+  --danger-ink: var(--color-rose-700);
   --danger-emphasis: var(--color-rose-700);
   --danger-solid: var(--color-rose-600);
   --danger-fill: var(--color-rose-600);

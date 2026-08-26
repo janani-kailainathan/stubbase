@@ -64,6 +64,10 @@
      each theme tunes its own strength. */
   --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
   --primary-soft-border: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);
+  /* Second border weight. Home's callout sat at /20, Quick Start's step circles at
+     /30 — one token for both would silently restyle dark, which is the thing this
+     migration is not allowed to do. */
+  --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
   --primary-soft-ink: var(--color-emerald-400);
 
   /* Inverted control (the "Run script" button): deliberately opposite the page,
@@ -109,7 +113,6 @@
     --chrome: var(--color-zinc-100);
     --muted: var(--color-zinc-100);
     --muted-hover: var(--color-zinc-100);
-  --muted-strong: var(--color-zinc-200);
     --muted-strong: var(--color-zinc-200);
     --border-c: var(--color-zinc-200);
     --border-strong: var(--color-zinc-300);
@@ -130,6 +133,7 @@
 
     --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
     --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
+    --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
     --primary-soft-ink: var(--color-emerald-700);
 
     --contrast: var(--color-zinc-900);
@@ -161,6 +165,7 @@
   --chrome: var(--color-zinc-100);
   --muted: var(--color-zinc-100);
   --muted-hover: var(--color-zinc-100);
+  --muted-strong: var(--color-zinc-200);
   --border-c: var(--color-zinc-200);
   --border-strong: var(--color-zinc-300);
   --border-faint: var(--color-zinc-200);
@@ -180,6 +185,7 @@
 
   --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
   --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
+  --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
   --primary-soft-ink: var(--color-emerald-700);
 
   --contrast: var(--color-zinc-900);
@@ -229,6 +235,7 @@
   --color-primary-accent-hover: var(--primary-accent-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-border: var(--primary-soft-border);
+  --color-primary-soft-border-strong: var(--primary-soft-border-strong);
   --color-primary-soft-ink: var(--primary-soft-ink);
   --color-ring: var(--ring);
 
@@ -271,6 +278,34 @@ html.light {
 
 html.dark {
   color-scheme: dark;
+}
+
+/* Brand wordmark. The raster asset is light-on-transparent, so a light page
+   needs the dark-ink variant or the word disappears and only the mark reads.
+
+   Swapped here rather than with a `light:` utility on the element: that variant
+   only matches the stamped `.light` class, while the tokens ALSO flip via
+   prefers-color-scheme on the JS-off path. The image has to agree with the
+   surface underneath it in all four states, so it follows the same two-path
+   cascade the tokens do. */
+[data-wordmark='light'] {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) [data-wordmark='dark'] {
+    display: none;
+  }
+  :root:not(.dark) [data-wordmark='light'] {
+    display: block;
+  }
+}
+
+:root.light [data-wordmark='dark'] {
+  display: none;
+}
+:root.light [data-wordmark='light'] {
+  display: block;
 }
 
 /* The hero's ambient wash. Opacity is a token because the two themes need very
