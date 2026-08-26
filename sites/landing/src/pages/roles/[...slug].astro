@@ -1,0 +1,16 @@
+---
+import { getCollection } from 'astro:content';
+import SegmentLayout from '../../layouts/SegmentLayout.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('roles');
+  return entries
+    .sort((a, b) => a.data.order - b.data.order)
+    .map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+---
+
+<SegmentLayout collection="roles" id={entry.id} {...entry.data}>
+</SegmentLayout>

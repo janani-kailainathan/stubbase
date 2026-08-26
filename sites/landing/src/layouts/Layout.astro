@@ -11,10 +11,20 @@ interface Props {
   description: string;
   /** Extra JSON-LD blocks, appended after the base SoftwareApplication schema. */
   schema?: Record<string, unknown>[];
-  active?: 'solutions' | 'features' | 'compare' | 'pricing' | 'quick-start' | 'faqs' | 'contact';
+  active?:
+    | 'use-cases'
+    | 'roles'
+    | 'features'
+    | 'compare'
+    | 'pricing'
+    | 'quick-start'
+    | 'faqs'
+    | 'contact';
+  /** Closing call to action, rendered as the footer's cap. */
+  cta?: { title: string; body: string; label: string; href: string };
 }
 
-const { title, description, schema = [], active } = Astro.props;
+const { title, description, schema = [], active, cta } = Astro.props;
 ---
 
 <BaseLayout title={title} description={description} schema={schema}>
@@ -22,5 +32,5 @@ const { title, description, schema = [], active } = Astro.props;
   <main>
     <slot />
   </main>
-  <Footer />
+  <Footer cta={cta} />
 </BaseLayout>

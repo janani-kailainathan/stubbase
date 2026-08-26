@@ -1,41 +1,117 @@
 ---
-import { CORE_URL } from '../lib/urls';
-import { NAV_GROUPS, RESOURCE_LINKS, LEGAL_LINKS } from '../lib/nav';
+import { ArrowRight } from 'lucide-astro';
+import { USE_CASES, ROLES, NAV_GROUPS, RESOURCE_LINKS, LEGAL_LINKS } from '../lib/nav';
 
-const [solutions, features, compare] = NAV_GROUPS;
+/**
+ * The closing CTA lives INSIDE the footer, not in a band above it.
+ *
+ * A page that ends with a related-links band, then a CTA band, then a footer
+ * gives the reader three full-width rows of the same character in a row — which
+ * reads as several footers stacked, especially where two of them share a ground
+ * and only a hairline separates them. The call to action and the site map are
+ * both "the end of the page", so they are one block with one ground.
+ */
+interface Props {
+  cta?: { title: string; body: string; label: string; href: string };
+}
 
-// Product merges the Solutions and Features spokes into one column.
-const productLinks = [...solutions.links, ...features.links];
+const { cta } = Astro.props;
 
-// "OpenAPI Docs" points at a real, live endpoint: every tenant (including the
-// seeded `public` demo) serves GET /<tenant>/openapi.json from the core engine.
-const resourceLinks = [
-  ...RESOURCE_LINKS,
-  { href: `${CORE_URL}/public/openapi.json`, label: 'OpenAPI Docs' },
-];
+// Read the groups by name, not by position: this list grows, and destructuring
+// it silently re-labelled a whole column the last time an entry was added.
+const features = NAV_GROUPS.find((group) => group.key === 'features')!;
+const compare = NAV_GROUPS.find((group) => group.key === 'compare')!;
+
+// The footer mirrors the Solutions panel — the two taxonomies stay separate
+// columns here too, so a visitor who scrolled past the menu still meets both.
+//
+// There is deliberately no direct "OpenAPI Docs" link here. Every project serves
+// its own GET /<tenant>/openapi.json, so there is no single URL to point at until
+// the `public` demo tenant is seeded; /quick-start documents it instead.
+const resourceLinks = [...RESOURCE_LINKS];
 
 const columns = [
-  { heading: 'Product', links: productLinks },
-  { heading: 'Compare', links: compare.links },
+  { heading: 'Use cases', links: USE_CASES.links },
+  { heading: 'Roles', links: ROLES.links },
+  { heading: 'Product', links: [...features.links, ...compare.links] },
   { heading: 'Resources', links: resourceLinks },
 ];
 ---
 
 <footer class="border-t border-border-c bg-background">
-  <div class="mx-auto max-w-7xl px-6 py-14">
-    <div class="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
-      <div class="lg:col-span-1">
-        <img src="/stubbase-logo-text-dark.png" alt="Stubbase" class="mb-4 h-7" data-wordmark="dark" />
+  {
+    cta && (
+      <div class="mx-auto max-w-7xl px-6 pt-16 pb-14">
+        <div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 class="text-balance text-3xl font-extrabold tracking-tight text-foreground">
+              {cta.title}
+            </h2>
+            <p class="mt-3 max-w-lg leading-relaxed text-muted-foreground">{cta.body}</p>
+          </div>
+          <a
+            href={cta.href}
+            class="inline-flex shrink-0 items-center gap-2 self-start rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover sm:self-auto"
+          >
+            {cta.label}
+            <ArrowRight class="h-4 w-4" />
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  <div
+    class:list={[
+      'mx-auto max-w-7xl px-6 pb-14',
+      cta ? 'border-t border-border-faint pt-14' : 'pt-14',
+    ]}
+  >
+    <div class="grid gap-x-10 gap-y-12 md:grid-cols-2 lg:grid-cols-5">
+      {/*
+        Copyright and legal sit at the foot of the brand column rather than in a
+        rule-separated bar beneath the grid. That bar read as a second footer
+        under the first one, and it was buying that separation with height the
+        brand column already had going spare.
+      */}
+      <div class="flex h-full flex-col lg:col-span-1">
+        <img
+          src="/stubbase-logo-text-dark.png"
+          alt="Stubbase"
+          class="mb-4 h-7 w-auto self-start"
+          data-wordmark="dark"
+        />
         <img
           src="/stubbase-logo-text-light.png"
           alt="Stubbase"
-          class="mb-4 h-7"
+          class="mb-4 h-7 w-auto self-start"
           data-wordmark="light"
         />
         <p class="max-w-xs text-sm leading-relaxed text-subtle">
           Stubbase is a zero-config, instant backend engine. Generate persistent, relational REST
           APIs via JSON or AI to unblock frontend development and deterministic QA testing.
         </p>
+
+        {/*
+          Stacked rather than a single separated line: this column is the narrowest
+          in the grid, so an inline "© · Terms · Privacy" wraps and strands a
+          separator at the end of the first line.
+        */}
+        <div class="mt-8 lg:mt-auto lg:pt-10">
+          <p class="text-sm text-muted-foreground">© 2026 Stubbase</p>
+          <nav class="mt-3 flex flex-wrap gap-x-5 gap-y-2" aria-label="Legal">
+            {
+              LEGAL_LINKS.map((link) => (
+                <a
+                  href={link.href}
+                  class="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              ))
+            }
+          </nav>
+        </div>
       </div>
 
       {
@@ -61,23 +137,5 @@ const columns = [
       }
     </div>
 
-    <div
-      class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-border-c pt-8"
-    >
-      <p class="text-sm text-subtle">© 2026 Stubbase. stubbase.dev</p>
-      <nav class="flex flex-wrap gap-6" aria-label="Legal">
-        <a href="/" class="text-sm text-muted-foreground transition-colors hover:text-foreground">Home</a>
-        <a href="/pricing" class="text-sm text-muted-foreground transition-colors hover:text-foreground">
-          Pricing
-        </a>
-        {
-          LEGAL_LINKS.map((link) => (
-            <a href={link.href} class="text-sm text-muted-foreground transition-colors hover:text-foreground">
-              {link.label}
-            </a>
-          ))
-        }
-      </nav>
-    </div>
   </div>
 </footer>

@@ -1,0 +1,424 @@
+---
+// The use-case / role page template.
+//
+// A segment page has one job: convince a specific person that this product does
+// their specific job, in the few seconds before they leave. So the page leads
+// with the product *doing the job* — a real request and the response it returns —
+// rather than with a claim about it, and the frontmatter carries that evidence as
+// data (see `segmentSchema` in content.config.ts) so every page argues the same
+// way instead of hand-rolling a hero.
+//
+// Below the fold the order is: what you get (a reference table, not a card
+// grid — this audience reads API docs all day and trusts that form), then the
+// authored prose, then the cross-links that make the hub-and-spoke web work.
+import { Code } from 'astro:components';
+import { ArrowRight, ArrowUpRight } from 'lucide-astro';
+import Layout from './Layout.astro';
+import { NAV_GROUPS, linkFor, type SegmentKey } from '../lib/nav';
+import { paragraphs, inline } from '../lib/inline';
+import { APP_URL, CORE_URL } from '../lib/urls';
+
+interface Proof {
+  caption: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  headers: string[];
+  response: string;
+  status: string;
+}
+
+interface Props {
+  collection: SegmentKey;
+  id: string;
+  title: string;
+  description: string;
+  h1: string;
+  subheadline: string;
+  promise: string;
+  cta: { label: string; href: string };
+  proof: Proof;
+  spec: { label: string; value: string }[];
+  related: string[];
+  sections: Section[];
+}
+
+interface Section {
+  kind: 'split' | 'statement' | 'steps';
+  title?: string;
+  body: string;
+  bullets: string[];
+  code?: { lang: 'bash' | 'json' | 'js' | 'ts' | 'sql' | 'http'; caption?: string; content: string };
+  steps: { title: string; body: string }[];
+}
+
+const {
+  collection,
+  id,
+  title,
+  description,
+  h1,
+  subheadline,
+  promise,
+  cta,
+  proof,
+  spec,
+  related,
+  sections,
+} = Astro.props;
+
+const group = NAV_GROUPS.find((candidate) => candidate.key === collection)!;
+const path = `/${collection}/${id}`;
+const relatedLinks = related.map((href) => ({ href, link: linkFor(href) })).filter((r) => r.link);
+
+// Anything the frontmatter leaves empty falls back to the primary conversion path.
+const ctaHref = cta.href || APP_URL;
+
+// The response status decides the panel's accent: a 2xx reads as the product
+// working, a 4xx/5xx as the product failing *on purpose* (the QA pages), and the
+// two must not look alike.
+const failing = !proof.status.startsWith('2');
+
+const articleSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: h1,
+  name: title,
+  description,
+  url: new URL(path, Astro.site).toString(),
+  inLanguage: 'en',
+  isPartOf: { '@type': 'WebSite', name: 'Stubbase', url: Astro.site?.toString() },
+  publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+};
+
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: Astro.site?.toString() },
+    { '@type': 'ListItem', position: 2, name: group.label },
+    { '@type': 'ListItem', position: 3, name: h1, item: new URL(path, Astro.site).toString() },
+  ],
+};
+---
+
+<Layout
+  title={title}
+  description={description}
+  active={collection}
+  schema={[articleSchema, breadcrumbSchema]}
+  cta={{
+    title: 'Your API is two minutes away',
+    body: 'Drop in a JSON file, get REST endpoints back. No database to configure.',
+    label: cta.label,
+    href: ctaHref,
+  }}
+>
+  <article>
+    <header class="relative overflow-hidden border-b border-border-c">
+      <div
+        class="hero-glow pointer-events-none absolute -top-40 left-[62%] h-[26rem] w-[26rem] rounded-full bg-primary blur-[130px]"
+      >
+      </div>
+
+      <div class="relative mx-auto max-w-7xl px-6 pt-12 pb-16 lg:pt-16 lg:pb-20">
+        <nav aria-label="Breadcrumb" class="mb-8 flex items-center gap-2 text-sm">
+          <a href="/" class="text-subtle transition-colors hover:text-emphasis">Home</a>
+          <span class="text-faint" aria-hidden="true">/</span>
+          <span class="text-muted-foreground">{group.label}</span>
+        </nav>
+
+        <div class="grid items-start gap-x-12 gap-y-12 lg:grid-cols-12">
+          <div class="min-w-0 lg:col-span-6 xl:col-span-5">
+            <h1
+              class="text-balance text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl"
+            >
+              {h1}
+            </h1>
+            <p class="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+              {subheadline}
+            </p>
+
+            <div class="mt-9 flex flex-wrap items-center gap-3">
+              <a
+                href={ctaHref}
+                class="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+              >
+                {cta.label}
+                <ArrowRight class="h-4 w-4" />
+              </a>
+              <a
+                href="/quick-start"
+                class="inline-flex items-center rounded-md border border-border-strong bg-card px-5 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                Read the API reference
+              </a>
+            </div>
+
+            <p class="mt-6 max-w-md text-sm leading-relaxed text-subtle">{promise}</p>
+          </div>
+
+          <div class="min-w-0 lg:col-span-6 xl:col-span-7">
+            <figure class="segment-proof overflow-hidden rounded-xl border border-border-c bg-code-bg">
+              <figcaption
+                class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-c bg-chrome px-4 py-3"
+              >
+                <span
+                  class="rounded border border-primary-soft-border bg-primary-soft px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-primary-accent"
+                >
+                  {proof.method}
+                </span>
+                <code class="min-w-0 flex-1 truncate font-mono text-xs text-emphasis">
+                  {CORE_URL}{proof.path}
+                </code>
+              </figcaption>
+
+              {
+                proof.headers.length > 0 && (
+                  <div class="border-b border-border-faint px-5 py-3">
+                    {proof.headers.map((header) => (
+                      <code class="block font-mono text-xs leading-relaxed text-subtle">
+                        {header}
+                      </code>
+                    ))}
+                  </div>
+                )
+              }
+
+              <div
+                class="flex items-center gap-2 border-b border-border-faint px-5 py-2.5 font-mono text-[11px]"
+              >
+                <span
+                  class:list={[
+                    'inline-block h-1.5 w-1.5 rounded-full',
+                    failing ? 'bg-syntax-num' : 'bg-primary',
+                  ]}
+                  aria-hidden="true"></span>
+                <span class={failing ? 'text-syntax-num' : 'text-primary-accent'}>
+                  {proof.status}
+                </span>
+                <span class="text-faint" aria-hidden="true">·</span>
+                <span class="text-subtle">{proof.caption}</span>
+              </div>
+
+              <div class="overflow-x-auto p-5 text-sm leading-relaxed">
+                <Code
+                  code={proof.response.trim()}
+                  lang="json"
+                  themes={{ light: 'github-light', dark: 'github-dark' }}
+                  defaultColor="dark"
+                />
+              </div>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="border-b border-border-c bg-section">
+      <div class="mx-auto max-w-7xl px-6 py-14">
+        <h2 class="text-2xl font-extrabold tracking-tight text-foreground">What you get</h2>
+        <dl class="mt-8 border-t border-border-c">
+          {
+            spec.map(({ label, value }) => (
+              <div class="grid gap-2 border-b border-border-c py-5 sm:grid-cols-12 sm:gap-8">
+                <dt class="font-mono text-xs tracking-wide text-primary-accent uppercase sm:col-span-3 sm:pt-1">
+                  {label}
+                </dt>
+                <dd class="leading-relaxed text-muted-foreground sm:col-span-9">{value}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+    </section>
+
+    {
+      sections.map((section, index) => {
+        // Bands alternate ground and, for splits, which side the panel sits on.
+        // The result paces down the page instead of stacking one column.
+        const shaded = index % 2 === 1;
+        const flipped = index % 4 === 2;
+
+        if (section.kind === 'statement') {
+          return (
+            <section class:list={['border-b border-border-c', shaded && 'bg-section']}>
+              <div class="mx-auto max-w-7xl px-6 py-20 lg:py-28">
+                <p class="max-w-4xl text-balance text-2xl leading-[1.35] font-semibold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
+                  <Fragment set:html={inline(section.body.trim().replace(/\s*\n\s*/g, ' '))} />
+                </p>
+              </div>
+            </section>
+          );
+        }
+
+        if (section.kind === 'steps') {
+          return (
+            <section class:list={['border-b border-border-c', shaded && 'bg-section']}>
+              <div class="mx-auto max-w-7xl px-6 py-16 lg:py-20">
+                {section.title && (
+                  <h2 class="max-w-2xl text-balance text-3xl font-extrabold tracking-tight text-foreground">
+                    {section.title}
+                  </h2>
+                )}
+                <ol class="mt-12 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+                  {section.steps.map((step, stepIndex) => (
+                    <li class="border-t border-border-strong pt-5">
+                      <span class="font-mono text-xs text-primary-accent">
+                        {String(stepIndex + 1).padStart(2, '0')}
+                      </span>
+                      <h3 class="mt-3 font-semibold text-foreground">{step.title}</h3>
+                      <p class="mt-2 leading-relaxed text-muted-foreground">
+                        <Fragment set:html={inline(step.body)} />
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          );
+        }
+
+        // A split with no code panel would leave half the band empty, so it
+        // becomes an editorial spread instead: the heading holds one column and
+        // the prose the other. Same grid, no hole.
+        const editorial = !section.code;
+
+        return (
+          <section class:list={['border-b border-border-c', shaded && 'bg-section']}>
+            <div class="mx-auto max-w-7xl px-6 py-16 lg:py-24">
+              <div
+                class:list={[
+                  'grid gap-x-16 gap-y-8 lg:grid-cols-2',
+                  editorial ? 'lg:items-start' : 'lg:items-center',
+                ]}
+              >
+                <div class:list={['min-w-0', !editorial && flipped && 'lg:order-2']}>
+                  {section.title && (
+                    <h2 class="text-balance text-3xl leading-tight font-extrabold tracking-tight text-foreground">
+                      {section.title}
+                    </h2>
+                  )}
+                  {!editorial &&
+                    paragraphs(section.body).map((html) => (
+                      <p class="mt-5 max-w-xl leading-relaxed text-muted-foreground">
+                        <Fragment set:html={html} />
+                      </p>
+                    ))}
+                  {!editorial && section.bullets.length > 0 && (
+                    <ul class="mt-7 space-y-4 border-l border-border-strong pl-5">
+                      {section.bullets.map((bullet) => (
+                        <li class="max-w-xl leading-relaxed text-muted-foreground">
+                          <Fragment set:html={inline(bullet)} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {editorial && (
+                  <div class="min-w-0">
+                    {paragraphs(section.body).map((html, bodyIndex) => (
+                      <p
+                        class:list={[
+                          'max-w-xl leading-relaxed text-muted-foreground',
+                          bodyIndex > 0 && 'mt-5',
+                        ]}
+                      >
+                        <Fragment set:html={html} />
+                      </p>
+                    ))}
+                    {section.bullets.length > 0 && (
+                      <ul class="mt-7 space-y-4 border-l border-border-strong pl-5">
+                        {section.bullets.map((bullet) => (
+                          <li class="max-w-xl leading-relaxed text-muted-foreground">
+                            <Fragment set:html={inline(bullet)} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {section.code && (
+                  <figure
+                    class:list={[
+                      'min-w-0 overflow-hidden rounded-xl border border-border-c bg-code-bg',
+                      flipped && 'lg:order-1',
+                    ]}
+                  >
+                    {section.code.caption && (
+                      <figcaption class="border-b border-border-c bg-chrome px-4 py-3 font-mono text-xs text-subtle">
+                        {section.code.caption}
+                      </figcaption>
+                    )}
+                    <div class="overflow-x-auto p-5 text-sm leading-relaxed">
+                      <Code
+                        code={section.code.content.trim()}
+                        lang={section.code.lang}
+                        themes={{ light: 'github-light', dark: 'github-dark' }}
+                        defaultColor="dark"
+                      />
+                    </div>
+                  </figure>
+                )}
+              </div>
+            </div>
+          </section>
+        );
+      })
+    }
+  </article>
+
+  {
+    relatedLinks.length > 0 && (
+      <section class="border-t border-border-c bg-section">
+        <div class="mx-auto max-w-7xl px-6 py-14">
+          <h2 class="text-2xl font-extrabold tracking-tight text-foreground">Where this goes next</h2>
+          <ul class="mt-8 grid gap-px overflow-hidden rounded-xl border border-border-c bg-border-c sm:grid-cols-2">
+            {relatedLinks.map(({ href, link }) => (
+              <li class="bg-card transition-colors hover:bg-muted">
+                <a href={href} class="group flex h-full flex-col gap-2 p-6">
+                  <span class="flex items-center gap-2 font-semibold text-foreground">
+                    {link!.label}
+                    <ArrowUpRight class="h-4 w-4 text-faint transition-colors group-hover:text-primary-accent" />
+                  </span>
+                  {link!.blurb && (
+                    <span class="text-sm leading-relaxed text-muted-foreground">{link!.blurb}</span>
+                  )}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )
+  }
+
+</Layout>
+
+<style>
+  /* The page's one authored moment: the proof panel settles into place, so the
+     eye lands on the product working rather than on the headline. Content is
+     never hidden — the animation only runs forward from a visible state, so a
+     crawler, a failed stylesheet, or reduced motion all still get the panel. */
+  .segment-proof {
+    animation: proof-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes proof-settle {
+    from {
+      opacity: 0.55;
+      transform: translateY(0.75rem) scale(0.995);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .segment-proof {
+      animation: none;
+    }
+  }
+</style>

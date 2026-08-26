@@ -1,27 +1,82 @@
-// Single source of truth for the hub-and-spoke navigation. Header and Footer
-// both read it, so a new spoke page only needs one edit here.
+// Single source of truth for the hub-and-spoke navigation. Header, footer and
+// the segment pages all read it, so a new spoke needs one entry here plus one
+// Markdown file — that cheapness is the point, because this set is meant to
+// keep growing.
+
+/** The two audience-segmented collections. Both render through SegmentLayout. */
+export type SegmentKey = 'use-cases' | 'roles';
+export type NavGroupKey = SegmentKey | 'features' | 'compare';
 
 export interface NavLink {
   href: string;
   label: string;
+  /** One line, shown in the Solutions mega-menu. Keep it to a single clause. */
+  blurb?: string;
 }
 
 export interface NavGroup {
-  key: 'solutions' | 'features' | 'compare';
+  key: NavGroupKey;
   label: string;
   links: NavLink[];
 }
 
+/**
+ * The Solutions panel: use cases answer "what am I doing", roles answer "who am
+ * I". A visitor arrives knowing one or the other, never both, so the menu asks
+ * the question twice rather than forcing one taxonomy on everyone.
+ */
+export const USE_CASES: NavGroup = {
+  key: 'use-cases',
+  label: 'Use cases',
+  links: [
+    {
+      href: '/use-cases/mock-apis',
+      label: 'Mock APIs',
+      blurb: 'A JSON file becomes a relational REST API you can build against.',
+    },
+    {
+      href: '/use-cases/mvp-backend',
+      label: 'MVP backend',
+      blurb: 'Auth, ownership and webhooks without running a server.',
+    },
+  ],
+};
+
+export const ROLES: NavGroup = {
+  key: 'roles',
+  label: 'Roles',
+  links: [
+    {
+      href: '/roles/frontend-developer',
+      label: 'Frontend developer',
+      blurb: 'Stop waiting on the backend to start building the real UI.',
+    },
+    {
+      href: '/roles/qa-engineer',
+      label: 'QA engineer',
+      blurb: 'Make the API fail on purpose, the same way every run.',
+    },
+    {
+      href: '/roles/ai-engineer',
+      label: 'AI engineer',
+      blurb: 'Give an agent a real datastore it can query with SQL.',
+    },
+    {
+      href: '/roles/indie-hacker',
+      label: 'Indie hacker',
+      blurb: 'Ship the whole thing this weekend, with no infrastructure phase.',
+    },
+    {
+      href: '/roles/student',
+      label: 'Student',
+      blurb: 'Learn REST against a real API without installing a database.',
+    },
+  ],
+};
+
 export const NAV_GROUPS: NavGroup[] = [
-  {
-    key: 'solutions',
-    label: 'Solutions',
-    links: [
-      { href: '/solutions/frontend-mock-api-generator', label: 'Frontend Mock APIs' },
-      { href: '/solutions/api-testing-chaos-engineering', label: 'QA Chaos Engineering' },
-      { href: '/solutions/headless-baas-mvp', label: 'Indie Hacker BaaS' },
-    ],
-  },
+  USE_CASES,
+  ROLES,
   {
     key: 'features',
     label: 'Features',
@@ -40,6 +95,14 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Groups that live inside the Solutions mega-menu rather than their own trigger. */
+export const SOLUTION_GROUPS: NavGroup[] = [USE_CASES, ROLES];
+
+/** Groups that keep their own top-level dropdown. */
+export const MENU_GROUPS: NavGroup[] = NAV_GROUPS.filter(
+  (group) => group.key === 'features' || group.key === 'compare',
+);
+
 /** Flat pages that sit alongside the grouped spokes. */
 export const RESOURCE_LINKS: NavLink[] = [
   { href: '/quick-start', label: 'API Reference' },
@@ -51,3 +114,8 @@ export const LEGAL_LINKS: NavLink[] = [
   { href: '/terms', label: 'Terms of service' },
   { href: '/privacy', label: 'Privacy' },
 ];
+
+/** Look up a spoke's label from its href, for cross-links between segments. */
+export function linkFor(href: string): NavLink | undefined {
+  return NAV_GROUPS.flatMap((group) => group.links).find((link) => link.href === href);
+}

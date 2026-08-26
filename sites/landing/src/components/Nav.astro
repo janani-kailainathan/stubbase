@@ -10,10 +10,18 @@
 import { ChevronDown, Menu } from 'lucide-astro';
 import ThemeToggle from './ThemeToggle.astro';
 import { APP_URL } from '../lib/urls';
-import { NAV_GROUPS, RESOURCE_LINKS } from '../lib/nav';
+import { NAV_GROUPS, SOLUTION_GROUPS, MENU_GROUPS, RESOURCE_LINKS } from '../lib/nav';
 
 interface Props {
-  active?: 'solutions' | 'features' | 'compare' | 'pricing' | 'quick-start' | 'faqs' | 'contact';
+  active?:
+    | 'use-cases'
+    | 'roles'
+    | 'features'
+    | 'compare'
+    | 'pricing'
+    | 'quick-start'
+    | 'faqs'
+    | 'contact';
 }
 
 const { active } = Astro.props;
@@ -45,9 +53,55 @@ const linkClass = (isActive: boolean) =>
     </a>
 
     <div class="hidden items-center gap-7 lg:flex">
+      {/*
+        Solutions is one panel over two taxonomies: a visitor arrives knowing
+        either the job they are doing or the job they hold, never reliably both,
+        so the menu asks the question twice side by side rather than making them
+        translate. Still a native <details> — no client JS (see CLAUDE.md).
+      */}
+      <details name="primary-nav" class="group">
+        <summary
+          class={`flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden ${linkClass(active === 'use-cases' || active === 'roles')}`}
+        >
+          Solutions
+          <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+        </summary>
+        <div
+          class="absolute top-full left-1/2 z-50 mt-3 w-[44rem] max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-xl border border-border-c bg-card p-6"
+        >
+          <div class="grid grid-cols-2 gap-x-8">
+            {SOLUTION_GROUPS.map((group) => (
+              <div>
+                <p class="mb-3 border-b border-border-faint pb-3 text-sm font-semibold text-foreground">
+                  {group.label}
+                </p>
+                <ul>
+                  {group.links.map((link) => (
+                    <li>
+                      <a
+                        href={link.href}
+                        class="group/item block rounded-md px-3 py-2.5 transition-colors hover:bg-muted"
+                      >
+                        <span class="block text-sm font-medium text-foreground">{link.label}</span>
+                        {link.blurb && (
+                          <span class="mt-0.5 block text-xs leading-relaxed text-subtle">
+                            {link.blurb}
+                          </span>
+                        )}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+          </div>
+        </div>
+      </details>
+
       {
-        NAV_GROUPS.map((group) => (
-          <details class="group relative">
+        MENU_GROUPS.map((group) => (
+          <details name="primary-nav" class="group relative">
             <summary
               class={`flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden ${linkClass(group.key === active)}`}
             >

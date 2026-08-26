@@ -33,11 +33,3 @@ const Icon = lang === 'json' ? FileJson : lang === 'bash' ? Terminal : FileCode2
     />
   </div>
 </figure>
-
-<style is:global>
-  /* Shiki emits its own background; the figure already provides one. */
-  figure > div > pre.astro-code {
-    background-color: transparent !important;
-    font-family: var(--font-mono);
-  }
-</style>

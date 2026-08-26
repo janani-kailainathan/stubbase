@@ -339,3 +339,127 @@ html.dark {
     scroll-behavior: auto;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Markdown body styling, shared by MarkdownLayout (features / compare) and
+   SegmentLayout (use cases / roles). Hand-written instead of
+   @tailwindcss/typography so the design tokens stay in one place and the site
+   gains no dependency. Reads the semantic tokens above only — no zinc/emerald
+   literals — so both themes follow from this one file.
+   --------------------------------------------------------------------------- */
+/* Markdown body styling. Hand-written instead of @tailwindcss/typography so the
+     design tokens stay in one place and the site gains no dependency. Reads the
+     semantic tokens from global.css only — no zinc/emerald literals — so both
+     themes follow from that one file. */
+  .prose-stubbase > * + * {
+    margin-top: 1.25rem;
+  }
+
+  /* The hero already supplies the space above the first heading. */
+  .prose-stubbase > :first-child {
+    margin-top: 0;
+  }
+
+  .prose-stubbase h2 {
+    margin-top: 3rem;
+    margin-bottom: 1.25rem;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 800;
+    color: var(--foreground);
+  }
+
+  .prose-stubbase h3 {
+    margin-top: 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .prose-stubbase p,
+  .prose-stubbase li {
+    line-height: 1.75;
+    color: var(--muted-foreground);
+  }
+
+  .prose-stubbase strong {
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .prose-stubbase em {
+    color: var(--emphasis);
+  }
+
+  .prose-stubbase ul,
+  .prose-stubbase ol {
+    padding-left: 1.25rem;
+  }
+
+  .prose-stubbase ul {
+    list-style-type: disc;
+  }
+
+  .prose-stubbase ol {
+    list-style-type: decimal;
+  }
+
+  .prose-stubbase li::marker {
+    color: var(--faint);
+  }
+
+  .prose-stubbase li + li {
+    margin-top: 0.625rem;
+  }
+
+  .prose-stubbase a {
+    color: var(--primary-ink);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  .prose-stubbase a:hover {
+    color: var(--primary-ink-hover);
+  }
+
+  /* Inline code. */
+  .prose-stubbase :not(pre) > code {
+    border-radius: 0.25rem;
+    background-color: var(--muted);
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    color: var(--primary-ink);
+  }
+
+  /* Shiki-highlighted fenced blocks: multimodal crawlers look for <pre><code>,
+     so the structure stays plain and only the chrome is styled. */
+  .prose-stubbase pre {
+    overflow-x: auto;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-c);
+    /* !important overrides the background Shiki writes inline. */
+    background-color: var(--code-bg) !important;
+    padding: 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  .prose-stubbase hr {
+    margin-top: 2.5rem;
+    margin-bottom: 2.5rem;
+    border-color: var(--border-c);
+  }
+
+/* Shiki emits its own background colour inline on every highlighted block. Every
+   surface that hosts one already provides its own ground (a figure, a <pre>), so
+   the inline value is always wrong — neutralise it once, here, rather than in each
+   component's scoped styles, where a page that does not import that component
+   silently gets Shiki's grey instead. */
+figure > div > pre.astro-code {
+  background-color: transparent !important;
+  font-family: var(--font-mono);
+}
