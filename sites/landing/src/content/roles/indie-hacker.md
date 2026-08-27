@@ -33,9 +33,6 @@ spec:
     value: 'Your Resend and Twilio credentials live server-side. The project mounts a proxy that injects them, so your frontend can send email without shipping a key to the browser.'
   - label: 'Bills'
     value: 'Idle projects are evicted from memory and cost nothing to keep. There is no dormant staging environment quietly charging you every month.'
-related:
-  - '/use-cases/mvp-backend'
-  - '/roles/ai-engineer'
 sections:
   - kind: statement
     body: |

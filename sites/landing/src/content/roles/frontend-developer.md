@@ -31,9 +31,6 @@ spec:
     value: 'The record your form creates persists. Optimistic updates, cache invalidation and refetch logic all behave the way they will in production.'
   - label: 'Typed contract'
     value: 'Point your client generator at the project`s `openapi.json` and get types without hand-writing a spec.'
-related:
-  - '/use-cases/mock-apis'
-  - '/roles/qa-engineer'
 sections:
   - kind: statement
     body: |

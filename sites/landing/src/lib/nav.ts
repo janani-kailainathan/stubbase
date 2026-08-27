@@ -114,8 +114,3 @@ export const LEGAL_LINKS: NavLink[] = [
   { href: '/terms', label: 'Terms of service' },
   { href: '/privacy', label: 'Privacy' },
 ];
-
-/** Look up a spoke's label from its href, for cross-links between segments. */
-export function linkFor(href: string): NavLink | undefined {
-  return NAV_GROUPS.flatMap((group) => group.links).find((link) => link.href === href);
-}

@@ -28,9 +28,6 @@ spec:
     value: 'Every project generates its own `openapi.json`. Reading the spec for an API you designed yourself is the fastest way to understand what a spec is for.'
   - label: 'Go further'
     value: 'When you are ready, switch on auth and watch the same routes start returning 401 — then learn what a bearer token actually does.'
-related:
-  - '/use-cases/mock-apis'
-  - '/roles/frontend-developer'
 sections:
   - kind: statement
     body: |

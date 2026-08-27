@@ -34,9 +34,6 @@ spec:
     value: 'Add your Resend or Twilio credentials in the dashboard and the project mounts a proxy that injects them server-side — so your frontend can send email without shipping a secret.'
   - label: 'Cost'
     value: 'Projects sleep when idle and wake on the next request. Nothing runs, and nothing bills, while nobody is using your MVP.'
-related:
-  - '/roles/indie-hacker'
-  - '/use-cases/mock-apis'
 sections:
   - kind: statement
     body: |

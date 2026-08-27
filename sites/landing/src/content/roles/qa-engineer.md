@@ -33,9 +33,6 @@ spec:
     value: 'The chaos headers only do anything when the project has QA mode switched on, and the check runs after authentication — a simulation header can never be used to walk past auth.'
   - label: 'Observable'
     value: 'Every request through the public API gets a correlation id and an entry in the project`s live log, so a failing pipeline run has something to read afterwards.'
-related:
-  - '/roles/frontend-developer'
-  - '/use-cases/mock-apis'
 sections:
   - kind: statement
     body: |

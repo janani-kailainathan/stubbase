@@ -32,9 +32,6 @@ spec:
     value: 'Every project serves a generated `openapi.json`, so client generators, Postman and API clients can read the shape without you writing a spec.'
   - label: 'Staging'
     value: 'Dashboard edits land as drafts. The live API keeps serving the old data until you press Deploy, so a half-finished schema never reaches the app you are building.'
-related:
-  - '/roles/frontend-developer'
-  - '/roles/qa-engineer'
 sections:
   - kind: statement
     body: |

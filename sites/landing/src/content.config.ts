@@ -30,8 +30,6 @@ const seoSchema = z.object({
  * - `spec` is the reference table under the hero: what this segment gets, in the
  *   flat label/value form an API reference uses, because that is the form this
  *   audience already trusts.
- * - `related` wires the hub-and-spoke web across collections; a role points at
- *   the use cases it performs and back.
  */
 const segmentSchema = seoSchema.extend({
   /** Sort order within the nav group and any index listing. */
@@ -66,7 +64,6 @@ const segmentSchema = seoSchema.extend({
     )
     .min(3)
     .max(6),
-  related: z.array(z.string()).default([]),
   /**
    * The body of the page, as composed bands rather than one prose column.
    *

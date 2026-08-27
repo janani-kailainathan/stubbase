@@ -31,9 +31,6 @@ spec:
     value: 'Two independent layers: the connection runs under `PRAGMA query_only`, and statements must begin with SELECT or WITH. The second is what stops `ATTACH` reaching anything else on the box.'
   - label: 'Credentials'
     value: 'Per-project developer keys, stored hashed and shown once. A key is scoped to the project that issued it; revoking it, or deleting the project, invalidates it immediately.'
-related:
-  - '/use-cases/mock-apis'
-  - '/roles/indie-hacker'
 sections:
   - kind: statement
     body: |
