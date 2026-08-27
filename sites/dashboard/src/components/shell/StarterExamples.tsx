@@ -1,22 +1,16 @@
-import { ClipboardList, KeyRound, Link2, Newspaper, ShoppingCart, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { StarterGrid } from '@/components/shell/StarterGrid'
 import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
 import { useCreateResources } from '@/hooks/resources'
-import { countRecords, STARTERS, type Starter } from '@/lib/starters'
+import type { Starter } from '@/lib/starters'
 import { useWorkspaceStore } from '@/stores/workspace'
 
-/** Presentation only — the starter data itself lives in lib/starters.ts. */
-const ICONS: Record<Starter['id'], LucideIcon> = {
-  tracker: ClipboardList,
-  blog: Newspaper,
-  storefront: ShoppingCart,
-}
-
-const FEATURES: Record<Starter['features'][number], { Icon: LucideIcon; label: string }> = {
-  relations: { Icon: Link2, label: 'relations' },
-  auth: { Icon: KeyRound, label: 'auth' },
-}
-
+/**
+ * A project's own empty state — the same starter cards the account-level empty
+ * state offers (StarterGrid), minus the "start blank" rung, which is what
+ * being here already is. Picking one stages drafts into this project rather
+ * than provisioning a new one.
+ */
 export function StarterExamples({ tenantId }: { tenantId: string }) {
   const create = useCreateResources(tenantId)
   const { data: config } = useTenantConfig(tenantId)
@@ -49,52 +43,7 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
         </p>
       </div>
 
-      <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-3">
-        {STARTERS.map((starter) => {
-          const Icon = ICONS[starter.id]
-          return (
-            <button
-              key={starter.id}
-              onClick={() => void pick(starter)}
-              disabled={busy}
-              className="flex cursor-pointer flex-col gap-2 rounded-md border border-border bg-panel p-3 text-left transition-colors hover:border-primary-soft-border-strong hover:bg-card disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span className="flex items-center gap-2">
-                <Icon className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
-                <span className="truncate text-xs font-medium text-heading">{starter.title}</span>
-              </span>
-              <span className="font-mono text-[10px] text-subtle">{starter.blurb}</span>
-              <span className="font-mono text-[10px] break-words text-muted-foreground">
-                {Object.keys(starter.resources).join(' · ')}
-              </span>
-              {starter.features.length > 0 && (
-                <span className="flex flex-wrap items-center gap-1">
-                  {starter.features.map((feature) => {
-                    const { Icon: FeatureIcon, label } = FEATURES[feature]
-                    return (
-                      <span
-                        key={feature}
-                        className="flex items-center gap-1 rounded border border-primary/20 bg-primary-soft-weak px-1.5 py-0.5 font-mono text-[10px] text-primary-accent/90"
-                      >
-                        <FeatureIcon className="h-2.5 w-2.5" />
-                        {label}
-                      </span>
-                    )
-                  })}
-                </span>
-              )}
-              <span className="mt-auto pt-1 font-mono text-[10px] text-faintest">
-                {names(starter)} · {countRecords(starter)} records
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <StarterGrid busy={busy} onPick={(s) => void pick(s)} />
     </div>
   )
-}
-
-const names = (s: Starter) => {
-  const n = Object.keys(s.resources).length
-  return `${n} resource${n === 1 ? '' : 's'}`
 }
