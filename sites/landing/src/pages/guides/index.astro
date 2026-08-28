@@ -1,0 +1,239 @@
+---
+// The guides index.
+//
+// Composition follows the reference: a centered masthead over a search field,
+// the newest post as one wide feature, then a three-up grid, then a closing
+// panel. What is ours is the tile — every card's artwork is drawn from the
+// post's own title and tag in the site's type, so a post needs no illustration
+// to look finished, and a real `thumbnail` overrides it whenever one exists.
+import { getCollection } from 'astro:content';
+import { ArrowRight, Search } from 'lucide-astro';
+import Layout from '../../layouts/Layout.astro';
+import { APP_URL } from '../../lib/urls';
+
+const posts = (await getCollection('guides'))
+  .filter((entry) => !entry.data.draft)
+  .sort((a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf());
+
+const [featured, ...rest] = posts;
+
+// Both controls are dead weight on a short list, so neither ships until the
+// list is long enough to need it.
+const SEARCHABLE_FROM = 6;
+const PAGE_SIZE = 9;
+const showSearch = posts.length >= SEARCHABLE_FROM;
+const showLoadMore = rest.length > PAGE_SIZE;
+
+const dateFormat = (value: Date) =>
+  value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const title = 'Guides — Stubbase';
+const description =
+  'Guides for building against a Stubbase API: OAuth keys, auth configuration, schema design, and the endpoints behind them.';
+
+// A CollectionPage listing an ItemList, rather than a Blog listing blogPosts:
+// the index is a table of contents for a set of procedures, and saying so
+// keeps it consistent with the TechArticle each entry resolves to.
+const collectionSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Stubbase Guides',
+  description,
+  url: new URL('/guides', Astro.site).toString(),
+  publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: posts.map((post, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      url: new URL(`/guides/${post.id}`, Astro.site).toString(),
+      name: post.data.h1,
+    })),
+  },
+};
+
+/** Everything a card needs, so the feature and the grid read the same data. */
+const card = (post: (typeof posts)[number], index: number) => ({
+  href: `/guides/${post.id}`,
+  tile: post.data.thumbnail,
+  tag: post.data.tags[0] ?? 'guide',
+  variant: index % 3,
+  title: post.data.h1,
+  summary: post.data.summary,
+  date: post.data.publishedAt,
+  haystack: [post.data.h1, post.data.summary, ...post.data.tags].join(' ').toLowerCase(),
+});
+---
+
+<Layout
+  title={title}
+  description={description}
+  schema={[collectionSchema]}
+  cta={{
+    title: 'One JSON file, one working API',
+    body: 'Drop in your data, get CRUD endpoints with relations, filtering and auth. No database to configure.',
+    label: 'Start free',
+    href: `${APP_URL}/signup`,
+  }}
+>
+  <div class="mx-auto max-w-6xl px-6">
+    <header class="pt-16 pb-12 text-center sm:pt-20">
+      <h1 class="text-5xl font-extrabold tracking-tight text-foreground sm:text-6xl">
+        Stubbase <span class="text-primary-ink">Guides</span>
+      </h1>
+      <p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+        Working guides for the parts of an API that are fiddly the first time.
+      </p>
+
+      {
+        showSearch && (
+          <div class="mx-auto mt-9 max-w-xl">
+            <label class="sr-only" for="guide-search">
+              Search articles
+            </label>
+            <div class="relative">
+              <Search class="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-subtle" />
+              <input
+                id="guide-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Find a guide — OAuth, schemas, webhooks…"
+                class="w-full rounded-full border border-border-c bg-card py-3.5 pr-5 pl-11 text-sm text-foreground placeholder-subtle transition-colors focus:border-primary focus:outline-none"
+              />
+            </div>
+          </div>
+        )
+      }
+    </header>
+
+    {
+      featured && (
+        <a
+          href={card(featured, 0).href}
+          class="group grid gap-8 rounded-2xl border border-border-c bg-card p-6 transition-colors hover:border-border-strong sm:p-8 lg:grid-cols-[3fr_2fr] lg:items-center lg:gap-12"
+        >
+          <div class="post-tile post-tile--feature" data-variant="0">
+            {featured.data.thumbnail ? (
+              <img src={featured.data.thumbnail} alt="" />
+            ) : (
+              <>
+                <span class="post-tile-tag">{card(featured, 0).tag}</span>
+                <span class="post-tile-title">{featured.data.h1}</span>
+              </>
+            )}
+          </div>
+          <div>
+            <time
+              datetime={featured.data.publishedAt.toISOString()}
+              class="font-mono text-xs text-subtle"
+            >
+              {dateFormat(featured.data.publishedAt)}
+            </time>
+            <h2 class="mt-3 text-2xl leading-snug font-extrabold text-balance text-foreground transition-colors group-hover:text-primary-ink sm:text-3xl">
+              {featured.data.h1}
+            </h2>
+            <p class="mt-4 leading-relaxed text-muted-foreground">{featured.data.summary}</p>
+            <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink">
+              Read the guide
+              <ArrowRight class="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
+            </span>
+          </div>
+        </a>
+      )
+    }
+
+    {
+      rest.length > 0 && (
+        <ul id="post-grid" class="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          {rest.map((post, index) => {
+            const data = card(post, index + 1);
+            return (
+              <li
+                class="post-card"
+                data-haystack={data.haystack}
+                data-index={index}
+                hidden={index >= PAGE_SIZE}
+              >
+                <a href={data.href} class="group flex h-full flex-col">
+                  <div class="post-tile" data-variant={data.variant}>
+                    {data.tile ? (
+                      <img src={data.tile} alt="" />
+                    ) : (
+                      <>
+                        <span class="post-tile-tag">{data.tag}</span>
+                        <span class="post-tile-title">{data.title}</span>
+                      </>
+                    )}
+                  </div>
+                  <time datetime={data.date.toISOString()} class="mt-5 font-mono text-xs text-subtle">
+                    {dateFormat(data.date)}
+                  </time>
+                  <h3 class="mt-2 text-lg leading-snug font-bold text-balance text-foreground transition-colors group-hover:text-primary-ink">
+                    {data.title}
+                  </h3>
+                  <p class="mt-2.5 text-sm leading-relaxed text-muted-foreground">{data.summary}</p>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+
+    <p id="no-results" class="hidden py-16 text-center text-muted-foreground">
+      No guides match that search yet.
+    </p>
+
+    {
+      showLoadMore && (
+        <div class="mt-12 flex justify-center">
+          <button
+            id="load-more"
+            type="button"
+            class="rounded-md border border-border-c bg-card px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:border-border-strong hover:bg-muted"
+          >
+            Load more articles
+          </button>
+        </div>
+      )
+    }
+
+  </div>
+
+  {
+    (showSearch || showLoadMore) && (
+      <script is:inline define:vars={{ PAGE_SIZE }}>
+        (function () {
+          var cards = Array.prototype.slice.call(document.querySelectorAll('.post-card'));
+          var search = document.getElementById('guide-search');
+          var button = document.getElementById('load-more');
+          var empty = document.getElementById('no-results');
+          var shown = PAGE_SIZE;
+
+          // One function owns visibility: a card is visible when it matches the
+          // query AND falls inside the revealed page. Two independent handlers
+          // toggling `hidden` would fight over the same attribute.
+          function render() {
+            var query = (search && search.value ? search.value : '').trim().toLowerCase();
+            var matched = 0;
+            cards.forEach(function (card) {
+              var hit = !query || card.dataset.haystack.indexOf(query) !== -1;
+              if (hit) matched++;
+              card.hidden = !hit || (!query && matched > shown);
+            });
+            if (empty) empty.classList.toggle('hidden', matched > 0);
+            if (button) button.hidden = !!query || shown >= cards.length;
+          }
+
+          if (search) search.addEventListener('input', render);
+          if (button)
+            button.addEventListener('click', function () {
+              shown += PAGE_SIZE;
+              render();
+            });
+          render();
+        })();
+      </script>
+    )
+  }
+</Layout>

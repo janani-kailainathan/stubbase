@@ -51,13 +51,8 @@ const breadcrumbSchema = {
   schema={[articleSchema, breadcrumbSchema]}
 >
   <article>
-    <header class="border-b border-border-c">
+    <header>
       <div class="mx-auto max-w-3xl px-6 pt-16 pb-14">
-        <nav aria-label="Breadcrumb" class="mb-6 flex items-center gap-2 text-sm text-subtle">
-          <a href="/" class="transition-colors hover:text-emphasis">Home</a>
-          <span aria-hidden="true">/</span>
-          <span class="text-muted-foreground">{group.label}</span>
-        </nav>
         <h1 class="mb-5 text-4xl leading-tight font-extrabold text-foreground">{h1}</h1>
         <p class="text-lg leading-relaxed text-muted-foreground">{subheadline}</p>
       </div>

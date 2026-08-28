@@ -1,0 +1,128 @@
+---
+// The changelog. A hub page like /pricing — hardcoded, reading one data module
+// (src/lib/changelog.ts), because the whole history belongs on one page and a
+// release note has no life of its own at its own URL.
+import Layout from '../layouts/Layout.astro';
+import { RELEASES, type ChangeKind } from '../lib/changelog';
+import { APP_URL } from '../lib/urls';
+
+const title = 'Changelog — Stubbase';
+const description =
+  'What shipped in Stubbase, newest first: features, changes and fixes across the API engine, the dashboard and the site.';
+
+const dateFormat = (value: string) =>
+  new Date(`${value}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+// One word, one colour, no icon: the kind is a label, not a status light.
+const KIND_CLASS: Record<ChangeKind, string> = {
+  added: 'border-primary-soft-border-strong text-primary-soft-ink',
+  changed: 'border-border-strong text-emphasis',
+  fixed: 'border-border-strong text-emphasis',
+};
+
+// Newest entry that actually shipped — an unreleased one cannot date the page.
+const lastShipped = RELEASES.find((release) => release.date !== null);
+const unreleased = RELEASES.some((release) => release.date === null);
+---
+
+<Layout
+  title={title}
+  description={description}
+  schema={[
+    {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'Stubbase changelog',
+      description,
+      url: new URL('/changelog', Astro.site).toString(),
+      ...(lastShipped
+        ? { dateModified: new Date(`${lastShipped.date}T00:00:00Z`).toISOString() }
+        : {}),
+      publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+    },
+  ]}
+  cta={{
+    title: 'Start building on it',
+    body: 'A JSON file in, a REST API out. Everything here is live on the free tier.',
+    label: 'Start free',
+    href: `${APP_URL}/signup`,
+  }}
+>
+  <header>
+    <div class="mx-auto max-w-3xl px-6 pt-16 pb-14">
+      <h1 class="mb-5 text-4xl leading-tight font-extrabold tracking-tight text-foreground">
+        Changelog
+      </h1>
+      <p class="text-lg leading-relaxed text-muted-foreground">
+        What shipped, newest first. Dated rather than versioned — Stubbase is a hosted service, so
+        there is no build number for you to pin.
+      </p>
+      {
+        unreleased && (
+          <p class="mt-4 leading-relaxed text-subtle">
+            Stubbase has not launched yet. Everything below is built and running; it takes its date
+            the day it is public.
+          </p>
+        )
+      }
+    </div>
+  </header>
+
+  <div class="mx-auto max-w-3xl px-6 py-14">
+    <ol class="grid gap-14">
+      {
+        RELEASES.map((release) => (
+          <li class="grid gap-5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-8">
+            {release.date ? (
+              <time datetime={release.date} class="pt-0.5 font-mono text-xs text-subtle">
+                {dateFormat(release.date)}
+              </time>
+            ) : (
+              <span class="justify-self-start self-start rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[11px] text-subtle">
+                unreleased
+              </span>
+            )}
+            <div>
+              <h2 class="text-xl leading-snug font-bold text-balance text-foreground">
+                {release.title}
+              </h2>
+              <ul class="mt-5 grid gap-4">
+                {release.items.map((item) => (
+                  <li class="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-4">
+                    <span
+                      class:list={[
+                        'justify-self-start self-start rounded-md border px-2 py-0.5 font-mono text-[11px]',
+                        KIND_CLASS[item.kind],
+                      ]}
+                    >
+                      {item.kind}
+                    </span>
+                    <p class="leading-relaxed text-muted-foreground">
+                      {item.text}
+                      {item.href && (
+                        <>
+                          {' '}
+                          <a
+                            href={item.href}
+                            class="text-primary-ink underline decoration-1 underline-offset-4 transition-colors hover:text-primary-ink-hover"
+                          >
+                            Read more
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</Layout>

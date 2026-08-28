@@ -22,12 +22,20 @@ interface Props {
     | 'contact';
   /** Closing call to action, rendered as the footer's cap. */
   cta?: { title: string; body: string; label: string; href: string };
+  ogType?: 'website' | 'article';
+  publishedTime?: string;
 }
 
-const { title, description, schema = [], active, cta } = Astro.props;
+const { title, description, schema = [], active, cta, ogType, publishedTime } = Astro.props;
 ---
 
-<BaseLayout title={title} description={description} schema={schema}>
+<BaseLayout
+  title={title}
+  description={description}
+  schema={schema}
+  ogType={ogType}
+  publishedTime={publishedTime}
+>
   <Nav active={active} />
   <main>
     <slot />

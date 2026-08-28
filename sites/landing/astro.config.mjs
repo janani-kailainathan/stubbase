@@ -3,6 +3,24 @@ import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
 import sitemap from '@astrojs/sitemap';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * A guide is written before its screenshots exist, so every figure ships as
+ * a drawn frame (`figure.shot--pending`) until an <img> replaces it. That is
+ * invisible to a build that only reports errors, so count the frames still
+ * empty and say so once, at the end.
+ */
+function pendingShots() {
+  const dir = 'src/content/guides';
+  const pending = [];
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.md'))) {
+    const matches = readFileSync(join(dir, file), 'utf8').match(/shot--pending/g);
+    if (matches) pending.push(`${file}: ${matches.length}`);
+  }
+  return pending;
+}
 
 // https://astro.build/config
 export default defineConfig({
@@ -28,5 +46,19 @@ export default defineConfig({
     plugins: [tailwindcss()]
   },
 
-  integrations: [sitemap()]
+  integrations: [
+    sitemap(),
+    {
+      name: 'stubbase:pending-shots',
+      hooks: {
+        'astro:build:done': ({ logger }) => {
+          const pending = pendingShots();
+          if (pending.length === 0) return;
+          logger.warn(
+            `guides with screenshot frames still empty — ${pending.join(', ')}`,
+          );
+        },
+      },
+    },
+  ]
 });

@@ -82,6 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Features',
     links: [
       { href: '/features/ai-rest-api-generation', label: 'AI API Generation' },
+      { href: '/features/google-github-social-login', label: 'Social Login' },
       { href: '/features/instant-api-deployments', label: 'Instant Deployments' },
     ],
   },
@@ -106,6 +107,8 @@ export const MENU_GROUPS: NavGroup[] = NAV_GROUPS.filter(
 /** Flat pages that sit alongside the grouped spokes. */
 export const RESOURCE_LINKS: NavLink[] = [
   { href: '/quick-start', label: 'API Reference' },
+  { href: '/guides', label: 'Guides' },
+  { href: '/changelog', label: 'Changelog' },
   { href: '/faqs', label: 'FAQs' },
   { href: '/contact', label: 'Contact' },
 ];

@@ -99,6 +99,52 @@ const segmentSchema = seoSchema.extend({
     .min(2),
 });
 
+/**
+ * Guides. A guide is a spoke like any other — same SEO fields, same strict
+ * schema — plus the three things a dated article has and a reference page does
+ * not: a date, a byline, and screenshots.
+ *
+ * They live under /guides rather than /blog on purpose. These are evergreen
+ * procedures, and a `blog` URL tells a reader and a crawler the opposite: that
+ * the page is chronological and ages. /blog stays free for the day there is
+ * something genuinely dated to publish.
+ *
+ * Screenshots inside the body are not declared here: `::shot <file> | <caption>`
+ * in the Markdown resolves against `public/guides/<slug>/` at build time (see
+ * src/lib/remark-shot.mjs), so a post can ship its prose before its images and
+ * fill in later by dropping files into a folder. `hero` is the exception, since
+ * the layout places it above the article rather than in the flow.
+ */
+const guideSchema = seoSchema.extend({
+  publishedAt: z.coerce.date(),
+  updatedAt: z.coerce.date().optional(),
+  /** Byline. Organization by default — see PRODUCT.md's brand commitments. */
+  author: z.string().default('Stubbase'),
+  /** Sits under the title, in the reader's own words, for the index listing. */
+  summary: z.string(),
+  tags: z.array(z.string()).default([]),
+  hero: z
+    .object({
+      src: z.string().optional(),
+      alt: z.string(),
+      caption: z.string().optional(),
+    })
+    .optional(),
+  /**
+   * The "AI Summary" panel, written by `scripts/ai-summary.ts` and committed
+   * with the post. Generation is never part of the build — see that script for
+   * why — so these are ordinary content fields by the time Astro sees them.
+   * `aiSummaryHash` fingerprints the body the summary was written from, which
+   * is what lets `--check` catch a summary describing an older draft.
+   */
+  aiSummary: z.string().optional(),
+  aiSummaryModel: z.string().optional(),
+  aiSummaryHash: z.string().optional(),
+  /** Card tile override. Absent = the typographic tile the index draws. */
+  thumbnail: z.string().optional(),
+  draft: z.boolean().default(false),
+});
+
 const spokeCollection = (dir: string) =>
   defineCollection({
     loader: glob({ pattern: '**/[^_]*.md', base: `./src/content/${dir}` }),
@@ -112,6 +158,10 @@ const segmentCollection = (dir: string) =>
   });
 
 export const collections = {
+  guides: defineCollection({
+    loader: glob({ pattern: '**/[^_]*.md', base: './src/content/guides' }),
+    schema: guideSchema,
+  }),
   'use-cases': segmentCollection('use-cases'),
   roles: segmentCollection('roles'),
   features: spokeCollection('features'),

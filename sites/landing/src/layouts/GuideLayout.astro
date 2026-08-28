@@ -1,0 +1,358 @@
+---
+// One guide. Read-mode surface: the reader arrived with a question and
+// leaves when it is answered, so nothing on the page competes with the
+// procedure.
+//
+// Composition follows the reference: title, byline row, hero, an opening
+// summary, prose with captioned screenshots, and a rail that tracks the
+// reader's position down the right. The rail is the only interactive thing
+// here and it is decoration for keyboard and small screens alike — below `lg`
+// it is replaced by an inline contents list, and with JS off it still renders
+// every link, just without the active mark.
+import Layout from './Layout.astro';
+import { Sparkles } from 'lucide-astro';
+import { APP_URL } from '../lib/urls';
+import type { MarkdownHeading } from 'astro';
+
+interface Props {
+  id: string;
+  title: string;
+  description: string;
+  h1: string;
+  subheadline: string;
+  summary: string;
+  author: string;
+  publishedAt: Date;
+  updatedAt?: Date;
+  tags: string[];
+  hero?: { src?: string; alt: string; caption?: string };
+  /** Written by scripts/ai-summary.ts and committed with the post. */
+  aiSummary?: string;
+  aiSummaryModel?: string;
+  headings: MarkdownHeading[];
+  /** Word count of the body, for the reading estimate. */
+  words: number;
+  siblings: { href: string; label: string; publishedAt: Date; summary: string }[];
+}
+
+const {
+  id,
+  title,
+  description,
+  h1,
+  subheadline,
+  author,
+  publishedAt,
+  updatedAt,
+  tags,
+  hero,
+  aiSummary,
+  aiSummaryModel,
+  headings,
+  words,
+  siblings,
+} = Astro.props;
+
+const path = `/guides/${id}`;
+const url = new URL(path, Astro.site).toString();
+
+// 220 wpm, rounded up — the figure is a promise about effort, so it rounds the
+// reader's way rather than flattering the post.
+const minutes = Math.max(1, Math.ceil(words / 220));
+
+const dateFormat = (value: Date) =>
+  value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+// Section headings only: h3 belongs to the step it sits inside, and a contents
+// list that mirrors every sub-step stops being a map.
+const contents = headings.filter((heading) => heading.depth === 2);
+
+// TechArticle, not BlogPosting: these are evergreen procedures for a technical
+// audience, and it is the type the Features and Compare spokes already emit —
+// so the whole site describes itself as one kind of thing.
+const articleSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: h1,
+  name: title,
+  description,
+  url,
+  inLanguage: 'en',
+  datePublished: publishedAt.toISOString(),
+  // Always present. A guide that has never been revised was last modified when
+  // it was published, and answer engines weigh dateModified when deciding
+  // whether a procedure still describes the world.
+  dateModified: (updatedAt ?? publishedAt).toISOString(),
+  keywords: tags.join(', '),
+  ...(aiSummary ? { abstract: aiSummary } : {}),
+  author: { '@type': 'Organization', name: author, url: Astro.site?.toString() },
+  publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+  isPartOf: {
+    '@type': 'CollectionPage',
+    name: 'Stubbase Guides',
+    url: new URL('/guides', Astro.site).toString(),
+  },
+};
+
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: Astro.site?.toString() },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'Guides',
+      item: new URL('/guides', Astro.site).toString(),
+    },
+    { '@type': 'ListItem', position: 3, name: h1, item: url },
+  ],
+};
+---
+
+<Layout
+  title={title}
+  description={description}
+  schema={[articleSchema, breadcrumbSchema]}
+  ogType="article"
+  publishedTime={publishedAt.toISOString()}
+  cta={{
+    title: 'Put those keys to work',
+    body: 'Create a project, paste the client id and secret into its .env, and your API has Google login.',
+    label: 'Start free',
+    href: `${APP_URL}/signup`,
+  }}
+>
+  <div class="mx-auto grid max-w-6xl gap-x-16 px-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
+    <!--
+      DIRECTION CONTRACT — /guides/<slug>
+      THESIS: a procedure, not an essay: the reader is mid-task with a console
+      open in the next tab, so the page answers in order and never performs.
+      Refuses the marketing-blog arrangement of hero art, pull quotes and
+      share furniture around a thin middle.
+      OWN-WORLD: the site's zinc/emerald system unchanged — hairline rules on
+      zinc-800, one emerald for links and the step rail, JetBrains Mono for
+      every value the reader must copy, no card grids.
+      STORY: "I need a client id and secret" → each console step with the exact
+      field values → the keys land in a Stubbase project and the login works.
+      FIRST VIEWPORT: breadcrumb, title at 4xl/5xl, deck, one hairline byline
+      row, the AI summary panel, and the rail already tracking section one —
+      the whole procedure legible before the first scroll.
+      FORM: article column at a 3xl measure with a sticky contents rail at
+      15rem; pinned by the brief to the reference blog's structure.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with
+      the finish review, the verdict, DESIGN.md, and every shipping raster
+      carrying its provenance.
+    -->
+
+    <article class="min-w-0 max-w-3xl pb-4">
+      <header class="pt-14 pb-10">
+          <h1 class="text-balance text-4xl leading-[1.1] font-extrabold tracking-tight text-foreground sm:text-5xl">
+            {h1}
+          </h1>
+          <p class="mt-5 text-lg leading-relaxed text-pretty text-muted-foreground">{subheadline}</p>
+
+          <div
+            class="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-subtle"
+          >
+            <span class="font-medium text-emphasis">{author}</span>
+            <span aria-hidden="true" class="text-faint">·</span>
+            <time datetime={publishedAt.toISOString()}>{dateFormat(publishedAt)}</time>
+            <span aria-hidden="true" class="text-faint">·</span>
+            <span>{minutes} min read</span>
+            {
+              updatedAt && (
+                <>
+                  <span aria-hidden="true" class="text-faint">
+                    ·
+                  </span>
+                  <span>Updated {dateFormat(updatedAt)}</span>
+                </>
+              )
+            }
+          </div>
+      </header>
+
+      {
+        aiSummary && (
+          <aside class="ai-summary mt-12" aria-label="AI summary of this article">
+            <p class="ai-summary-label">
+              <Sparkles class="h-3.5 w-3.5" />
+              AI Summary
+            </p>
+            <p class="ai-summary-body">{aiSummary}</p>
+            {aiSummaryModel && (
+              <p class="ai-summary-note">
+                Written by {aiSummaryModel} from this article, and reviewed before publishing.
+              </p>
+            )}
+          </aside>
+        )
+      }
+
+      {
+        hero && (
+          <div class="pt-10">
+            <figure class:list={['shot', !hero.src && 'shot--pending']}>
+              {hero.src ? (
+                <img src={hero.src} alt={hero.alt} fetchpriority="high" decoding="async" />
+              ) : (
+                <div class="shot-frame" role="img" aria-label={`Screenshot to come: ${hero.alt}`}>
+                  <span class="shot-file">/guides/{id}/hero.png</span>
+                </div>
+              )}
+              {hero.caption && <figcaption>{hero.caption}</figcaption>}
+            </figure>
+          </div>
+        )
+      }
+
+
+      {
+        contents.length > 1 && (
+          <nav
+            aria-label="On this page"
+            class="mt-10 rounded-xl border border-border-c bg-section px-6 py-5 lg:hidden"
+          >
+            <h2 class="mb-4 text-xs font-semibold tracking-wide text-subtle uppercase">
+              On this page
+            </h2>
+            <ol class="contents-list">
+              {contents.map((heading, index) => (
+                <li>
+                  <a href={`#${heading.slug}`}>
+                    <span class="contents-index" aria-hidden="true">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )
+      }
+
+      <div class="prose-stubbase mt-12">
+        <slot />
+      </div>
+
+      {
+        tags.length > 0 && (
+          <ul class="mt-14 flex flex-wrap gap-2 border-t border-border-faint pt-8" aria-label="Topics">
+            {tags.map((tag) => (
+              <li class="rounded-md border border-border-c px-2.5 py-1 font-mono text-xs text-subtle">
+                {tag}
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </article>
+
+    {
+      contents.length > 1 && (
+        <aside class="hidden lg:block">
+          <nav class="toc-rail" aria-label="On this page">
+            <p class="toc-rail-label">On this page</p>
+            <ul>
+              {contents.map((heading) => (
+                <li>
+                  <a href={`#${heading.slug}`} data-toc-link={heading.slug}>
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <a class="toc-rail-cta" href={`${APP_URL}/signup`}>
+              Start free
+            </a>
+          </nav>
+        </aside>
+      )
+    }
+  </div>
+
+  {
+    contents.length > 1 && (
+      <script is:inline>
+        // Marks the section the reader is in. An IntersectionObserver over the
+        // headings alone reports the wrong one while a long section fills the
+        // viewport (no heading is intersecting at all), so this tracks every
+        // heading's position and picks the last one above the reading line.
+        (function () {
+          var links = Array.prototype.slice.call(document.querySelectorAll('[data-toc-link]'));
+          if (links.length === 0) return;
+          var headings = links
+            .map(function (link) {
+              return document.getElementById(link.dataset.tocLink);
+            })
+            .filter(Boolean);
+          var active = null;
+
+          function update() {
+            var line = window.scrollY + 140;
+            var current = headings[0];
+            for (var i = 0; i < headings.length; i++) {
+              if (headings[i].offsetTop <= line) current = headings[i];
+            }
+            // Past the last section the final link stays lit rather than
+            // snapping back — the reader is still in that section.
+            if (current === active) return;
+            active = current;
+            links.forEach(function (link) {
+              link.toggleAttribute('data-active', link.dataset.tocLink === current.id);
+            });
+          }
+
+          var queued = false;
+          window.addEventListener(
+            'scroll',
+            function () {
+              if (queued) return;
+              queued = true;
+              requestAnimationFrame(function () {
+                queued = false;
+                update();
+              });
+            },
+            { passive: true },
+          );
+          window.addEventListener('resize', update, { passive: true });
+          update();
+        })();
+      </script>
+    )
+  }
+
+  {
+    siblings.length > 0 && (
+      <section class="border-t border-border-c bg-section">
+        <div class="mx-auto max-w-3xl px-6 py-14">
+          <h2 class="mb-8 text-xs font-semibold tracking-wide text-subtle uppercase">
+            More guides
+          </h2>
+          <ul class="divide-y divide-border-faint">
+            {siblings.map((post) => (
+              <li class="py-5 first:pt-0 last:pb-0">
+                <a href={post.href} class="group block">
+                  <time
+                    datetime={post.publishedAt.toISOString()}
+                    class="font-mono text-xs text-subtle"
+                  >
+                    {dateFormat(post.publishedAt)}
+                  </time>
+                  <h3 class="mt-1.5 font-semibold text-foreground transition-colors group-hover:text-primary-ink">
+                    {post.label}
+                  </h3>
+                  <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{post.summary}</p>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )
+  }
+</Layout>

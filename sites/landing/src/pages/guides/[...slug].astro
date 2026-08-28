@@ -1,0 +1,36 @@
+---
+import { getCollection, render } from 'astro:content';
+import GuideLayout from '../../layouts/GuideLayout.astro';
+
+export async function getStaticPaths() {
+  const entries = (await getCollection('guides')).filter((entry) => !entry.data.draft);
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: {
+      entry,
+      // Newest first, this guide removed — the "more guides" rail.
+      siblings: entries
+        .filter((candidate) => candidate.id !== entry.id)
+        .sort((a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf())
+        .slice(0, 3)
+        .map((candidate) => ({
+          href: `/guides/${candidate.id}`,
+          label: candidate.data.h1,
+          publishedAt: candidate.data.publishedAt,
+          summary: candidate.data.summary,
+        })),
+    },
+  }));
+}
+
+const { entry, siblings } = Astro.props;
+const { Content, headings } = await render(entry);
+
+// Counted from the source rather than the rendered HTML, so code blocks and
+// figure captions do not inflate the reading estimate.
+const words = entry.body?.split(/\s+/).filter(Boolean).length ?? 0;
+---
+
+<GuideLayout id={entry.id} headings={headings} words={words} siblings={siblings} {...entry.data}>
+  <Content />
+</GuideLayout>
