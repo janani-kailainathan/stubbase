@@ -53,6 +53,17 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "https://app.stubbase.de
   .filter(Boolean);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS ?? 30);
+// Tenants the platform itself serves, which belong to no account and so must
+// not be metered against one. `public` is the demo tenant behind the landing
+// site's "Try it live" runner and its six free resources — quoting it the Free
+// allowance would 429 the marketing site once every visitor together crossed
+// 5,000 requests in a month.
+const PLATFORM_TENANTS = new Set(
+  (process.env.PLATFORM_TENANTS ?? "public")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 // Where the SPA lives — the only place an OAuth sign-in is ever bounced back
 // to. Deliberately a constant and never a request parameter: a `?return_to=`
 // on the callback would be an open redirect handing out session tokens.
@@ -153,6 +164,91 @@ if (!userCols.includes("name")) db.exec("ALTER TABLE users ADD COLUMN name TEXT"
 if (!userCols.includes("oauth_provider"))
   db.exec("ALTER TABLE users ADD COLUMN oauth_provider TEXT");
 
+// ── Plans and entitlements ────────────────────────────────────────
+//
+// The three tiers the pricing page sells (sites/landing/src/pages/pricing.astro
+// is the copy; this is the contract). There is no payment gateway yet, so a
+// plan is set on the row — `UPDATE users SET plan = 'pro_ai' WHERE email = ?`
+// — and scripts/seed-dev-users.ts creates one account per tier locally.
+//
+// This service owns the table because it owns users. The Core Engine is
+// deliberately plan-blind: it is multi-tenant infrastructure that has never
+// heard of an account, so it is told a *number* (this tenant's monthly request
+// allowance) rather than a tier name. See the usage-flush reply below.
+//
+// Two kinds of entitlement, enforced in two different places, and the split is
+// load-bearing:
+//
+//   Features are gated at WRITE time, in the files proxy. Turning ChaosGuard or
+//   AuthGuard on means writing config.json, and this service is the only writer
+//   a browser (or the Co-Pilot, or an MCP client) can reach — ADMIN_SECRET
+//   never leaves it. Refusing the write is therefore complete, and it fails in
+//   the one place where a person can read why.
+//
+//   Requests are gated at REQUEST time, in the core, because that is the only
+//   thing in the traffic path.
+//
+// A feature must NEVER be re-enforced by ignoring config the tenant already
+// saved. Quietly treating AUTH_ENABLED as off for a downgraded account would
+// strip the guard off their data and publish it — the failure mode of an
+// entitlement check must never be "less secure than the customer asked for".
+// Denying a write is safe; un-protecting a live API is not.
+
+type PlanId = "free" | "pro" | "pro_ai";
+/**
+ * Capabilities a plan can unlock. Names match the pricing page's Features row,
+ * with one deliberate omission: `openapi.json` is NOT gated.
+ *
+ * The pricing page lists it under Pro + AI, but four content spokes promise it
+ * on every project ("Every project generates its own openapi.json" —
+ * roles/student, roles/frontend-developer, use-cases/mock-apis,
+ * features/ai-rest-api-generation), and the student and frontend-developer
+ * pitches are built on it. Enforcing the pricing line would make four pages
+ * false; leaving it open makes one line generous. Resolve the copy first, then
+ * gate it here if that is the answer.
+ */
+type Feature = "chaos" | "auth" | "webhooks" | "ai";
+
+interface Plan {
+  id: PlanId;
+  name: string;
+  monthlyRequests: number;
+  features: readonly Feature[];
+}
+
+const PLANS: Record<PlanId, Plan> = {
+  free: {
+    id: "free",
+    name: "Free",
+    monthlyRequests: 5_000,
+    features: [],
+  },
+  pro: {
+    id: "pro",
+    name: "Pro QA",
+    monthlyRequests: 50_000,
+    features: ["chaos", "auth"],
+  },
+  pro_ai: {
+    id: "pro_ai",
+    name: "Pro + AI",
+    monthlyRequests: 250_000,
+    features: ["chaos", "auth", "webhooks", "ai"],
+  },
+};
+
+const DEFAULT_PLAN: PlanId = "free";
+
+/** An unknown or NULL plan string reads as Free — never as unlimited. */
+const planOf = (u: { plan: string }): Plan => PLANS[u.plan as PlanId] ?? PLANS[DEFAULT_PLAN];
+
+const hasFeature = (u: { plan: string }, feature: Feature) =>
+  planOf(u).features.includes(feature);
+
+/** The cheapest plan that includes a feature — so a refusal can name it. */
+const cheapestPlanWith = (feature: Feature): Plan =>
+  (Object.values(PLANS).find((p) => p.features.includes(feature)) ?? PLANS.pro_ai);
+
 // ── Auth ──────────────────────────────────────────────────────────
 
 interface User {
@@ -191,7 +287,23 @@ function authenticate(req: Request): User | null {
   );
 }
 
-const publicUser = (u: User) => ({ id: u.id, email: u.email, name: u.name, plan: u.plan });
+// The SPA needs the entitlements, not just the tier name: it disables the
+// Co-Pilot composer rather than hiding it, and the usage panel draws the
+// monthly allowance as a target. Sent resolved so the browser never has to
+// keep its own copy of the plan table — and so it cannot disagree with the
+// server that actually enforces.
+const publicUser = (u: User) => {
+  const plan = planOf(u);
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    plan: plan.id,
+    planName: plan.name,
+    monthlyRequests: plan.monthlyRequests,
+    features: plan.features,
+  };
+};
 
 async function signup(req: Request): Promise<Response> {
   const body = await readJsonBody(req);
@@ -695,6 +807,53 @@ function invalidResourceName(resource: string): Response | null {
   return null;
 }
 
+/**
+ * The write-time half of the entitlement check (see PLANS).
+ *
+ * Every paid *feature* is a tenant config key, and config can only be written
+ * here, so refusing the write is the whole enforcement — there is no second
+ * door. The AI Co-Pilot's set_server_status and an MCP client both land on
+ * this same proxy, and the core's `_admin` plane needs ADMIN_SECRET, which
+ * never leaves this process.
+ *
+ * Only a key being turned ON is checked. A config that merely *carries* a key
+ * the plan does not include — because it was written on a richer plan, or is
+ * being edited to switch it off — must still save, or a downgraded account
+ * would be unable to remove the very setting it is not entitled to.
+ */
+const GATED_CONFIG: { feature: Feature; label: string; on: (env: Record<string, unknown>) => boolean }[] = [
+  {
+    feature: "chaos",
+    label: "ChaosGuard (QA_MODE)",
+    on: (env) => String(env.QA_MODE ?? "").trim().toLowerCase() === "true",
+  },
+  {
+    feature: "auth",
+    label: "AuthGuard (AUTH_ENABLED)",
+    on: (env) => String(env.AUTH_ENABLED ?? "").trim().toLowerCase() === "true",
+  },
+  {
+    feature: "webhooks",
+    label: "webhook routing (HOOK_*)",
+    on: (env) =>
+      Object.entries(env).some(
+        ([k, v]) => k.startsWith("HOOK_") && typeof v === "string" && v.trim() !== "",
+      ),
+  },
+];
+
+function planForbidsConfig(user: User, env: Record<string, unknown>): Response | null {
+  for (const gate of GATED_CONFIG) {
+    if (!gate.on(env) || hasFeature(user, gate.feature)) continue;
+    const needed = cheapestPlanWith(gate.feature);
+    return err(
+      402,
+      `${gate.label} is part of ${needed.name}. Your account is on ${planOf(user).name}.`,
+    );
+  }
+  return null;
+}
+
 async function getFile(user: User, tenantId: string, resource: string): Promise<Response> {
   const row = ownedProject(tenantId, user.id);
   if (!row) return err(404, "project not found");
@@ -734,6 +893,8 @@ async function putFile(
       }
       if (typeof v !== "string") return err(400, "config values must be strings");
     }
+    const forbidden = planForbidsConfig(user, body as Record<string, unknown>);
+    if (forbidden) return forbidden;
   } else if (!Array.isArray(body)) {
     return err(400, "body must be a JSON array of records");
   }
@@ -1200,6 +1361,16 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
  */
 async function aiChat(req: Request, user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  // Entitlement before configuration: a Free account gets the same answer
+  // whether or not this deployment happens to hold a provider key, so the
+  // refusal never doubles as a probe of the server's setup. 402 rather than
+  // 403 — the request is well-formed and the caller is who they say they are;
+  // what is missing is the plan.
+  if (!hasFeature(user, "ai"))
+    return err(
+      402,
+      `The AI Co-Pilot is part of ${cheapestPlanWith("ai").name}. Your account is on ${planOf(user).name}.`,
+    );
   if (!aiService)
     return err(503, `The AI Co-Pilot is not configured on this server (${aiDisabledReason})`);
 
@@ -1316,7 +1487,50 @@ async function ingestUsage(req: Request): Promise<Response> {
     rows.push({ tenantId, date, requests: Math.floor(requests), bytes: Math.floor(bytes) });
   }
   if (rows.length > 0) applyUsage(rows);
-  return json({ ok: true, applied: rows.length, skipped: raw.length - rows.length });
+  // The reply is the entitlement channel. Usage flows one way and the tenant's
+  // allowance flows back on the same trip, so the core learns what it may serve
+  // without ever being taught what a plan or a user is — it gets one number per
+  // tenant, refreshed every flush. That also means a plan change takes effect
+  // within one USAGE_FLUSH_MS rather than needing anything pushed.
+  // Platform tenants are simply left out of the reply: the core has no entry
+  // for them and its fail-open path serves them, so exemption needs no
+  // sentinel value and no special case on the core side.
+  const seen = [...new Set(rows.map((r) => r.tenantId))].filter(
+    (id) => !PLATFORM_TENANTS.has(id),
+  );
+  return json({
+    ok: true,
+    applied: rows.length,
+    skipped: raw.length - rows.length,
+    quotas: seen.map(quotaFor),
+  });
+}
+
+/**
+ * This tenant's monthly request allowance and what it has spent, as of now.
+ *
+ * A tenant whose project row has gone (deleted mid-flight) reports the Free
+ * allowance rather than nothing: the core still has counters for it, and the
+ * honest answer for an unknown tenant is the smallest plan, never unlimited.
+ */
+function quotaFor(tenantId: string): { tenantId: string; limit: number; used: number } {
+  const owner = db
+    .query(
+      `SELECT u.plan AS plan FROM projects p JOIN users u ON u.id = p.user_id
+       WHERE p.tenant_id = ?`,
+    )
+    .get(tenantId) as { plan: string } | null;
+  const used = db
+    .query(
+      `SELECT COALESCE(SUM(request_count), 0) AS n FROM api_usage
+       WHERE tenant_id = ? AND date >= date('now', 'start of month')`,
+    )
+    .get(tenantId) as { n: number };
+  return {
+    tenantId,
+    limit: planOf(owner ?? { plan: DEFAULT_PLAN }).monthlyRequests,
+    used: used.n,
+  };
 }
 
 /** Per-project usage: daily rows (newest first) plus a current-month total. */
@@ -1336,7 +1550,7 @@ function projectUsage(user: User, tenantId: string): Response {
        FROM api_usage WHERE tenant_id = ? AND date >= date('now', 'start of month')`,
     )
     .get(tenantId) as { requests: number; bytes: number };
-  return json({ tenantId, month, daily });
+  return json({ tenantId, month, daily, limit: planOf(user).monthlyRequests });
 }
 
 // ── Live logs (SSE proxy) ─────────────────────────────────────────
@@ -1441,6 +1655,16 @@ async function promoteDrafts(
 
 async function deployProject(user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  // Deploy is the *second* door onto live config, so the entitlement is
+  // re-checked here rather than trusted from write time. A draft can outlive
+  // the plan that was allowed to stage it — written on Pro, deployed after a
+  // downgrade — and promoting it would put a paid feature live without any
+  // request ever being refused.
+  const staged = await coreAdmin("GET", tenantId, `${DRAFT_PREFIX}config`);
+  if (staged.ok && staged.data && typeof staged.data === "object" && !Array.isArray(staged.data)) {
+    const forbidden = planForbidsConfig(user, staged.data as Record<string, unknown>);
+    if (forbidden) return forbidden;
+  }
   const out = await promoteDrafts(tenantId);
   if ("error" in out) return err(502, out.error);
   return json({ ok: true, tenant: tenantId, promoted: out.promoted });

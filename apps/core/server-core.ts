@@ -249,7 +249,41 @@ function meter(tenantId: string, res: Response): Response {
   } else {
     usage.set(key, { requests: 1, bytes });
   }
+  countAgainstQuota(tenantId);
   return res;
+}
+
+// ── Request quota ─────────────────────────────────────────────────
+// The core is plan-blind on purpose: it is multi-tenant infrastructure that has
+// never heard of an account. The Dashboard API answers every usage flush with
+// one number per tenant — the monthly request allowance — and the month-to-date
+// total it has already recorded. Between flushes the count here advances
+// locally, so overshoot is bounded by USAGE_FLUSH_MS rather than unbounded.
+//
+// Deliberately fail-OPEN: a tenant nobody has flushed yet (fresh boot, first
+// request of the month, sink unreachable) has no entry and is served. Breaking
+// a customer's CI because metering hiccupped is a worse failure than serving a
+// few thousand requests past a cap that no one is being billed for yet.
+//
+// Lives outside activeTenants for the same reason the usage counters do:
+// eviction must not hand a tenant a fresh allowance.
+
+interface QuotaState {
+  limit: number;
+  used: number; // month-to-date, as last reconciled plus local increments
+}
+const quotas = new Map<string, QuotaState>();
+
+/** True once a tenant has spent its monthly allowance. Unknown tenants pass. */
+const overQuota = (tenantId: string) => {
+  const q = quotas.get(tenantId);
+  return q !== undefined && q.used >= q.limit;
+};
+
+/** Advance the local estimate; the next flush reply replaces it with the truth. */
+function countAgainstQuota(tenantId: string) {
+  const q = quotas.get(tenantId);
+  if (q) q.used += 1;
 }
 
 let flushInFlight: Promise<void> | null = null;
@@ -270,6 +304,21 @@ async function doFlushUsage(): Promise<void> {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`status ${res.status}`);
+    // The reply reconciles what we counted locally with what the sink actually
+    // recorded, and refreshes each tenant's allowance. Anything malformed is
+    // ignored rather than fatal: a bad reply must not lose the usage we just
+    // shipped, and an absent quota simply serves (see the fail-open note).
+    const reply = (await res.json().catch(() => null)) as {
+      quotas?: { tenantId?: unknown; limit?: unknown; used?: unknown }[];
+    } | null;
+    for (const q of reply?.quotas ?? []) {
+      const id = q?.tenantId;
+      const limit = Number(q?.limit);
+      const used = Number(q?.used);
+      if (typeof id !== "string" || !NAME_RE.test(id)) continue;
+      if (!Number.isFinite(limit) || !Number.isFinite(used) || limit < 0 || used < 0) continue;
+      quotas.set(id, { limit, used });
+    }
   } catch (e) {
     // Sink unreachable: fold the counts back in so a transient outage
     // defers usage rather than losing it.
@@ -1051,7 +1100,7 @@ const safeUser = (u: Record<string, any>) => {
 async function handleAuth(req: Request, tenantId: string, segments: string[]): Promise<Response> {
   const state = await getTenant(tenantId);
   if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state);
+  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
   if (blocked) return blocked;
   if (!state.config.authEnabled) return err(404, "auth is not enabled for this tenant");
 
@@ -1133,7 +1182,7 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
   if (req.method !== "GET") return err(405, "method not allowed");
   const state = await getTenant(tenantId);
   if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state);
+  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
   if (blocked) return blocked;
   const cfg = state.config;
   const secured = (resource: string, method: string) =>
@@ -1216,7 +1265,7 @@ async function handleNotify(req: Request, tenantId: string, segments: string[]):
     return err(404, "unknown notify route");
   const state = await getTenant(tenantId);
   if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state);
+  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
   if (blocked) return blocked;
   const cfg = state.config;
   if (!cfg.authEnabled) return err(404, "notifications require AUTH_ENABLED");
@@ -1861,6 +1910,32 @@ function statusBlocked(state: TenantState): Response | null {
 
 const statusGuard: Middleware = (ctx) => statusBlocked(ctx.state) ?? undefined;
 
+// 429 once a tenant has spent its monthly request allowance. Same reach as
+// statusBlocked — quotaGuard covers CRUD, and every other public surface
+// (auth, notify, openapi) calls this directly, so the plane runs out together.
+// _admin is never checked: the dashboard has to stay usable precisely when a
+// project has hit its cap, or the owner could not see why it stopped.
+//
+// The count is the tenant's, not the caller's, so this is deliberately ahead of
+// authGuard: an over-quota project should stop costing the box work before it
+// verifies signatures, and a 429 that required a token would be unreadable to
+// the client that is being throttled.
+function quotaBlocked(tenantId: string): Response | null {
+  const q = quotas.get(tenantId);
+  if (!q || q.used < q.limit) return null;
+  return json(
+    {
+      error: "monthly request quota exceeded",
+      limit: q.limit,
+      used: q.used,
+      hint: "Usage resets at the start of the month.",
+    },
+    429,
+  );
+}
+
+const quotaGuard: Middleware = (ctx) => quotaBlocked(ctx.tenantId) ?? undefined;
+
 const authGuard: Middleware = (ctx) => {
   const cfg = ctx.state.config;
   if (!cfg.authEnabled) return;
@@ -2108,6 +2183,7 @@ const coreOperation: Middleware = async (ctx) => {
 
 const PIPELINE: Middleware[] = [
   statusGuard,
+  quotaGuard,
   authGuard,
   chaosGuard,
   validationGuard,

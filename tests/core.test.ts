@@ -787,6 +787,189 @@ describe("usage metering", () => {
   }, 30_000);
 });
 
+// ── Request quota ──────────────────────────────────────────────────
+
+/**
+ * The monthly request allowance, enforced here because the core is the only
+ * thing in the traffic path.
+ *
+ * The core stays plan-blind: it learns one number per tenant from the reply to
+ * its own usage flush, which is what this stub sink plays back. Everything
+ * below is driven through that channel, so the test exercises exactly the
+ * contract the Dashboard API implements — and nothing here knows what a plan is
+ * either.
+ */
+describe("request quota", () => {
+  /** A usage sink that accumulates, then quotes each tenant a fixed limit. */
+  function quotaSink(limit: number) {
+    const used = new Map<string, number>();
+    let flushes = 0;
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { rows?: { tenantId: string; requests: number }[] };
+        for (const row of body.rows ?? [])
+          used.set(row.tenantId, (used.get(row.tenantId) ?? 0) + row.requests);
+        flushes += 1;
+        return Response.json({
+          ok: true,
+          quotas: [...used].map(([tenantId, n]) => ({ tenantId, limit, used: n })),
+        });
+      },
+    });
+    return {
+      server,
+      url: `http://127.0.0.1:${server.port}/_internal/usage`,
+      get flushes() {
+        return flushes;
+      },
+    };
+  }
+
+  const flush = (core: Service, tenant: string) =>
+    fetch(`${core.base}/${tenant}/_admin/flush`, { method: "POST", headers: adminAuth });
+
+  test("serves up to the allowance, then answers 429", async () => {
+    const sink = quotaSink(3);
+    try {
+      const metered = await boot("quota", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000", // only our explicit flushes fire
+      });
+      await seed(metered, "q", { posts: [{ id: "1" }] });
+
+      for (let i = 0; i < 3; i++) expect((await fetch(`${metered.base}/q/posts`)).status).toBe(200);
+
+      // Nothing has been reconciled yet, so the tenant is still unknown and
+      // still served — the fail-open half of the contract.
+      const before = sink.flushes;
+      await flush(metered, "q");
+      await waitFor(() => sink.flushes > before);
+
+      const blocked = await fetch(`${metered.base}/q/posts`);
+      expect(blocked.status).toBe(429);
+      const body = await blocked.json();
+      expect(body).toMatchObject({ error: "monthly request quota exceeded", limit: 3 });
+      // Public-plane errors keep the wildcard, or a browser could not read why.
+      expect(blocked.headers.get("access-control-allow-origin")).toBe("*");
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a tenant nobody has reconciled is served — metering must not gate traffic", async () => {
+    const sink = quotaSink(1);
+    try {
+      const metered = await boot("quota-open", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "known", { posts: [{ id: "1" }] });
+      await seed(metered, "unseen", { posts: [{ id: "1" }] });
+
+      await fetch(`${metered.base}/known/posts`);
+      const before = sink.flushes;
+      await flush(metered, "known");
+      await waitFor(() => sink.flushes > before);
+
+      // `known` is over its allowance of 1…
+      expect((await fetch(`${metered.base}/known/posts`)).status).toBe(429);
+      // …but `unseen` has never been quoted a limit, and is served anyway. A
+      // sink outage or a fresh boot must not take customers down.
+      expect((await fetch(`${metered.base}/unseen/posts`)).status).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("the whole public plane runs out together, but _admin stays reachable", async () => {
+    const sink = quotaSink(1);
+    try {
+      const metered = await boot("quota-plane", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "p", {
+        posts: [{ id: "1" }],
+        config: { AUTH_ENABLED: "true" },
+      });
+
+      await fetch(`${metered.base}/p/posts`);
+      const before = sink.flushes;
+      await flush(metered, "p");
+      await waitFor(() => sink.flushes > before);
+
+      // Every public surface, the same way statusBlocked takes them all down.
+      expect((await fetch(`${metered.base}/p/posts`)).status).toBe(429);
+      expect((await fetch(`${metered.base}/p/openapi.json`)).status).toBe(429);
+      const signup = await fetch(`${metered.base}/p/auth/signup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "a@b.co", password: "password123" }),
+      });
+      expect(signup.status).toBe(429);
+
+      // The owner has to be able to see why their API stopped, so the plane
+      // the dashboard uses is never quota-checked.
+      const admin = await fetch(`${metered.base}/p/_admin/files/posts`, { headers: adminAuth });
+      expect(admin.status).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("an over-quota tenant is refused before its token is checked", async () => {
+    // quotaGuard sits ahead of authGuard: an exhausted project should stop
+    // costing the box work, and a 429 that demanded credentials would be
+    // unreadable to the client being throttled.
+    const sink = quotaSink(1);
+    try {
+      const metered = await boot("quota-auth", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "a", { posts: [{ id: "1" }], config: { AUTH_ENABLED: "true" } });
+
+      await fetch(`${metered.base}/a/posts`);
+      const before = sink.flushes;
+      await flush(metered, "a");
+      await waitFor(() => sink.flushes > before);
+
+      // With auth on and no token this would be 401; the quota answers first.
+      const res = await fetch(`${metered.base}/a/posts`);
+      expect(res.status).toBe(429);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a malformed quota reply is ignored rather than fatal", async () => {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        await req.json();
+        return Response.json({ ok: true, quotas: [{ tenantId: "bad name!", limit: "x", used: -1 }] });
+      },
+    });
+    try {
+      const metered = await boot("quota-junk", {
+        USAGE_SINK_URL: `http://127.0.0.1:${server.port}/_internal/usage`,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "j", { posts: [{ id: "1" }] });
+
+      await fetch(`${metered.base}/j/posts`);
+      await flush(metered, "j");
+      await Bun.sleep(300);
+      // Nothing valid was quoted, so nothing is enforced — and the core is
+      // still alive, which is the point.
+      expect((await fetch(`${metered.base}/j/posts`)).status).toBe(200);
+    } finally {
+      server.stop(true);
+    }
+  }, 30_000);
+});
+
 // ── Live request log + SSE ─────────────────────────────────────────
 
 /**
@@ -864,6 +1047,7 @@ describe("live request log", () => {
     const stages = entry.lifecycle.map((s: any) => s.stage);
     expect(stages).toEqual([
       "statusGuard",
+      "quotaGuard",
       "authGuard",
       "chaosGuard",
       "validationGuard",
@@ -888,7 +1072,11 @@ describe("live request log", () => {
     expect(failed[0].stage).toBe("authGuard");
     expect(failed[0].note).toBe("rejected with 401");
     // Stages after the rejection never ran.
-    expect(entry.lifecycle.map((s: any) => s.stage)).toEqual(["statusGuard", "authGuard"]);
+    expect(entry.lifecycle.map((s: any) => s.stage)).toEqual([
+      "statusGuard",
+      "quotaGuard",
+      "authGuard",
+    ]);
     stream.close();
   });
 

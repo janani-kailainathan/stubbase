@@ -50,6 +50,33 @@ function readDbOf<T>(service: Service, fn: (db: Database) => T): T {
   }
 }
 
+/**
+ * Put an account on a plan.
+ *
+ * Deliberately a direct UPDATE: there is no payment gateway and therefore no
+ * route that changes a plan, so this is exactly what an operator does in
+ * production (`UPDATE users SET plan = ...`). The column is part of the
+ * contract now, which is what makes reaching for it here fair game.
+ */
+function setPlanOn(service: Service, email: string, plan: string) {
+  const db = new Database(join(service.dir, "app.sqlite"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000;");
+    db.query("UPDATE users SET plan = ? WHERE email = ?").run(plan, email);
+  } finally {
+    db.close();
+  }
+}
+
+const setPlan = (email: string, plan: string) => setPlanOn(app, email, plan);
+
+/** Signs up an account that is entitled to everything. */
+async function signupOnPaidPlan(on: Service = app): Promise<Account> {
+  const account = await signup(on);
+  setPlanOn(on, account.email, "pro_ai");
+  return account;
+}
+
 const as = (token: string) => ({ authorization: `Bearer ${token}` });
 const jsonHeaders = (token?: string) => ({
   "content-type": "application/json",
@@ -617,6 +644,9 @@ describe("tenant config writes", () => {
 
   beforeAll(async () => {
     owner = await signup();
+    // QA_MODE is a paid key; this block is about the config *shape*, so take
+    // the entitlement out of the picture. The gate has its own suite below.
+    setPlan(owner.email, "pro_ai");
     tenantId = (await createProject(owner.token, "Config", { posts: [] })).tenantId;
   }, 30_000);
 
@@ -755,6 +785,248 @@ describe("usage ingestion", () => {
   });
 });
 
+// ── Plans and entitlements ─────────────────────────────────────────
+
+/**
+ * The three tiers actually mean something.
+ *
+ * Two enforcement points, and the suite covers both sides of each: features are
+ * refused at WRITE time in the files proxy (the only config writer a user can
+ * reach), and the request allowance is handed to the core on the usage-flush
+ * reply. What the SPA does with `features` is presentation — these are the
+ * checks that hold when the browser is lying.
+ */
+describe("plans and entitlements", () => {
+  const config = (token: string, tenantId: string, body: Record<string, unknown>) =>
+    fetch(`${app.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(token),
+      body: JSON.stringify(body),
+    });
+
+  test("a new account is on Free, and says so with its entitlements resolved", async () => {
+    const owner = await signup();
+    const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) =>
+      r.json(),
+    );
+    expect(user.plan).toBe("free");
+    expect(user.planName).toBe("Free");
+    expect(user.monthlyRequests).toBe(5_000);
+    // Resolved server-side so the browser never keeps its own plan table.
+    expect(user.features).toEqual([]);
+  }, 30_000);
+
+  test("an unknown plan string reads as Free, never as unlimited", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "enterprise-gold"); // a typo, or a tier that went away
+    const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) =>
+      r.json(),
+    );
+    expect(user.monthlyRequests).toBe(5_000);
+    expect(user.features).toEqual([]);
+  }, 30_000);
+
+  test("Free cannot switch on a paid config key, and the refusal names the plan", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Gate", { posts: [] });
+
+    const chaos = await config(owner.token, tenantId, { QA_MODE: "true" });
+    expect(chaos.status).toBe(402);
+    expect((await chaos.json()).error).toContain("Pro QA");
+
+    const auth = await config(owner.token, tenantId, { AUTH_ENABLED: "true" });
+    expect(auth.status).toBe(402);
+
+    const hooks = await config(owner.token, tenantId, {
+      HOOK_AFTER_INSERT_POSTS: "https://example.com/hook",
+    });
+    expect(hooks.status).toBe(402);
+    expect((await hooks.json()).error).toContain("Pro + AI");
+  }, 30_000);
+
+  test("…and the core never sees the refused setting", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Refused", { posts: [] });
+    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(402);
+
+    // The write is refused before it reaches the core: a 402 that still staged
+    // the draft would go live on the next deploy.
+    const draft = await fetch(`${core.base}/${tenantId}/_admin/files/draft_config`, {
+      headers: { authorization: `Bearer ${ADMIN_SECRET}` },
+    });
+    expect(draft.status).toBe(404);
+  }, 30_000);
+
+  test("a paid key that is being switched OFF still saves on Free", async () => {
+    // Otherwise a downgraded account could never remove the setting it is no
+    // longer entitled to — the gate is on turning something on, not on the
+    // key existing.
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Downgrade", { posts: [] });
+
+    const off = await config(owner.token, tenantId, {
+      QA_MODE: "false",
+      AUTH_ENABLED: "",
+      HOOK_AFTER_INSERT_POSTS: "",
+    });
+    expect(off.status).toBe(200);
+  }, 30_000);
+
+  test("Pro QA unlocks chaos and auth but not the Co-Pilot", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "ProQA", { posts: [] });
+
+    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(200);
+    expect((await config(owner.token, tenantId, { AUTH_ENABLED: "true" })).status).toBe(200);
+
+    const hooks = await config(owner.token, tenantId, {
+      HOOK_AFTER_INSERT_POSTS: "https://example.com/hook",
+    });
+    expect(hooks.status).toBe(402);
+
+    const ai = await fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
+    });
+    expect(ai.status).toBe(402);
+    expect((await ai.json()).error).toContain("Pro + AI");
+  }, 30_000);
+
+  test("the Co-Pilot gate is checked before the provider key, so it can't probe the server", async () => {
+    // This instance has no AI key at all. Free is told about its plan (402);
+    // Pro + AI gets past the entitlement and only then meets the 503. If the
+    // order were reversed, both would see the same answer and the refusal
+    // would leak whether the deployment is configured.
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Order");
+    const ask = () =>
+      fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
+        method: "POST",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
+      });
+
+    expect((await ask()).status).toBe(402);
+    setPlan(owner.email, "pro_ai");
+    expect((await ask()).status).toBe(503);
+  }, 30_000);
+
+  test("ownership still comes first: a stranger gets 404, not a plan lecture", async () => {
+    const owner = await signup();
+    const stranger = await signup();
+    setPlan(stranger.email, "free");
+    const { tenantId } = await createProject(owner.token, "Private", { posts: [] });
+
+    const res = await config(stranger.token, tenantId, { QA_MODE: "true" });
+    expect(res.status).toBe(404);
+  }, 30_000);
+
+  test("deploy re-checks the plan — a draft cannot smuggle a paid feature live", async () => {
+    // Deploy is the second door onto live config. Stage the draft while
+    // entitled, then downgrade and try to promote it: without the check the
+    // feature would go live having never been refused.
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Smuggle", { posts: [] });
+    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(200);
+
+    setPlan(owner.email, "free");
+    const deploy = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+    });
+    expect(deploy.status).toBe(402);
+
+    // …and the live config really was left alone.
+    const live = await fetch(`${core.base}/${tenantId}/_admin/files/config`, {
+      headers: { authorization: `Bearer ${ADMIN_SECRET}` },
+    });
+    if (live.status === 200) expect((await live.json()).QA_MODE).not.toBe("true");
+
+    // Restore the plan and it goes through, so the check gates on entitlement
+    // rather than simply blocking any config deploy.
+    setPlan(owner.email, "pro");
+    const allowed = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+    });
+    expect(allowed.status).toBe(200);
+  }, 30_000);
+
+  test("a deploy carrying no staged config is unaffected", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "PlainDeploy", { posts: [{ id: "1" }] });
+    const res = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+    });
+    expect(res.status).toBe(200);
+  }, 30_000);
+
+  test("the platform's own demo tenant is never quoted an allowance", async () => {
+    // `public` backs the landing site's live demo and belongs to no account.
+    // Metering it against the Free plan would 429 the marketing site once all
+    // its visitors together crossed 5,000 requests in a month.
+    const date = new Date().toISOString().slice(0, 10);
+    const res = await fetch(`${app.base}/_internal/usage`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
+      body: JSON.stringify({
+        rows: [
+          { tenantId: "public", date, requests: 9_000, bytes: 90 },
+          { tenantId: "unowned-demo", date, requests: 1, bytes: 1 },
+        ],
+      }),
+    });
+    const body = await res.json();
+    // Still counted — the usage is real and worth seeing — just not capped.
+    expect(body.applied).toBe(2);
+    expect(body.quotas.map((q: any) => q.tenantId)).toEqual(["unowned-demo"]);
+  }, 30_000);
+
+  test("the usage flush reply carries each tenant's allowance back to the core", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Quota", { posts: [] });
+    const date = new Date().toISOString().slice(0, 10);
+
+    const res = await fetch(`${app.base}/_internal/usage`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
+      body: JSON.stringify({ rows: [{ tenantId, date, requests: 12, bytes: 120 }] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // One number per tenant — the core is never told what a plan is.
+    expect(body.quotas).toEqual([{ tenantId, limit: 50_000, used: 12 }]);
+  }, 30_000);
+
+  test("a tenant with no project row is quoted the smallest plan, not unlimited", async () => {
+    const date = new Date().toISOString().slice(0, 10);
+    const res = await fetch(`${app.base}/_internal/usage`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
+      body: JSON.stringify({ rows: [{ tenantId: "orphaned", date, requests: 4, bytes: 40 }] }),
+    });
+    expect((await res.json()).quotas).toEqual([
+      { tenantId: "orphaned", limit: 5_000, used: 4 },
+    ]);
+  }, 30_000);
+
+  test("the owner's usage view reports the allowance it is measured against", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro_ai");
+    const { tenantId } = await createProject(owner.token, "Panel", { posts: [] });
+
+    const usage = await fetch(`${app.base}/projects/${tenantId}/usage`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(usage.limit).toBe(250_000);
+  }, 30_000);
+});
+
 // ── CORS allow-list ────────────────────────────────────────────────
 
 describe("CORS allow-list", () => {
@@ -792,8 +1064,10 @@ describe("CORS allow-list", () => {
 describe("AI Co-Pilot", () => {
   test("reports 503 when no provider key is configured", async () => {
     // The default app instance runs with AI disabled — this asserts the
-    // graceful path, and the suite never makes a billed provider call.
-    const owner = await signup();
+    // graceful path, and the suite never makes a billed provider call. The
+    // account must be entitled, or it would meet the plan gate first (which
+    // "plans and entitlements" covers).
+    const owner = await signupOnPaidPlan();
     const { tenantId } = await createProject(owner.token, "AI");
 
     const res = await fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
@@ -875,7 +1149,7 @@ describe("AI Co-Pilot agent loop", () => {
   test("runs the tool, feeds the result back, and answers in prose", async () => {
     seen = [];
     script = [];
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const { tenantId } = await createProject(owner.token, "Co-Pilot", {}, aiApp);
 
     const res = await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
@@ -957,7 +1231,7 @@ describe("AI Co-Pilot agent loop", () => {
       [{ functionCall: { name: "stage_schema_drafts", args: { tables: [] } } }],
       [{ text: "I can't delete data with that tool." }],
     ];
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const { tenantId } = await createProject(owner.token, "Clear", { posts: [{ id: "1" }] }, aiApp);
 
     const res = await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
@@ -989,7 +1263,7 @@ describe("AI Co-Pilot agent loop", () => {
       ],
       [{ text: "Confirm in the dashboard and I'll consider it done." }],
     ];
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const { tenantId } = await createProject(owner.token, "Deletable", { posts: [{ id: "1" }] }, aiApp);
 
     const res = await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
@@ -1022,7 +1296,7 @@ describe("AI Co-Pilot agent loop", () => {
       [{ functionCall: { name: "delete_resources", args: { names: ["ghosts"], mode: "empty" } } }],
       [{ text: "That table doesn't exist." }],
     ];
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const { tenantId } = await createProject(owner.token, "NoGhosts", { posts: [{ id: "1" }] }, aiApp);
 
     await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
@@ -1040,7 +1314,7 @@ describe("AI Co-Pilot agent loop", () => {
   test("rejects a malformed conversation before calling the provider", async () => {
     seen = [];
     script = [];
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const { tenantId } = await createProject(owner.token, "AI validation", {}, aiApp);
 
     // The browser round-trips the whole history, so it is untrusted input.
@@ -1068,7 +1342,7 @@ describe("AI Co-Pilot agent loop", () => {
   }, 30_000);
 
   test("a second user cannot drive the Co-Pilot on someone else's project", async () => {
-    const owner = await signup(aiApp);
+    const owner = await signupOnPaidPlan(aiApp);
     const intruder = await signup(aiApp);
     const { tenantId } = await createProject(owner.token, "Private", {}, aiApp);
 

@@ -73,6 +73,7 @@ docker-compose service `core` · systemd `deploy/files/stubbase-core.service`
 | `AI_MODEL_NAME` | `models/gemini-3.5-flash-lite` | Model string, with or without the `models/` prefix. **Must support function calling** — the Co-Pilot is an agent, and a model without tools (the Gemma family) can only talk about acting. Validated at boot; a malformed value **exits**, since it becomes a URL path segment. |
 | `AI_TIMEOUT_MS` | `60000` | Per-call timeout (1s–300s). One chat turn can make several calls when tools run. |
 | `AI_BASE_URL` | Google's v1beta endpoint | Override only to point at a mock in dev/tests. |
+| `PLATFORM_TENANTS` | `public` | Comma-separated tenants the platform serves itself. Counted for usage but never given a request allowance — see §2b. |
 
 Where it's set: dev shell · docker-compose service `dashboard-api` (adds
 `ALLOWED_ORIGINS=http://app.stubbase.localhost`) · systemd
@@ -190,6 +191,73 @@ with `HOOK_ALLOW_PRIVATE=true`.
 disk (encryption-at-rest is a known backlog item).
 
 ---
+
+## 2b. Plans and entitlements
+
+Not an env var: a plan is a column on the `users` row, and the table that gives
+it meaning is `PLANS` in `apps/dashboard-api/server-app.ts`. There is no payment
+gateway yet, so a plan is set by hand:
+
+```sql
+UPDATE users SET plan = 'pro_ai' WHERE email = 'someone@example.com';
+```
+
+Locally, `scripts/seed-dev-users.ts` (run automatically by `scripts/dev.ts`)
+creates one account per plan — `free@`, `pro@` and `ai@stubbase.dev`, password
+`devpassword123` — so all three sides can be exercised without touching SQL.
+
+| Plan id | Name | Requests/month | Unlocks |
+|---|---|---|---|
+| `free` | Free | 5,000 | — |
+| `pro` | Pro QA | 50,000 | `chaos`, `auth` |
+| `pro_ai` | Pro + AI | 250,000 | `chaos`, `auth`, `webhooks`, `ai` |
+
+An unknown or absent plan string reads as **Free**, never as unlimited.
+
+**Features are enforced at write time.** Each maps to tenant config keys, and
+the dashboard's files proxy refuses to *turn one on* off-plan with `402`:
+
+| Feature | Config keys it gates |
+|---|---|
+| `chaos` | `QA_MODE=true` |
+| `auth` | `AUTH_ENABLED=true` |
+| `webhooks` | any non-empty `HOOK_*` |
+| `ai` | none — gates `POST /projects/<id>/ai/chat` |
+
+Only switching a key **on** is checked: a config that carries `QA_MODE=false`
+or an empty `HOOK_*` always saves, so an account can always remove a setting it
+is no longer entitled to. Config that was already saved keeps working — a
+feature is never re-enforced by ignoring settings the tenant has live, because
+quietly treating `AUTH_ENABLED` as off would publish their data.
+
+There are **two** doors onto live config and both are checked: the write
+(`PUT /projects/<id>/files/config`, which stages `draft_config`) and the deploy
+(`POST /projects/<id>/deploy`, which promotes it). A draft can outlive the plan
+that was allowed to stage it, so deploy re-checks rather than trusting the
+earlier write.
+
+`PLATFORM_TENANTS` (Dashboard API env, default `public`) lists tenants the
+platform itself serves. They belong to no account, so they are counted but
+never quoted an allowance — the landing site's demo tenant would otherwise be
+capped at the Free plan across all its visitors. They are simply left out of
+the flush reply, so the core's fail-open path serves them with no special case.
+
+`GET /<tenant>/openapi.json` is deliberately **not** gated, though the pricing
+page lists it under Pro + AI — four content spokes promise it on every project.
+See the comment on `type Feature`.
+
+**The request allowance is enforced at request time, in the core.** The core
+never learns what a plan is: the Dashboard API answers each usage flush with
+one number per tenant (`quotas: [{ tenantId, limit, used }]`), and the core
+serves until `used >= limit`, then answers `429` on the whole public plane —
+CRUD, auth, notify and openapi together, with `_admin` still reachable so the
+owner can see why. Between flushes the count advances locally, so overshoot is
+bounded by `USAGE_FLUSH_MS`.
+
+A tenant the core has never been quoted a limit for is **served** (fresh boot,
+sink unreachable, first request of the month). Metering failing must not take
+customer traffic down. That also means quotas are unenforced entirely when
+`USAGE_SINK_URL` is unset.
 
 ## 3. Frontend build env
 
