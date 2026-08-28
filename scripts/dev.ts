@@ -15,6 +15,7 @@
  * `docker compose up --build` (see BUILD.md).
  */
 import { seedPublicTenant } from "./seed-public-tenant.ts";
+import { DEV_PASSWORD, DEV_USERS, seedDevUsers } from "./seed-dev-users.ts";
 
 const CORE_PORT = 3000;
 const APP_PORT = 3001;
@@ -140,6 +141,13 @@ if (await seedPublicTenant(process.argv.includes("--reseed"))) {
   console.log(dim("[dev] seeded the `public` demo tenant (tenants/public)"));
 }
 
+// One account per plan. Runs before the backends so the Dashboard API opens a
+// database that already has them, and so the DB_PATH here is the one it uses.
+const seededUsers = await seedDevUsers();
+if (seededUsers > 0) {
+  console.log(dim(`[dev] seeded ${seededUsers} dashboard account(s), one per plan`));
+}
+
 /** Line-buffers a child stream so prefixes never split mid-line. */
 async function pump(stream: ReadableStream<Uint8Array>, prefix: string) {
   const decoder = new TextDecoder();
@@ -199,6 +207,9 @@ console.log(
     `  landing     http://localhost:${LANDING_PORT}`,
     `  core API    http://127.0.0.1:${CORE_PORT}        ${dim("try /public/users/1")}`,
     `  app API     http://127.0.0.1:${APP_PORT}`,
+    "",
+    dim("  accounts    " + DEV_USERS.map((u) => `${u.email} (${u.plan})`).join("  ·  ")),
+    dim(`              password ${DEV_PASSWORD}`),
     "",
     dim(`  ADMIN_SECRET=${ADMIN_SECRET} · data in ./tenants and ./app.sqlite · Ctrl-C to stop`),
     "",
