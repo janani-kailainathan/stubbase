@@ -11,3 +11,11 @@ tenants/*
 sites/*/.env.local
 deploy/inventory.ini
 deploy/inventory.local.ini
+
+# Per-developer tooling: the vendored skill install and local settings.
+.claude/
+# Design-tool state: config.json and the surface briefs are shared; the local
+# override and the review screenshots (megabytes of them) are not.
+.impeccable/config.local.json
+.impeccable/review/
+.impeccable/questions/
