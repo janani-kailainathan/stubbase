@@ -1,0 +1,29 @@
+-- split into students page,  QA page, mcp storage across multiple llms page, mocking page, then combined landing page
+
+-- mcp, connect from chatgpt or claude and create api
+
+-- seo setup, google analytics and google search console set up
+
+-- split api and pages into two different vms ? research
+
+-- stress test locally
+
+-- deploy to vps
+
+-- go to reddit and search for students groups and start publishing, go startup group and ask for idea approval
+
+-- google and github login to stubbase
+   -- enable api created to support register, login, protected api
+   -- google and github login
+
+-- since i've rest api only give chat tool to test locally ( run apis )
+
+-- add graphql support
+
+-- payment api support
+
+-- firebase alternative
+
+-- ws support
+
+-- support push notification

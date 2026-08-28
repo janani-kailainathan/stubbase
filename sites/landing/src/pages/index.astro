@@ -1,8 +1,7 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader } from 'lucide-astro';
 import Layout from '../layouts/Layout.astro';
 import { APP_URL, CORE_URL } from '../lib/urls';
-import { NAV_GROUPS } from '../lib/nav';
 
 const publicResources = [
   { path: '/posts', count: '100 posts' },
@@ -54,7 +53,7 @@ const pipeline = [
   title="Stubbase — The Instant Backend for Frontend & QA Teams"
   description="Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero database configuration. Built for autonomous frontend development and deterministic chaos testing."
 >
-  <section class="relative overflow-hidden border-b border-border-c">
+  <section class="relative overflow-hidden">
     <div
       class="hero-glow pointer-events-none absolute top-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-primary blur-[120px]"
     >
@@ -105,7 +104,7 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="border-b border-border-c">
+  <section>
     <div class="mx-auto max-w-5xl px-6 py-20">
       <h2 class="mb-4 text-3xl font-extrabold text-foreground">Stop Writing Boilerplate APIs</h2>
       <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
@@ -128,7 +127,7 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="border-b border-border-c bg-section">
+  <section class="bg-section">
     <div class="mx-auto max-w-5xl px-6 py-20">
       <h2 class="mb-4 text-3xl font-extrabold text-foreground">A Complete API Pipeline</h2>
       <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
@@ -151,7 +150,7 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="border-b border-border-c bg-background">
+  <section class="bg-background">
     <div class="mx-auto max-w-3xl px-6 py-24 text-center">
       <h2 class="mb-4 text-3xl font-extrabold text-foreground">Try it live</h2>
       <p class="mb-8 text-muted-foreground">
@@ -207,7 +206,7 @@ const pipeline = [
     </div>
   </section>
 
-  <section id="free-resources" class="border-b border-border-c bg-section">
+  <section id="free-resources" class="bg-section">
     <div class="mx-auto max-w-4xl px-6 py-20">
       <div class="mb-12 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Free Resources</h2>
@@ -258,35 +257,6 @@ const pipeline = [
     </div>
   </section>
 
-  <section>
-    <div class="mx-auto max-w-6xl px-6 py-20">
-      <h2 class="mb-12 text-3xl font-extrabold text-foreground">Explore Stubbase</h2>
-      <div class="grid gap-10 md:grid-cols-3">
-        {
-          NAV_GROUPS.map((group) => (
-            <div>
-              <p class="mb-4 text-xs font-semibold tracking-wide text-subtle uppercase">
-                {group.label}
-              </p>
-              <ul class="space-y-3">
-                {group.links.map((link) => (
-                  <li>
-                    <a
-                      href={link.href}
-                      class="group flex items-center gap-2 text-sm text-emphasis transition-colors hover:text-primary-accent-hover"
-                    >
-                      {link.label}
-                      <ArrowRight class="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        }
-      </div>
-    </div>
-  </section>
 </Layout>
 
 <script>
