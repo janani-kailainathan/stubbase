@@ -82,6 +82,7 @@
   --color-danger-soft-border: var(--danger-soft-border);
 
   --color-warning-ink: var(--warning-ink);
+  --color-warning-fill: var(--warning-fill);
   --color-warning-emphasis: var(--warning-emphasis);
   --color-warning-soft: var(--warning-soft);
   --color-warning-soft-weak: var(--warning-soft-weak);
@@ -217,6 +218,10 @@
 
   --warning-ink: var(--color-amber-700);
   --warning-emphasis: var(--color-amber-700);
+  /* Solid amber for a filled bar. Follows --danger-fill's light/dark pair
+     rather than --warning-ink's: ink is picked for contrast as *text* on the
+     page, a fill only has to read against the track behind it. */
+  --warning-fill: var(--color-amber-600);
   --warning-soft: color-mix(in oklab, var(--color-amber-500) 14%, transparent);
   --warning-soft-weak: color-mix(in oklab, var(--color-amber-500) 9%, transparent);
   --warning-soft-border: color-mix(in oklab, var(--color-amber-600) 35%, transparent);
@@ -320,6 +325,7 @@
 
   --warning-ink: var(--color-amber-400);
   --warning-emphasis: var(--color-amber-300);
+  --warning-fill: var(--color-amber-500);
   --warning-soft: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
   --warning-soft-weak: color-mix(in oklab, var(--color-amber-500) 5%, transparent);
   --warning-soft-border: color-mix(in oklab, var(--color-amber-500) 30%, transparent);

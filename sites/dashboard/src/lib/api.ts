@@ -96,11 +96,26 @@ function appHeaders(hasBody = false): Record<string, string> {
 
 // ── Dashboard API: auth ───────────────────────────────────────────
 
+/** Capabilities a plan unlocks. Mirrors the Feature union in server-app.ts. */
+export type PlanFeature = 'chaos' | 'auth' | 'webhooks' | 'ai'
+
+/**
+ * The signed-in account, with its plan already resolved by the server.
+ *
+ * `features` and `monthlyRequests` arrive rather than being looked up here on
+ * purpose: the browser must never hold its own copy of the plan table, because
+ * a stale copy would disagree with the side that actually enforces. Everything
+ * the UI does with these is presentational — the server refuses the call
+ * regardless of what the SPA believes.
+ */
 export interface ApiUser {
   id: number
   email: string
   name: string | null
   plan: string
+  planName: string
+  monthlyRequests: number
+  features: PlanFeature[]
 }
 
 export interface AuthResponse {
@@ -267,6 +282,8 @@ export interface UsageResponse {
   tenantId: string
   month: { requests: number; bytes: number }
   daily: UsageDay[]
+  /** The plan's monthly request allowance — what the core throttles against. */
+  limit: number
 }
 
 export const fetchUsage = (tenantId: string) =>

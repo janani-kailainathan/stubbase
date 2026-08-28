@@ -13,6 +13,8 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useCoPilotChat, useIsCoPilotThinking } from '@/hooks/ai'
+import { useHasFeature } from '@/hooks/plan'
+import { PlanNotice } from '@/components/shell/PlanNotice'
 import { useCurrentProject } from '@/hooks/projects'
 import { useApplyDeletion } from '@/hooks/resources'
 import { AI_EXAMPLES } from '@/lib/ai-examples'
@@ -452,10 +454,11 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
   const setChatTurns = useWorkspaceStore((s) => s.setChatTurns)
   const setPaneMode = useWorkspaceStore((s) => s.setPaneMode)
   const chat = useCoPilotChat(tenantId)
+  const entitled = useHasFeature('ai')
 
   const send = () => {
     const text = input.trim()
-    if (!text || !tenantId || chat.isPending) return
+    if (!text || !tenantId || chat.isPending || !entitled) return
     setInput('')
     setPaneMode('ai') // sending from the editor should show you the answer
 
@@ -475,26 +478,36 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
     })
   }
 
+  // Off-plan renders the composer disabled rather than removing it: a control
+  // that vanishes teaches nobody it exists, and the point of showing it is that
+  // the reader learns the Co-Pilot is there and what it would take to use it.
+  // The button keeps its shape so the bar does not reflow between plans.
   return (
-    <div className="flex shrink-0 gap-2 border-t border-border p-3">
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') send()
-        }}
-        disabled={!tenantId || chat.isPending}
-        placeholder={chat.isPending ? 'Working…' : 'Ask the AI Co-Pilot…'}
-        className="min-w-0 flex-1 rounded-md border border-border bg-code-bg px-3 py-2 font-mono text-xs text-emphasis placeholder-faint focus:border-primary/50 focus:outline-none disabled:opacity-60"
-      />
-      <button
-        onClick={send}
-        disabled={!tenantId || chat.isPending || !input.trim()}
-        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-40"
-      >
-        <ArrowUp className="h-4 w-4" />
-      </button>
+    <div className="shrink-0 border-t border-border p-3">
+      {!entitled && <PlanNotice feature="ai" label="The AI Co-Pilot" />}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') send()
+          }}
+          disabled={!tenantId || chat.isPending || !entitled}
+          placeholder={
+            !entitled ? 'Upgrade to ask the AI Co-Pilot' : chat.isPending ? 'Working…' : 'Ask the AI Co-Pilot…'
+          }
+          className="min-w-0 flex-1 rounded-md border border-border bg-code-bg px-3 py-2 font-mono text-xs text-emphasis placeholder-faint focus:border-primary/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <button
+          onClick={send}
+          disabled={!tenantId || chat.isPending || !input.trim() || !entitled}
+          title={entitled ? undefined : 'Available on Pro + AI'}
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }

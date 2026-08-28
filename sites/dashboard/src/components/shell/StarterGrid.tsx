@@ -14,6 +14,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react'
+import { useHasFeature } from '@/hooks/plan'
 import {
   countRecords,
   PLANNED_STARTERS,
@@ -110,6 +111,13 @@ export function StarterGrid({
   /** Renders the leading "Empty project" card when given. */
   onBlank?: () => void
 }) {
+  // A starter that advertises `auth` stages AUTH_ENABLED into the tenant's
+  // config, which the files proxy refuses off-plan. Disabling the card is not
+  // decoration: without it the resources would land, the config write would
+  // 402, and the user would be left with a half-applied example.
+  const mayUseAuth = useHasFeature('auth')
+  const offPlan = (starter: Starter) => starter.features.includes('auth') && !mayUseAuth
+
   return (
     <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {onBlank && (
@@ -127,11 +135,13 @@ export function StarterGrid({
 
       {STARTERS.map((starter) => {
         const Icon = ICONS[starter.id] ?? Blocks
+        const locked = offPlan(starter)
         return (
           <button
             key={starter.id}
             onClick={() => onPick(starter)}
-            disabled={busy}
+            disabled={busy || locked}
+            title={locked ? 'This example turns on AuthGuard — available on Pro QA' : undefined}
             className={cardClass}
           >
             <span className="flex items-center gap-2">
@@ -142,9 +152,11 @@ export function StarterGrid({
             <span className="font-mono text-[10px] break-words text-muted-foreground">
               {Object.keys(starter.resources).join(' · ')}
             </span>
-            <FeatureBadges features={starter.features} />
+            <FeatureBadges features={starter.features} muted={locked} />
             <span className={footClass}>
-              {resourceCount(Object.keys(starter.resources).length)} · {countRecords(starter)} records
+              {locked
+                ? 'needs Pro QA'
+                : `${resourceCount(Object.keys(starter.resources).length)} · ${countRecords(starter)} records`}
             </span>
           </button>
         )

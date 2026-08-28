@@ -79,6 +79,43 @@ function RequestsChart({ series }: { series: { date: string; requests: number }[
   )
 }
 
+/**
+ * How much of the monthly allowance is gone.
+ *
+ * The bar exists because the quota is now enforced: at 100% the core answers
+ * 429 on the whole public plane, and someone whose API just stopped needs to
+ * find the reason here rather than in a status code. Colour turns at 80% and
+ * again at the cap, so the warning arrives before the outage does.
+ */
+function QuotaBar({ used, limit }: { used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0
+  const spent = limit > 0 && used >= limit
+  const near = !spent && pct >= 80
+  const fill = spent ? 'bg-danger-fill' : near ? 'bg-warning-fill' : 'bg-primary'
+  const ink = spent ? 'text-danger-ink' : near ? 'text-warning-ink' : 'text-faint'
+
+  return (
+    <div>
+      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full ${fill}`} style={{ width: `${Math.max(pct, 1)}%` }} />
+      </div>
+      {/* Both labels stay short so the row never wraps in the sidebar; the
+          consequence gets its own line, and only when there is one. */}
+      <div className={`mt-1 flex justify-between gap-2 font-mono text-[10px] ${ink}`}>
+        <span className="truncate">
+          {formatCount(used)} of {formatCount(limit)}
+        </span>
+        <span className="shrink-0">{spent ? 'over' : `${Math.round(pct)}%`}</span>
+      </div>
+      {spent && (
+        <p className="mt-0.5 font-mono text-[10px] text-danger-ink">
+          Quota spent — the API is answering 429.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
   const { data, isLoading, error } = useUsage(tenantId)
   const series = toSeries(data?.daily ?? [])
@@ -103,6 +140,7 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
             <StatTile label="Requests" value={formatCount(data.month.requests)} />
             <StatTile label="Bandwidth" value={formatBytes(data.month.bytes)} />
           </div>
+          {data.limit > 0 && <QuotaBar used={data.month.requests} limit={data.limit} />}
           {hasTraffic ? (
             <RequestsChart series={series} />
           ) : (
