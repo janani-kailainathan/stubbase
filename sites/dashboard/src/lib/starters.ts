@@ -137,3 +137,72 @@ export const STARTERS: Starter[] = [
 
 export const countRecords = (s: Starter) =>
   Object.values(s.resources).reduce((n, records) => n + records.length, 0)
+
+/**
+ * Starters that are planned but not written yet — placeholders, so the empty
+ * state already shows the shape of the full set (nine) rather than growing a
+ * card at a time.
+ *
+ * A separate type and a separate list, deliberately. `Starter` means "seedable":
+ * everything in STARTERS has real records, and tests/starters.test.ts seeds each
+ * one into a live core and runs its advertised query. A placeholder has nothing
+ * to seed, so giving it an empty `resources` map would either break that suite
+ * or force it to learn which entries to skip — and the day a placeholder is
+ * filled in, moving it across is the reminder that the test now covers it.
+ *
+ * `resources` here is names only: what the example *will* ship, which is enough
+ * for the card's middle line and honest about there being no data behind it.
+ */
+export interface PlannedStarter {
+  id: string
+  title: string
+  blurb: string
+  features: Starter['features']
+  /** Resource names the finished example will ship. */
+  resources: string[]
+}
+
+export const PLANNED_STARTERS: PlannedStarter[] = [
+  {
+    id: 'chat',
+    title: 'Chat threads',
+    blurb: 'Messages hanging off conversations.',
+    features: ['relations'],
+    resources: ['conversations', 'messages'],
+  },
+  {
+    id: 'crm',
+    title: 'CRM pipeline',
+    blurb: 'Deals moving through stages.',
+    features: ['relations'],
+    resources: ['companies', 'contacts', 'deals'],
+  },
+  {
+    id: 'telemetry',
+    title: 'Device telemetry',
+    blurb: 'One wide table, thousands of rows.',
+    features: [],
+    resources: ['readings'],
+  },
+  {
+    id: 'bookings',
+    title: 'Bookings',
+    blurb: 'Slots you have to be signed in to claim.',
+    features: ['relations', 'auth'],
+    resources: ['venues', 'slots', 'reservations'],
+  },
+  {
+    id: 'courses',
+    title: 'Course catalog',
+    blurb: 'Lessons, and who is enrolled in them.',
+    features: ['relations', 'auth'],
+    resources: ['courses', 'lessons', 'enrollments'],
+  },
+  {
+    id: 'flags',
+    title: 'Feature flags',
+    blurb: 'Per-segment overrides on a flag.',
+    features: ['relations'],
+    resources: ['flags', 'overrides'],
+  },
+]

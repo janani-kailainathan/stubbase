@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
+import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
 import { seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
 let ROOT = "";
@@ -72,6 +72,30 @@ describe("starter examples", () => {
       if (starter.features.includes("auth")) expect(starter.config?.AUTH_ENABLED).toBe("true");
       else expect(starter.config).toBeUndefined();
     }
+  });
+
+  test("the placeholders stay placeholders, and stay distinguishable", () => {
+    // Nine cards on the empty state: three real, six not written yet. The grid
+    // renders both lists, so a placeholder that drifted into looking real —
+    // duplicate id, empty resource list — would be a card promising an example
+    // that cannot be seeded. Moving one into STARTERS is what makes the rest of
+    // this suite start covering it.
+    expect(STARTERS.length + PLANNED_STARTERS.length).toBe(9);
+
+    const ids = new Set(STARTERS.map((s) => s.id));
+    for (const planned of PLANNED_STARTERS) {
+      expect(ids.has(planned.id as never), `${planned.id} is in both lists`).toBe(false);
+      ids.add(planned.id as never);
+      // Names only — a placeholder has no records, and must not pretend to.
+      expect(planned.resources.length).toBeGreaterThan(0);
+      for (const name of planned.resources) expect(typeof name).toBe("string");
+      expect(planned.title.length).toBeGreaterThan(0);
+      expect(planned.blurb.length).toBeGreaterThan(0);
+      // A `relations` claim needs somewhere for the relation to point.
+      if (planned.features.includes("relations")) expect(planned.resources.length).toBeGreaterThan(1);
+      expect(planned.resources).not.toContain("users"); // same reason as below
+    }
+    expect(ids.size).toBe(9);
   });
 
   test("no starter ships a `users` resource", () => {
