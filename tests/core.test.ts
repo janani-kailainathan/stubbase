@@ -827,6 +827,12 @@ async function openLogStream(svc: Service, tenant: string) {
     res,
     entries,
     waitFor: (want: number) => waitFor(() => entries.length >= want),
+    /**
+     * Waits for the entry a test is actually about. Prefer this to waitFor(n)
+     * whenever the assertion names one entry: the ring replays first, so a
+     * count can be satisfied by an entry from an earlier test in this file.
+     */
+    waitForEntry: (match: (entry: any) => boolean) => waitFor(() => entries.some(match)),
     close: () => ctrl.abort(),
   };
 }
@@ -841,7 +847,7 @@ describe("live request log", () => {
     const cid = res.headers.get("x-correlation-id");
     expect(cid).toBeTruthy();
 
-    await stream.waitFor(1);
+    await stream.waitForEntry((e) => e.correlationId === cid);
     const entry = stream.entries.find((e) => e.correlationId === cid);
     expect(entry).toBeTruthy();
     expect(entry).toMatchObject({ tenantId: "plain", method: "GET", path: "/plain/posts", status: 200 });
@@ -853,7 +859,7 @@ describe("live request log", () => {
     const res = await fetch(`${core.base}/plain/posts`);
     const cid = res.headers.get("x-correlation-id");
 
-    await stream.waitFor(1);
+    await stream.waitForEntry((e) => e.correlationId === cid);
     const entry = stream.entries.find((e) => e.correlationId === cid);
     const stages = entry.lifecycle.map((s: any) => s.stage);
     expect(stages).toEqual([
@@ -873,9 +879,10 @@ describe("live request log", () => {
     const stream = await openLogStream(core, "secure");
     const res = await fetch(`${core.base}/secure/posts`); // AUTH_ENABLED, no token
     expect(res.status).toBe(401);
+    const cid = res.headers.get("x-correlation-id");
 
-    await stream.waitFor(1);
-    const entry = stream.entries.at(-1);
+    await stream.waitForEntry((e) => e.correlationId === cid);
+    const entry = stream.entries.find((e) => e.correlationId === cid);
     const failed = entry.lifecycle.filter((s: any) => !s.ok);
     expect(failed).toHaveLength(1);
     expect(failed[0].stage).toBe("authGuard");
@@ -888,8 +895,8 @@ describe("live request log", () => {
   test("a fresh connection replays the buffered ring before streaming", async () => {
     await fetch(`${core.base}/plain/posts?replay=1`);
     const stream = await openLogStream(core, "plain");
-    await stream.waitFor(1);
     // The request happened before the stream opened, so it can only be a replay.
+    await stream.waitForEntry((e) => e.query === "?replay=1");
     expect(stream.entries.some((e) => e.query === "?replay=1")).toBe(true);
     stream.close();
   });
@@ -898,7 +905,7 @@ describe("live request log", () => {
     const stream = await openLogStream(core, "plain");
     await fetch(`${core.base}/plain/_admin/files/posts`, { headers: adminAuth });
     await fetch(`${core.base}/plain/posts?marker=after`); // ordering fence
-    await stream.waitFor(1);
+    await stream.waitForEntry((e) => e.query === "?marker=after");
     expect(stream.entries.some((e) => e.path.includes("_admin"))).toBe(false);
     stream.close();
   });
