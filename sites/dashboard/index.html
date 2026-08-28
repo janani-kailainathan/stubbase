@@ -8,28 +8,62 @@
     <title>Stubbase Dashboard</title>
     <!--
       Resolves the theme before the bundle loads, so the shell never paints in
-      the wrong one. Stored choice wins, else the OS preference. The class is
-      always stamped explicitly — the shadcn ui/ primitives key off `dark:`,
-      which needs `.dark` actually present rather than merely implied.
-      Keep in sync with src/stores/theme.ts, which owns it from here on.
+      the wrong one. The class is always stamped explicitly — the shadcn ui/
+      primitives key off `dark:`, which needs `.dark` actually present rather
+      than merely implied.
+
+      Precedence: the `stubbase_theme` cookie, then localStorage, then the OS.
+      The cookie comes first because it is the copy the landing site can also
+      write (it is a different origin and cannot see this one's localStorage),
+      so it carries a choice made over on stubbase.dev. The resolved value is
+      written back to both stores, so the two converge after one page view.
+
+      Keep in sync with src/lib/cross-site.ts (cookie name, domain rule) and
+      src/stores/theme.ts, which owns the theme from here on. Neither can be
+      imported: this has to run before any bundle exists, or the page flashes.
     -->
     <script>
       (function () {
-        var stored = null
-        try {
-          stored = localStorage.getItem('stubbase-theme')
-        } catch (err) {
-          /* Private mode or blocked storage — fall through to the OS preference. */
+        var host = location.hostname
+        var parts = host.split('.')
+        var domain =
+          host === 'localhost' || /^[\d.]+$/.test(host) || parts.length < 2
+            ? ''
+            : '; domain=' + parts.slice(-2).join('.')
+
+        var cookie = document.cookie.match(/(?:^|; )stubbase_theme=([^;]*)/)
+        var stored = cookie ? cookie[1] : null
+        if (stored !== 'light' && stored !== 'dark') {
+          try {
+            stored = localStorage.getItem('stubbase-theme')
+          } catch (err) {
+            /* Private mode or blocked storage — fall through to the OS preference. */
+          }
         }
+
         var theme =
           stored === 'light' || stored === 'dark'
             ? stored
             : window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'light'
               : 'dark'
+
         document.documentElement.classList.add(theme)
         var meta = document.getElementById('theme-color')
         if (meta) meta.setAttribute('content', theme === 'light' ? '#FAFAFA' : '#09090B')
+
+        // Converge the two stores, so whichever side was stale stops being so.
+        document.cookie =
+          'stubbase_theme=' +
+          theme +
+          '; path=/; max-age=31536000; samesite=lax' +
+          domain +
+          (location.protocol === 'https:' ? '; secure' : '')
+        try {
+          localStorage.setItem('stubbase-theme', theme)
+        } catch (err) {
+          /* Nothing to do — the cookie still carries the choice. */
+        }
       })()
     </script>
   </head>

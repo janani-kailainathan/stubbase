@@ -13,6 +13,28 @@
    must also be right in the unstamped (JS-off) state — e.g. the toggle icon. */
 @custom-variant light (&:is(.light *));
 
+/* Signed-in nav state.
+
+   The same pre-paint script stamps `.signed-in` on <html> when the dashboard's
+   cross-origin session hint cookie is present (see BaseLayout.astro). Both nav
+   variants ship in the HTML and CSS picks one, so the right one is in the very
+   first paint rather than swapped in afterwards — the same trick the theme
+   toggle's two icons use.
+
+   `display: contents` on the wrapper, so hiding a variant costs nothing but
+   showing one leaves its children's own layout and responsive classes
+   (`hidden sm:inline`) to behave exactly as they would unwrapped.
+
+   With JS off no class is stamped, `:not(.signed-in)` matches, and a static
+   crawler sees the logged-out nav — which is the correct thing to index. */
+[data-auth] {
+  display: contents;
+}
+html.signed-in [data-auth='anon'],
+html:not(.signed-in) [data-auth='user'] {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------------
    Semantic tokens.
 

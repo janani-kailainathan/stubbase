@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { writeThemeCookie } from '@/lib/cross-site'
 
 export type Theme = 'light' | 'dark'
 
@@ -13,6 +14,11 @@ const STORAGE_KEY = 'stubbase-theme'
  * Not `persist()`-wrapped: the pre-paint script has to read the value with plain
  * localStorage anyway, so a single explicit key is simpler than matching
  * zustand's envelope format from a script that runs before zustand exists.
+ *
+ * Every write goes to *two* stores. localStorage is the origin-local copy the
+ * pre-paint script prefers; the cookie is the copy the landing site can read,
+ * since it lives on another origin (see lib/cross-site.ts). Writing both is
+ * what makes the choice follow a visitor across stubbase.dev and this app.
  */
 function currentTheme(): Theme {
   return document.documentElement.classList.contains('light') ? 'light' : 'dark'
@@ -30,6 +36,7 @@ function apply(theme: Theme) {
   } catch {
     // Choice will not survive a reload; the toggle still works this session.
   }
+  writeThemeCookie(theme) // …and the copy the landing site reads
 }
 
 interface ThemeState {

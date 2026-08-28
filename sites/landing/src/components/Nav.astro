@@ -130,18 +130,44 @@ const linkClass = (isActive: boolean) =>
 
     <div class="flex items-center gap-2 sm:gap-3">
       <ThemeToggle />
-      <a
-        href={`${APP_URL}/login`}
-        class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
-      >
-        Login
-      </a>
-      <a
-        href={APP_URL}
-        class="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground whitespace-nowrap transition-colors hover:bg-primary-hover sm:px-4 sm:text-sm"
-      >
-        Generate API (Free)
-      </a>
+      {/*
+        Both states ship in the HTML; the `.signed-in` class the pre-paint script
+        stamps on <html> decides which one displays (see global.css). The nav is
+        static, and the session lives on another origin, so there is nothing to
+        fetch and nothing to wait for — the right pair is in the first paint.
+
+        A stale hint (session expired server-side) sends someone to the dashboard
+        and straight on to its login page, which is where "Login" would have sent
+        them anyway; the SPA clears the cookie when it sees the 401.
+      */}
+      <span data-auth="anon">
+        <a
+          href={`${APP_URL}/login`}
+          class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+        >
+          Login
+        </a>
+        <a
+          href={APP_URL}
+          class="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground whitespace-nowrap transition-colors hover:bg-primary-hover sm:px-4 sm:text-sm"
+        >
+          Generate API (Free)
+        </a>
+      </span>
+      <span data-auth="user">
+        <a
+          href={APP_URL}
+          class="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+        >
+          Dashboard
+        </a>
+        <a
+          href={APP_URL}
+          class="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground whitespace-nowrap transition-colors hover:bg-primary-hover sm:px-4 sm:text-sm"
+        >
+          Open Dashboard
+        </a>
+      </span>
 
       <details class="relative lg:hidden">
         <summary

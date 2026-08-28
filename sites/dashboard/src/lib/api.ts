@@ -10,6 +10,8 @@
  * backends/Caddy — not shipped yet.
  */
 
+import { setSignedInHint } from '@/lib/cross-site'
+
 const DEV = import.meta.env.DEV
 
 export const APP_API_URL: string =
@@ -51,9 +53,15 @@ export class ApiError extends Error {
 // Session token for the Dashboard API. Owned by the auth store (which also
 // persists it); kept here so every request can attach it without an import
 // cycle between this module and the store.
+//
+// This is also the one place every session path converges — login, signup, the
+// OAuth callback, rehydration, logout and the 401 handler — so the landing
+// site's "someone is signed in" hint cookie is published from here rather than
+// from each caller, where one missed path would leave the two disagreeing.
 let authToken: string | null = null
 export const setAuthToken = (token: string | null) => {
   authToken = token
+  setSignedInHint(token !== null)
 }
 
 // Called when the Dashboard API rejects the session (expired/revoked) so the

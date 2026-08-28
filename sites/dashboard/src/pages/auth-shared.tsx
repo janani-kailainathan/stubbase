@@ -2,15 +2,29 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as api from '@/lib/api'
 import { LANDING_URL, type OauthProvider } from '@/lib/api'
+import { ThemeToggle } from '@/components/shell/ThemeToggle'
 
 export const authInputClass =
   'rounded-md border border-border bg-code-bg px-4 py-2.5 text-sm text-foreground placeholder-subtle focus:border-primary focus:outline-none'
 
 export const authLabelClass = 'text-xs font-semibold tracking-wide text-subtle uppercase'
 
+/**
+ * The auth screens carry their own theme toggle. They render before there is a
+ * session, so the app shell's TopBar — the only other place the control lives —
+ * is not on screen yet, and a visitor arriving here from a light-themed landing
+ * page would otherwise have no way to change their mind until after logging in.
+ *
+ * The theme itself is already correct on arrival: it rides the cross-origin
+ * cookie (lib/cross-site.ts) and is stamped before the bundle loads, so these
+ * pages never flash the other theme on the way over from stubbase.dev.
+ */
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-16 font-sans">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-6 py-16 font-sans">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-sm">{children}</div>
     </div>
   )

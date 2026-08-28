@@ -68,52 +68,104 @@ const jsonLdBlocks = [softwareApplicationSchema, ...schema];
     ))}
 
     {/*
-      Resolves the theme before first paint, so there is no flash of the wrong
-      one. Must stay `is:inline` and stay in <head>: a bundled or deferred script
-      runs after the browser has already painted.
+      Resolves the theme AND the signed-in state before first paint, so neither
+      flashes the wrong thing. Must stay `is:inline` and stay in <head>: a
+      bundled or deferred script runs after the browser has already painted.
 
-      Stored choice wins; otherwise the OS preference decides. The class is
-      always stamped explicitly (never left off), so `dark:` and `light:` never
-      have to interpret an absent class. The click handler is delegated from
-      `document`, which already exists here, so one listener serves every toggle
-      on the page.
+      Both pieces of state live in cookies rather than localStorage, because
+      this site and the dashboard are different *origins* (stubbase.dev vs
+      app.stubbase.dev) and localStorage does not cross that line — which is
+      what left this nav offering "Login" to someone already signed in. Cookies
+      scope to the registrable domain, so both apps read the same value:
+
+        stubbase_theme    'light' | 'dark'
+        stubbase_session  '1' when a dashboard session exists
+
+      The session cookie is a hint, never a credential: it carries no token and
+      only decides which nav links render. See sites/dashboard/src/lib/cross-site.ts,
+      which writes both from the other side — keep the names and the domain rule
+      in step with it.
+
+      localStorage is still read as a fallback, so a visitor who chose a theme
+      before this shipped keeps it; the resolved value is written back to both.
+      With JS off nothing is stamped, which is exactly right: `:root` is dark and
+      `html:not(.signed-in)` shows the logged-out nav.
+
+      The click handler is delegated from `document`, which already exists here,
+      so one listener serves every toggle on the page — that is what keeps this
+      site's client-JS budget to the four inline blocks CLAUDE.md describes.
     */}
     <script is:inline>
       (function () {
         var root = document.documentElement;
-        var stored = null;
-        try {
-          stored = localStorage.getItem('stubbase-theme');
-        } catch (err) {
-          /* Private mode or blocked storage — fall through to the OS preference. */
+        var host = location.hostname;
+        var parts = host.split('.');
+        var domain =
+          host === 'localhost' || /^[\d.]+$/.test(host) || parts.length < 2
+            ? ''
+            : '; domain=' + parts.slice(-2).join('.');
+
+        function cookie(name) {
+          var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+          return m ? m[1] : null;
         }
-        var theme =
-          stored === 'light' || stored === 'dark'
+
+        function resolve() {
+          var stored = cookie('stubbase_theme');
+          if (stored !== 'light' && stored !== 'dark') {
+            try {
+              stored = localStorage.getItem('stubbase-theme');
+            } catch (err) {
+              /* Private mode or blocked storage — fall through to the OS preference. */
+            }
+          }
+          return stored === 'light' || stored === 'dark'
             ? stored
             : window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'light'
               : 'dark';
+        }
 
-        function apply(next) {
+        function apply(next, persist) {
           root.classList.remove('light', 'dark');
           root.classList.add(next);
           var meta = document.getElementById('theme-color');
           if (meta) meta.setAttribute('content', next === 'light' ? '#FAFAFA' : '#09090B');
+          if (!persist) return;
+          document.cookie =
+            'stubbase_theme=' +
+            next +
+            '; path=/; max-age=31536000; samesite=lax' +
+            domain +
+            (location.protocol === 'https:' ? '; secure' : '');
+          try {
+            localStorage.setItem('stubbase-theme', next);
+          } catch (err) {
+            /* Choice will not survive a reload; the cookie still carries it. */
+          }
         }
 
-        apply(theme);
+        function applyAuth() {
+          root.classList.toggle('signed-in', cookie('stubbase_session') === '1');
+        }
+
+        apply(resolve(), true);
+        applyAuth();
 
         document.addEventListener('click', function (event) {
           var target = event.target;
           if (!target || !target.closest) return;
           if (!target.closest('[data-theme-toggle]')) return;
-          var next = root.classList.contains('light') ? 'dark' : 'light';
-          apply(next);
-          try {
-            localStorage.setItem('stubbase-theme', next);
-          } catch (err) {
-            /* Choice will not survive a reload; the toggle still works. */
-          }
+          apply(root.classList.contains('light') ? 'dark' : 'light', true);
+        });
+
+        // Signing in happens on the *other* origin, so coming back here is
+        // usually a Back navigation served from bfcache — which does not re-run
+        // this script. Re-read on restore, or the nav stays a step behind.
+        window.addEventListener('pageshow', function (event) {
+          if (!event.persisted) return;
+          apply(resolve(), false);
+          applyAuth();
         });
       })();
     </script>
