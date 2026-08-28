@@ -24,6 +24,9 @@ POST   /auth/signup                        { email, password, name? } → { toke
 POST   /auth/login                         { email, password } → { token, user }
 POST   /auth/logout                        (auth) revoke session
 GET    /auth/me                            (auth)
+GET    /auth/providers                     → { google, github } — which buttons the SPA shows
+GET    /auth/google | /auth/github         start OAuth sign-in (302 to the provider)
+GET    /auth/<provider>/callback           finish it → 302 to the SPA with #token=…
 GET    /projects                           (auth) list own projects
 POST   /projects                           (auth) { name, resources? } → provision tenant
 PATCH  /projects/<tenantId>                (auth) { name } rename

@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { LANDING_URL } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { AuthLayout, AuthLogo, authInputClass, authLabelClass } from './auth-shared'
+import { AuthLayout, AuthLogo, OAuthButtons, authInputClass, authLabelClass } from './auth-shared'
 
 export default function Signup() {
   const user = useAuthStore((s) => s.user)
@@ -44,6 +44,7 @@ export default function Signup() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-8">
+        <OAuthButtons />
         <form className="flex flex-col gap-5" onSubmit={submit}>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="name" className={authLabelClass}>

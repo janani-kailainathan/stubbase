@@ -122,6 +122,19 @@ export const logout = () =>
 
 export const me = () => request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, { headers: appHeaders() })
 
+export type OauthProvider = 'google' | 'github'
+
+/**
+ * Where to send the browser to start an OAuth sign-in. Deliberately a URL for
+ * a top-level navigation rather than a fetch: the flow is a chain of redirects
+ * through the provider, which no XHR could follow.
+ */
+export const oauthStartUrl = (provider: OauthProvider) => `${APP_API_URL}/auth/${provider}`
+
+/** Which sign-in buttons the backend actually holds credentials for. */
+export const authProviders = () =>
+  request<Record<OauthProvider, boolean>>(`${APP_API_URL}/auth/providers`)
+
 // ── Dashboard API: projects ───────────────────────────────────────
 
 export interface ProjectRow {

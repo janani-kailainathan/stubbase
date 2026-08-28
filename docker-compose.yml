@@ -30,6 +30,14 @@ services:
       ALLOWED_ORIGINS: http://app.stubbase.localhost
       # What users (and the AI Co-Pilot) should call — this stack's public zone.
       PUBLIC_API_BASE: http://api.stubbase.localhost
+      # Stubbase's own OAuth apps for dashboard sign-in, from .env. Unset =
+      # the login page shows no provider buttons. Register
+      # http://api.app.stubbase.localhost/auth/<provider>/callback with the
+      # provider to use them against this stack.
+      DASHBOARD_GOOGLE_CLIENT_ID: ${DASHBOARD_GOOGLE_CLIENT_ID:-}
+      DASHBOARD_GOOGLE_SECRET: ${DASHBOARD_GOOGLE_SECRET:-}
+      DASHBOARD_GITHUB_CLIENT_ID: ${DASHBOARD_GITHUB_CLIENT_ID:-}
+      DASHBOARD_GITHUB_SECRET: ${DASHBOARD_GITHUB_SECRET:-}
       # From .env (gitignored — see .env.example). Unset = AI route answers 503.
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
       AI_MODEL_NAME: ${AI_MODEL_NAME:-models/gemini-3.5-flash-lite}

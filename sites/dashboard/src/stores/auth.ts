@@ -10,6 +10,8 @@ interface AuthState {
   user: ApiUser | null
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name?: string) => Promise<void>
+  /** Adopt a session minted by the OAuth callback (arrives in a URL fragment). */
+  adoptSession: (token: string) => Promise<void>
   logout: () => void
 }
 
@@ -29,6 +31,20 @@ export const useAuthStore = create<AuthState>()(
         const res = await api.signup(email, password, name)
         setAuthToken(res.token)
         set({ token: res.token, user: res.user })
+      },
+
+      adoptSession: async (token) => {
+        setAuthToken(token)
+        try {
+          // The redirect carries only the token, so the profile it belongs to
+          // has to be fetched before the session counts as established.
+          const { user } = await api.me()
+          set({ token, user })
+        } catch (error) {
+          setAuthToken(null)
+          set({ token: null, user: null })
+          throw error
+        }
       },
 
       logout: () => {

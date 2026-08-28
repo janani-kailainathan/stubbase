@@ -19,6 +19,13 @@
   vars:
     admin_secret: "{{ lookup('env', 'STUBBASE_ADMIN_SECRET') }}"
     caddyfile_src: Caddyfile
+    # Optional — Stubbase's own OAuth apps for dashboard sign-in. Leaving a
+    # pair unset ships a login page without that provider's button; it never
+    # fails the deploy. Both halves of a pair are required for it to be written.
+    dashboard_google_client_id: "{{ lookup('env', 'STUBBASE_GOOGLE_CLIENT_ID') }}"
+    dashboard_google_secret: "{{ lookup('env', 'STUBBASE_GOOGLE_SECRET') }}"
+    dashboard_github_client_id: "{{ lookup('env', 'STUBBASE_GITHUB_CLIENT_ID') }}"
+    dashboard_github_secret: "{{ lookup('env', 'STUBBASE_GITHUB_SECRET') }}"
 
   pre_tasks:
     - name: Require an admin secret
@@ -120,7 +127,7 @@
         mode: "0644"
       notify: Restart stubbase-app
 
-    - name: Write shared environment file (holds ADMIN_SECRET)
+    - name: Write shared environment file (holds ADMIN_SECRET and OAuth secrets)
       ansible.builtin.template:
         src: templates/stubbase.env.j2
         dest: /etc/stubbase/stubbase.env

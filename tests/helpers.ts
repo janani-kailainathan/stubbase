@@ -92,9 +92,14 @@ export async function startCore(
 }
 
 /**
- * Dashboard API against a scratch SQLite file. AI is explicitly disabled so a
- * developer's real GOOGLE_AI_API_KEY (the repo-root .env is auto-loaded) can
- * never turn a test run into a billed provider call.
+ * Dashboard API against a scratch SQLite file.
+ *
+ * The repo-root .env is auto-loaded into this process, so anything a developer
+ * keeps there would otherwise reach the service under test. Two families are
+ * cleared explicitly: AI, so a real key can never turn a test run into a billed
+ * provider call, and the dashboard's OAuth credentials, so whether a suite sees
+ * Google and GitHub sign-in configured is decided by the test rather than by
+ * whose machine it runs on.
  */
 export async function startApp(
   root: string,
@@ -106,6 +111,10 @@ export async function startApp(
   return spawnService(`app "${name}"`, join(APPS, "dashboard-api"), "server-app.ts", dir, {
     DB_PATH: join(dir, "app.sqlite"),
     GOOGLE_AI_API_KEY: "",
+    DASHBOARD_GOOGLE_CLIENT_ID: "",
+    DASHBOARD_GOOGLE_SECRET: "",
+    DASHBOARD_GITHUB_CLIENT_ID: "",
+    DASHBOARD_GITHUB_SECRET: "",
     ...env,
   });
 }

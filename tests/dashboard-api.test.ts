@@ -40,6 +40,16 @@ function readDb<T>(fn: (db: Database) => T): T {
   }
 }
 
+/** Same, for a service other than the default instance. */
+function readDbOf<T>(service: Service, fn: (db: Database) => T): T {
+  const db = new Database(join(service.dir, "app.sqlite"), { readonly: true });
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
 const as = (token: string) => ({ authorization: `Bearer ${token}` });
 const jsonHeaders = (token?: string) => ({
   "content-type": "application/json",
@@ -1456,6 +1466,261 @@ describe("diagnostics", () => {
       headers: as(stranger.token),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// ── OAuth sign-in ──────────────────────────────────────────────────
+
+/**
+ * Dashboard OAuth, end-to-end against a stub provider.
+ *
+ * The provider is a real HTTP server the service exchanges a code with, so the
+ * whole redirect chain is exercised: state minting, code exchange, the email
+ * verification rule, and the session that comes back in the fragment. What is
+ * stubbed is Google/GitHub themselves — nothing else is faked.
+ */
+describe("OAuth sign-in", () => {
+  let provider: ReturnType<typeof Bun.serve> | undefined;
+  let oauthApp: Service;
+  const SPA = "http://localhost:5199";
+
+  /** What the stub provider will claim about the person signing in. */
+  let identity: { email: string; verified: boolean; name?: string } = {
+    email: "",
+    verified: true,
+  };
+
+  beforeAll(async () => {
+    provider = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path === "/token") return Response.json({ access_token: "stub-access-token" });
+        if (path === "/userinfo")
+          return Response.json({
+            sub: "stub-sub",
+            email: identity.email,
+            email_verified: identity.verified,
+            name: identity.name ?? null,
+          });
+        // GitHub's profile deliberately carries an address that must NOT be
+        // trusted — the emails endpoint is the only source the service accepts.
+        if (path === "/user")
+          return Response.json({ login: "stub", name: identity.name ?? null, email: "spoofed@evil.test" });
+        if (path === "/user/emails")
+          return Response.json([{ email: identity.email, primary: true, verified: identity.verified }]);
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const base = `http://127.0.0.1:${provider.port}`;
+
+    oauthApp = await startApp(ROOT, "oauth-app", {
+      CORE_API_URL: core.base,
+      DASHBOARD_URL: SPA,
+      DASHBOARD_GOOGLE_CLIENT_ID: "google-client-id",
+      DASHBOARD_GOOGLE_SECRET: "google-secret",
+      DASHBOARD_GITHUB_CLIENT_ID: "github-client-id",
+      DASHBOARD_GITHUB_SECRET: "github-secret",
+      OAUTH_GOOGLE_AUTH_URL: `${base}/authorize/google`,
+      OAUTH_GOOGLE_TOKEN_URL: `${base}/token`,
+      OAUTH_GOOGLE_USERINFO_URL: `${base}/userinfo`,
+      OAUTH_GITHUB_AUTH_URL: `${base}/authorize/github`,
+      OAUTH_GITHUB_TOKEN_URL: `${base}/token`,
+      OAUTH_GITHUB_USER_URL: `${base}/user`,
+      OAUTH_GITHUB_EMAILS_URL: `${base}/user/emails`,
+    });
+    running.push(oauthApp);
+  }, 30_000);
+
+  afterAll(() => {
+    provider?.stop(true);
+  });
+
+  /** Starts a sign-in and returns the state the service minted. */
+  async function mintState(which: "google" | "github", on: Service = oauthApp): Promise<string> {
+    const res = await fetch(`${on.base}/auth/${which}`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    return new URL(res.headers.get("location")!).searchParams.get("state")!;
+  }
+
+  const callback = (which: "google" | "github", state: string, code = "stub-code") =>
+    fetch(`${oauthApp.base}/auth/${which}/callback?code=${code}&state=${encodeURIComponent(state)}`, {
+      redirect: "manual",
+    });
+
+  /** Runs a whole sign-in for `email` and returns the callback's redirect. */
+  async function signIn(which: "google" | "github", email: string, verified = true) {
+    identity = { email, verified };
+    return callback(which, await mintState(which));
+  }
+
+  const fragment = (res: Response) => new URL(res.headers.get("location")!).hash.slice(1);
+
+  /** This suite's service owns its own SQLite file, separate from `app`'s. */
+  const readOauthDb = <T,>(fn: (db: Database) => T): T => readDbOf(oauthApp, fn);
+
+  test("only providers with credentials are advertised", async () => {
+    expect(await (await fetch(`${oauthApp.base}/auth/providers`)).json()).toEqual({
+      google: true,
+      github: true,
+    });
+    // The default instance has no OAuth env at all — no dead buttons there.
+    expect(await (await fetch(`${app.base}/auth/providers`)).json()).toEqual({
+      google: false,
+      github: false,
+    });
+    const res = await fetch(`${app.base}/auth/google`, { redirect: "manual" });
+    expect(res.status).toBe(404);
+  });
+
+  test("starting a sign-in redirects to the provider with our client id", async () => {
+    const res = await fetch(`${oauthApp.base}/auth/google`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/authorize/google");
+    expect(location.searchParams.get("client_id")).toBe("google-client-id");
+    expect(location.searchParams.get("response_type")).toBe("code");
+    expect(location.searchParams.get("redirect_uri")).toEndWith("/auth/google/callback");
+    expect(location.searchParams.get("state")).toBeTruthy();
+  });
+
+  test("a completed sign-in returns a working session in the fragment", async () => {
+    const email = `oauth-${Date.now()}@test.co`;
+    identity = { email, verified: true, name: "Ada" };
+    const res = await callback("google", await mintState("google"));
+
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(`${location.origin}${location.pathname}`).toBe(`${SPA}/auth/callback`);
+
+    const token = new URLSearchParams(fragment(res)).get("token")!;
+    expect(token).toBeTruthy();
+    // The fragment is the only carrier: nothing lands in the query string,
+    // which is what proxies and access logs would record.
+    expect(location.search).toBe("");
+
+    const me = await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) });
+    expect(me.status).toBe(200);
+    const body = await me.json();
+    expect(body.user).toMatchObject({ email, name: "Ada" });
+    expect(JSON.stringify(body)).not.toContain("password");
+  });
+
+  test("the callback refuses a forged or missing state", async () => {
+    const email = `forged-${Date.now()}@test.co`;
+    identity = { email, verified: true };
+
+    for (const state of ["", "not-a-state", `${Date.now()}.abc.def`]) {
+      const res = await callback("google", state);
+      expect(res.status).toBe(302);
+      expect(fragment(res)).toBe("error=invalid_state");
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+    }
+    // …and no account was created along the way.
+    const users = readOauthDb((db) =>
+      db.query("SELECT id FROM users WHERE email = ?").all(email),
+    );
+    expect(users).toHaveLength(0);
+  });
+
+  test("a state minted for one provider cannot be replayed at the other", async () => {
+    identity = { email: `replay-${Date.now()}@test.co`, verified: true };
+    const googleState = await mintState("google");
+    const res = await callback("github", googleState);
+    expect(fragment(res)).toBe("error=invalid_state");
+  });
+
+  test("an unverified email is refused, for both providers", async () => {
+    for (const which of ["google", "github"] as const) {
+      const email = `unverified-${which}-${Date.now()}@test.co`;
+      const res = await signIn(which, email, false);
+      expect(fragment(res)).toBe("error=provider_rejected");
+      expect(
+        readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email)),
+      ).toHaveLength(0);
+    }
+  });
+
+  test("GitHub's profile email is ignored in favour of the verified one", async () => {
+    const email = `gh-${Date.now()}@test.co`;
+    const res = await signIn("github", email);
+    const token = new URLSearchParams(fragment(res)).get("token")!;
+    const me = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).json();
+    expect(me.user.email).toBe(email);
+    expect(me.user.email).not.toBe("spoofed@evil.test");
+  });
+
+  test("signing in twice reuses the account rather than duplicating it", async () => {
+    const email = `repeat-${Date.now()}@test.co`;
+    const first = await signIn("google", email);
+    const second = await signIn("github", email);
+
+    const ids = await Promise.all(
+      [first, second].map(async (res) => {
+        const token = new URLSearchParams(fragment(res)).get("token")!;
+        const body = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).json();
+        return body.user.id;
+      }),
+    );
+    expect(ids[0]).toBe(ids[1]);
+    expect(
+      readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email)),
+    ).toHaveLength(1);
+  });
+
+  test("an OAuth account has no password to log in with", async () => {
+    const email = `nopass-${Date.now()}@test.co`;
+    await signIn("google", email);
+
+    expect(
+      readOauthDb(
+        (db) => db.query("SELECT password_hash FROM users WHERE email = ?").get(email) as any,
+      ).password_hash,
+    ).toBeNull();
+
+    // Password login must fail rather than succeed against a NULL hash.
+    const res = await fetch(`${oauthApp.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("OAuth links to an existing password account with the same email", async () => {
+    const email = `linked-${Date.now()}@test.co`;
+    const created = await fetch(`${oauthApp.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    const passwordUser = (await created.json()).user;
+
+    const res = await signIn("google", email);
+    const token = new URLSearchParams(fragment(res)).get("token")!;
+    const me = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).json();
+    expect(me.user.id).toBe(passwordUser.id);
+    // Linking must not cost the account its password.
+    const still = await fetch(`${oauthApp.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    expect(still.status).toBe(200);
+  });
+
+  test("an OAuth session token is stored hashed, like every other session", async () => {
+    const email = `hashed-${Date.now()}@test.co`;
+    const res = await signIn("google", email);
+    const token = new URLSearchParams(fragment(res)).get("token")!;
+
+    const row = readOauthDb((db) =>
+      db.query("SELECT token_hash FROM sessions WHERE token_hash = ?").get(sha256hex(token)),
+    );
+    expect(row).toBeTruthy();
+    expect(
+      readOauthDb((db) => db.query("SELECT token_hash FROM sessions WHERE token_hash = ?").get(token)),
+    ).toBeNull();
   });
 });
 

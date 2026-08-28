@@ -71,6 +71,14 @@ const services: Service[] = [
       // So displayed endpoints (and the ones the AI Co-Pilot quotes) are URLs
       // that actually resolve on this machine.
       PUBLIC_API_BASE: `http://localhost:${CORE_PORT}`,
+      // OAuth sign-in bounces the browser back here when it finishes. The
+      // callback base points at the *Vite proxy* rather than this service, so
+      // the whole flow stays on one origin and a provider console needs a
+      // single dev redirect URI. DASHBOARD_GOOGLE_* / DASHBOARD_GITHUB_*
+      // credentials ride in from the repo-root .env; without them the login
+      // page simply shows no provider buttons.
+      DASHBOARD_URL: `http://localhost:${DASHBOARD_PORT}`,
+      OAUTH_CALLBACK_BASE: `http://localhost:${DASHBOARD_PORT}/api/app`,
     },
   },
   {

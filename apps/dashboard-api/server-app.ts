@@ -12,6 +12,8 @@
  *   POST   /auth/login                          { email, password }
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
+ *   GET    /auth/providers                      which OAuth buttons to show
+ *   GET    /auth/google|github[/callback]       OAuth sign-in (when configured)
  *   GET    /projects                            (auth) list own projects
  *   POST   /projects                            (auth) { name, resources?: { [name]: any[] } }
  *   PATCH  /projects/<tenantId>                 (auth) { name } rename
@@ -30,7 +32,7 @@
  *   POST   /projects/<tenantId>/mcp/message     JSON-RPC 2.0 inbox
  */
 import { Database } from "bun:sqlite";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   AIError,
   CO_PILOT_TOOLS,
@@ -51,6 +53,14 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "https://app.stubbase.de
   .filter(Boolean);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS ?? 30);
+// Where the SPA lives — the only place an OAuth sign-in is ever bounced back
+// to. Deliberately a constant and never a request parameter: a `?return_to=`
+// on the callback would be an open redirect handing out session tokens.
+const DASHBOARD_URL = (
+  process.env.DASHBOARD_URL ??
+  ALLOWED_ORIGINS[0] ??
+  "https://app.stubbase.dev"
+).replace(/\/$/, "");
 // Where a tenant's API is reachable from the outside — not CORE_API_URL, which
 // is how *this service* reaches the core (a private address in every
 // deployment). Shown to users and told to the Co-Pilot, so it cites real URLs.
@@ -95,7 +105,8 @@ db.exec(`
     id            INTEGER PRIMARY KEY,
     email         TEXT NOT NULL UNIQUE,
     name          TEXT,
-    password_hash TEXT,
+    password_hash TEXT,          -- NULL for accounts created by OAuth
+    oauth_provider TEXT,         -- provider that first created the row
     plan          TEXT NOT NULL DEFAULT 'free',
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -137,6 +148,10 @@ const userCols = (db.query("PRAGMA table_info(users)").all() as { name: string }
 );
 if (!userCols.includes("password_hash")) db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT");
 if (!userCols.includes("name")) db.exec("ALTER TABLE users ADD COLUMN name TEXT");
+// Which provider first created the row. Informational — the join between an
+// OAuth identity and an account is the verified email address, never this.
+if (!userCols.includes("oauth_provider"))
+  db.exec("ALTER TABLE users ADD COLUMN oauth_provider TEXT");
 
 // ── Auth ──────────────────────────────────────────────────────────
 
@@ -226,6 +241,223 @@ function logout(req: Request): Response {
   if (header.startsWith("Bearer "))
     db.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256hex(header.slice(7)));
   return json({ ok: true });
+}
+
+// ── OAuth sign-in (Google / GitHub) ───────────────────────────────
+// Stubbase's own OAuth apps, for signing in to the dashboard. Not to be
+// confused with the per-tenant AUTH_GOOGLE_*/AUTH_GITHUB_* credentials a
+// *project* keeps in its config.json: those log a tenant's end users into the
+// tenant's API, are supplied by the tenant, and never come from this process's
+// environment. These four env vars are ours, and a provider with either half
+// missing simply never appears on the login page.
+//
+// The browser is redirected here by a top-level navigation, so nothing in this
+// flow is CORS-relevant and no session token is ever read from a query string:
+// the finished session rides back to the SPA in a URL *fragment*, which is not
+// sent to servers and does not reach proxy logs.
+
+type OauthProvider = "google" | "github";
+
+const OAUTH_APPS: Record<OauthProvider, { clientId: string; secret: string }> = {
+  google: {
+    clientId: process.env.DASHBOARD_GOOGLE_CLIENT_ID ?? "",
+    secret: process.env.DASHBOARD_GOOGLE_SECRET ?? "",
+  },
+  github: {
+    clientId: process.env.DASHBOARD_GITHUB_CLIENT_ID ?? "",
+    secret: process.env.DASHBOARD_GITHUB_SECRET ?? "",
+  },
+};
+
+// Endpoint bases are env-overridable strictly so tests and the local stack can
+// point them at a mock — exactly as the core does for tenant OAuth.
+const OAUTH_ENDPOINTS: Record<
+  OauthProvider,
+  { authUrl: string; tokenUrl: string; userUrl: string; emailsUrl?: string; scope: string }
+> = {
+  google: {
+    authUrl: process.env.OAUTH_GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: process.env.OAUTH_GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
+    userUrl:
+      process.env.OAUTH_GOOGLE_USERINFO_URL ?? "https://openidconnect.googleapis.com/v1/userinfo",
+    scope: "openid email profile",
+  },
+  github: {
+    authUrl: process.env.OAUTH_GITHUB_AUTH_URL ?? "https://github.com/login/oauth/authorize",
+    tokenUrl: process.env.OAUTH_GITHUB_TOKEN_URL ?? "https://github.com/login/oauth/access_token",
+    userUrl: process.env.OAUTH_GITHUB_USER_URL ?? "https://api.github.com/user",
+    emailsUrl: process.env.OAUTH_GITHUB_EMAILS_URL ?? "https://api.github.com/user/emails",
+    scope: "read:user user:email",
+  },
+};
+
+const oauthConfigured = (p: OauthProvider) =>
+  Boolean(OAUTH_APPS[p].clientId && OAUTH_APPS[p].secret);
+
+/**
+ * The origin the provider will call back on. Derived from the request the same
+ * way the core derives a tenant's, so dev/docker/prod each work without extra
+ * config; OAUTH_CALLBACK_BASE overrides it for setups where the browser reaches
+ * this service through a path prefix (the Vite proxy's /api/app in dev).
+ */
+function callbackBase(req: Request): string {
+  const override = process.env.OAUTH_CALLBACK_BASE;
+  if (override) return override.replace(/\/$/, "");
+  const proto = req.headers.get("x-forwarded-proto") ?? "http";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? `127.0.0.1:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+const callbackUrl = (req: Request, provider: OauthProvider) =>
+  `${callbackBase(req)}/auth/${provider}/callback`;
+
+// CSRF state: an HMAC over provider + timestamp + nonce, valid 10 minutes. The
+// key is derived from ADMIN_SECRET rather than being it, and binding the
+// provider in means a state minted for Google cannot be replayed at GitHub's
+// callback.
+const OAUTH_STATE_KEY = createHash("sha256").update(`oauth-state:${ADMIN_SECRET}`).digest();
+const OAUTH_STATE_TTL_MS = 10 * 60_000;
+
+const signState = (provider: OauthProvider, ts: string, nonce: string) =>
+  createHmac("sha256", OAUTH_STATE_KEY).update(`${provider}:${ts}:${nonce}`).digest();
+
+function oauthState(provider: OauthProvider): string {
+  const ts = Date.now().toString();
+  const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64url");
+  return `${ts}.${nonce}.${signState(provider, ts, nonce).toString("base64url")}`;
+}
+
+function oauthStateValid(provider: OauthProvider, raw: string): boolean {
+  const [ts, nonce, sig] = raw.split(".");
+  if (!ts || !nonce || !sig || !/^\d+$/.test(ts)) return false;
+  if (Date.now() - Number(ts) > OAUTH_STATE_TTL_MS) return false;
+  const expected = signState(provider, ts, nonce);
+  const given = Buffer.from(sig, "base64url");
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** 302 back to the SPA with the outcome in the fragment. */
+const toDashboard = (path: string, fragment: string) =>
+  new Response(null, { status: 302, headers: { location: `${DASHBOARD_URL}${path}#${fragment}` } });
+
+// Failures land on the login page, not on a JSON error page hosted on the API
+// domain: the person who clicked the button is a browser, not a client library.
+const oauthFailed = (code: string) => toDashboard("/login", `error=${encodeURIComponent(code)}`);
+
+interface OauthIdentity {
+  email: string;
+  name: string | null;
+}
+
+/** Exchanges the code and resolves a *verified* email address, or null. */
+async function fetchOauthIdentity(
+  req: Request,
+  provider: OauthProvider,
+  code: string,
+): Promise<OauthIdentity | null> {
+  const ep = OAUTH_ENDPOINTS[provider];
+  const app = OAUTH_APPS[provider];
+
+  const tokenRes = await fetch(ep.tokenUrl, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+    body: new URLSearchParams({
+      code,
+      client_id: app.clientId,
+      client_secret: app.secret,
+      redirect_uri: callbackUrl(req, provider),
+      grant_type: "authorization_code",
+    }).toString(),
+  }).catch(() => null);
+  const accessToken = (tokenRes?.ok ? ((await tokenRes.json().catch(() => null)) as any) : null)
+    ?.access_token;
+  if (typeof accessToken !== "string") return null;
+
+  const headers = {
+    authorization: `Bearer ${accessToken}`,
+    accept: "application/json",
+    "user-agent": "stubbase-dashboard", // GitHub's API requires a User-Agent
+  };
+  const profRes = await fetch(ep.userUrl, { headers, signal: AbortSignal.timeout(10_000) }).catch(
+    () => null,
+  );
+  const profile = profRes?.ok ? ((await profRes.json().catch(() => null)) as any) : null;
+  if (!profile) return null;
+
+  const name = typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : null;
+
+  // An unverified address is an account takeover primitive: anyone can put
+  // someone else's email on a provider profile, and this service links an
+  // OAuth identity to an existing account *by email*. Both providers say
+  // whether they verified it; if they don't say yes, the sign-in fails.
+  if (provider === "google") {
+    const verified = profile.email_verified === true || profile.email_verified === "true";
+    if (!verified || typeof profile.email !== "string") return null;
+    return EMAIL_RE.test(profile.email) ? { email: profile.email, name } : null;
+  }
+
+  // GitHub's profile email is whatever the user typed as "public email" and is
+  // not necessarily verified, so the emails endpoint is the only source here.
+  const emailRes = await fetch(ep.emailsUrl!, {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  const list = emailRes?.ok ? ((await emailRes.json().catch(() => null)) as any) : null;
+  if (!Array.isArray(list)) return null;
+  const primary = list.find((e) => e?.primary && e?.verified) ?? list.find((e) => e?.verified);
+  const email = primary?.email;
+  return typeof email === "string" && EMAIL_RE.test(email) ? { email, name } : null;
+}
+
+function oauthStart(req: Request, provider: OauthProvider): Response {
+  if (!oauthConfigured(provider)) return err(404, `${provider} sign-in is not configured`);
+  const ep = OAUTH_ENDPOINTS[provider];
+  const query = new URLSearchParams({
+    client_id: OAUTH_APPS[provider].clientId,
+    redirect_uri: callbackUrl(req, provider),
+    response_type: "code",
+    scope: ep.scope,
+    state: oauthState(provider),
+  });
+  return new Response(null, {
+    status: 302,
+    headers: { location: `${ep.authUrl}?${query}` },
+  });
+}
+
+async function oauthCallback(req: Request, provider: OauthProvider): Promise<Response> {
+  if (!oauthConfigured(provider)) return err(404, `${provider} sign-in is not configured`);
+  const url = new URL(req.url);
+  if (url.searchParams.get("error")) return oauthFailed("access_denied");
+
+  const code = url.searchParams.get("code");
+  if (!code || !oauthStateValid(provider, url.searchParams.get("state") ?? ""))
+    return oauthFailed("invalid_state");
+
+  const identity = await fetchOauthIdentity(req, provider, code);
+  if (!identity) return oauthFailed("provider_rejected");
+  const email = identity.email.trim().toLowerCase();
+
+  const find = () =>
+    db.query("SELECT id, email, name, plan FROM users WHERE email = ?").get(email) as User | null;
+  let user = find();
+  if (!user) {
+    try {
+      db.query("INSERT INTO users (email, name, oauth_provider) VALUES (?, ?, ?)").run(
+        email,
+        identity.name,
+        provider,
+      );
+    } catch {
+      // Two callbacks for a brand-new address can race; UNIQUE(email) settles
+      // it and the loser just reads the row the winner inserted.
+    }
+    user = find();
+  }
+  if (!user) return oauthFailed("provider_rejected");
+
+  return toDashboard("/auth/callback", `token=${createSession(user.id)}`);
 }
 
 // ── Core Engine admin client ──────────────────────────────────────
@@ -1539,6 +1771,17 @@ async function route(req: Request): Promise<Response> {
       return signup(req);
     if (req.method === "POST" && segments[1] === "login" && segments.length === 2)
       return login(req);
+
+    // OAuth: unauthenticated by definition — the caller is a browser being
+    // bounced between us and the provider, and it has no session yet.
+    if (req.method === "GET" && segments[1] === "providers" && segments.length === 2)
+      return json({ google: oauthConfigured("google"), github: oauthConfigured("github") });
+    if (req.method === "GET" && (segments[1] === "google" || segments[1] === "github")) {
+      const provider = segments[1] as OauthProvider;
+      if (segments.length === 2) return oauthStart(req, provider);
+      if (segments.length === 3 && segments[2] === "callback")
+        return oauthCallback(req, provider);
+    }
 
     const user = authenticate(req);
     if (!user) return err(401, "unauthorized");
