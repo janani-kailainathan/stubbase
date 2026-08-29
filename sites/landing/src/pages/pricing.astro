@@ -3,9 +3,20 @@ import { Check, Sparkles } from 'lucide-astro';
 import Layout from '../layouts/Layout.astro';
 import { APP_URL } from '../lib/urls';
 
+/**
+ * `comingSoon` is the launch state, not a permanent one: the paid tiers are
+ * shown in full — priced, spec'd, struck through — because someone should
+ * arrive at launch already knowing what the paid product will be, and a page
+ * that hides its plans until billing exists teaches them nothing. Free is
+ * genuinely live and keeps a working call to action.
+ *
+ * Flip `comingSoon` to false per tier when the gateway is wired; nothing else
+ * on this page needs to change.
+ */
 const tiers = [
   {
     name: 'Free',
+    comingSoon: false,
     price: '$0',
     period: '/mo',
     tagline: 'For Local Prototyping',
@@ -25,6 +36,7 @@ const tiers = [
   },
   {
     name: 'Pro QA',
+    comingSoon: true,
     price: '$15',
     period: '/mo',
     tagline: 'For CI/CD & Test Automation',
@@ -42,6 +54,7 @@ const tiers = [
   },
   {
     name: 'Pro + AI',
+    comingSoon: true,
     price: '$29',
     period: '/mo',
     tagline: 'For Production MVPs',
@@ -68,6 +81,20 @@ const ctaClass = {
     'rounded-md border border-border-strong bg-muted py-3 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted-strong',
 } as const;
 
+/**
+ * The donation control's bounds. The slider is deliberately NOT linear: on a
+ * straight 5→1000 track the amounts people actually pick ($5–$50) would share
+ * the first 4.5% of it and be unhittable. The scale is exponential instead, so
+ * the low end gets most of the travel and the tail is still reachable. The
+ * number box is the escape hatch for an exact figure.
+ *
+ * The bounds are not written out anywhere on the page: the slider cannot leave
+ * them, the box carries them as `min`/`max`, and a typed amount outside them is
+ * clamped on commit — where the button label immediately shows the corrected
+ * figure. Stating them as well was saying the same thing a third time.
+ */
+const DONATION = { min: 5, max: 1000, default: 10 } as const;
+
 const offerSchema = {
   '@context': 'https://schema.org',
   '@type': 'Product',
@@ -80,6 +107,11 @@ const offerSchema = {
     description: tier.tagline,
     price: tier.price.replace('$', ''),
     priceCurrency: 'USD',
+    // A tier that cannot be bought yet is a PreOrder, not InStock. The prices
+    // are real and worth publishing; claiming they are purchasable is not.
+    availability: tier.comingSoon
+      ? 'https://schema.org/PreOrder'
+      : 'https://schema.org/InStock',
     url: new URL('/pricing', Astro.site).toString(),
   })),
 };
@@ -103,21 +135,103 @@ const offerSchema = {
     </div>
   </section>
 
+  <section id="support">
+    <div class="mx-auto max-w-3xl px-6 pt-10 pb-16">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Free to try. Donate to keep trying.</h2>
+        <p class="leading-relaxed text-muted-foreground">
+          Start on the Free plan below — no card, no donation, nothing to cancel. The AI
+          features are the one part with a real bill behind them: every generated schema
+          is a live provider call, paid out of pocket. A donation switches those on for
+          you, and keeps them on for everyone else trying Stubbase.
+        </p>
+      </div>
+
+      <div class="rounded-xl border border-border-c bg-card p-8">
+        <label for="donation-amount" class="mb-4 block text-sm font-semibold text-foreground">
+          Choose an amount
+        </label>
+
+        {/*
+          Two controls over one value. The range is for picking a number you do
+          not have in mind, the box for one you do — so both are always visible
+          and neither is a fallback for the other.
+
+          With JS off both still work: the box takes a typed amount and the
+          range posts its own value. They simply stop mirroring each other,
+          which is a degraded page rather than a broken one.
+        */}
+        <div class="flex items-center gap-4">
+          <input
+            id="donation-range"
+            type="range"
+            min="0"
+            max="1000"
+            value="0"
+            step="1"
+            aria-label="Donation amount slider"
+            class="donation-range h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-muted"
+          />
+          <div class="flex shrink-0 items-center gap-1 rounded-md border border-border-c bg-background px-3 py-2 focus-within:border-primary">
+            <span class="font-mono text-sm text-subtle">$</span>
+            <input
+              id="donation-amount"
+              type="number"
+              inputmode="numeric"
+              min={DONATION.min}
+              max={DONATION.max}
+              step="1"
+              value={DONATION.default}
+              aria-label="Donation amount in US dollars"
+              class="w-20 bg-transparent font-mono text-sm text-foreground focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/*
+          Present but inert, the same way the dashboard shows an off-plan
+          control: it says what is coming and does not pretend to take money.
+          No card fields live on this page — checkout will belong to whichever
+          provider is chosen, and this button will hand off to it.
+        */}
+        <button
+          id="donation-submit"
+          type="button"
+          disabled
+          class="mt-6 w-full cursor-not-allowed rounded-md bg-primary py-3 text-center text-sm font-semibold text-primary-foreground opacity-60"
+        >
+          Donate <span id="donation-label">${DONATION.default}</span> &middot; opens at launch
+        </button>
+
+        <p class="mt-3 text-center text-xs text-subtle">
+          Payments are not switched on yet. Nothing is charged and no card details are
+          collected on this page.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <section>
-    <div class="mx-auto max-w-6xl px-6 py-16">
-      <h2 class="mb-10 text-center text-3xl font-extrabold text-foreground">Feature Tiers</h2>
+    <div class="mx-auto max-w-6xl px-6 pt-8 pb-20">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Feature Tiers</h2>
+        <p class="leading-relaxed text-muted-foreground">
+          Free is live today. The paid tiers are what billing will look like once it opens
+          — priced here so there are no surprises later.
+        </p>
+      </div>
 
       <div class="grid gap-6 md:grid-cols-3">
         {
           tiers.map((tier) => (
             <article
               class={
-                tier.featured
+                tier.featured && !tier.comingSoon
                   ? 'relative flex flex-col overflow-hidden rounded-xl border border-primary bg-card p-8 shadow-lg shadow-primary/5'
-                  : 'flex flex-col rounded-xl border border-border-c bg-card p-8'
+                  : 'relative flex flex-col overflow-hidden rounded-xl border border-border-c bg-card p-8'
               }
             >
-              {tier.featured && (
+              {tier.featured && !tier.comingSoon && (
                 <p class="absolute top-0 right-0 rounded-bl-lg bg-primary px-3 py-1 text-[10px] font-bold tracking-wider text-primary-foreground uppercase">
                   Most Popular
                 </p>
@@ -126,15 +240,37 @@ const offerSchema = {
               <h3 class="mb-2 flex items-center gap-2 text-xl font-semibold text-foreground">
                 {tier.name}
                 {tier.name === 'Pro + AI' && <Sparkles class="h-5 w-5 text-primary-ink" />}
+                {tier.comingSoon && (
+                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                    Not active yet
+                  </span>
+                )}
               </h3>
               <p class="mb-6 text-sm font-medium text-muted-foreground">{tier.tagline}</p>
               <p class="mb-6 text-4xl font-extrabold text-foreground">
-                {tier.price}
+                {/* Struck through rather than hidden: the number is the thing
+                    worth remembering, and striking it says "later", where
+                    removing it would say "never". */}
+                <span class={tier.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
+                  {tier.price}
+                </span>
                 <span class="text-base font-medium text-subtle">{tier.period}</span>
               </p>
-              <a href={APP_URL} class={`mb-8 ${ctaClass[tier.cta.style as keyof typeof ctaClass]}`}>
-                {tier.cta.label}
-              </a>
+
+              {/* A dead <a> is worse than no <a>: it looks clickable, and a
+                  crawler follows it. An inert element carries the state. */}
+              {tier.comingSoon ? (
+                <p
+                  class="mb-8 rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  aria-disabled="true"
+                >
+                  Not available yet
+                </p>
+              ) : (
+                <a href={APP_URL} class={`mb-8 ${ctaClass[tier.cta.style as keyof typeof ctaClass]}`}>
+                  {tier.cta.label}
+                </a>
+              )}
 
               <dl class="space-y-4">
                 {tier.specs.map((spec) => (
@@ -154,3 +290,101 @@ const offerSchema = {
     </div>
   </section>
 </Layout>
+
+<script>
+  /**
+   * Keeps the slider and the amount box showing one number.
+   *
+   * The slider position is 0–1000 and maps EXPONENTIALLY onto $5–$1000. A
+   * linear track would put every amount anyone actually picks ($5–$50) inside
+   * its first 4.5%, one or two pixels apart; this gives the low end most of
+   * the travel while $1000 is still reachable at the far right.
+   *
+   * Values are snapped as they grow — dollars up to $50, fives to $200,
+   * twenty-fives beyond — so dragging never lands on $327. The box stays
+   * unsnapped: someone typing an exact figure means it.
+   *
+   * Clamping happens on `change` (commit) rather than `input` (keystroke), or
+   * typing "1" on the way to "10" would fight the user and rewrite it to "5".
+   */
+  const MIN = 5;
+  const MAX = 1000;
+  const STEPS = 1000;
+
+  const range = document.getElementById('donation-range') as HTMLInputElement | null;
+  const box = document.getElementById('donation-amount') as HTMLInputElement | null;
+  const label = document.getElementById('donation-label');
+
+  if (range && box && label) {
+    const ratio = Math.log(MAX / MIN);
+    const toAmount = (pos: number) => MIN * Math.exp((pos / STEPS) * ratio);
+    const toPosition = (amount: number) =>
+      Math.round((Math.log(amount / MIN) / ratio) * STEPS);
+
+    const snap = (n: number) => {
+      if (n < 50) return Math.round(n);
+      if (n < 200) return Math.round(n / 5) * 5;
+      return Math.round(n / 25) * 25;
+    };
+
+    const clamp = (n: number) => Math.min(MAX, Math.max(MIN, n));
+
+    const show = (amount: number) => {
+      label.textContent = `$${amount.toLocaleString('en-US')}`;
+    };
+
+    // The slider starts at the default amount rather than at its own left edge.
+    range.value = String(toPosition(Number(box.value) || MIN));
+    show(clamp(Number(box.value) || MIN));
+
+    range.addEventListener('input', () => {
+      const amount = clamp(snap(toAmount(Number(range.value))));
+      box.value = String(amount);
+      show(amount);
+    });
+
+    // Reflect keystrokes in the button, but do not correct the number yet.
+    box.addEventListener('input', () => {
+      const typed = Number(box.value);
+      if (Number.isFinite(typed) && typed >= MIN && typed <= MAX) {
+        range.value = String(toPosition(typed));
+        show(typed);
+      }
+    });
+
+    // Committed: now it has to be a legal amount.
+    box.addEventListener('change', () => {
+      const amount = clamp(Math.round(Number(box.value)) || MIN);
+      box.value = String(amount);
+      range.value = String(toPosition(amount));
+      show(amount);
+    });
+  }
+</script>
+
+<style>
+  /* The range track and thumb are the one thing Tailwind cannot reach, since
+     both live behind vendor pseudo-elements. Colours are theme tokens, so this
+     follows light/dark like everything else. */
+  .donation-range::-webkit-slider-thumb {
+    appearance: none;
+    height: 1.125rem;
+    width: 1.125rem;
+    border-radius: 9999px;
+    background: var(--primary);
+    border: 2px solid var(--background);
+    cursor: pointer;
+  }
+  .donation-range::-moz-range-thumb {
+    height: 1.125rem;
+    width: 1.125rem;
+    border-radius: 9999px;
+    background: var(--primary);
+    border: 2px solid var(--background);
+    cursor: pointer;
+  }
+  .donation-range:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+  }
+</style>
