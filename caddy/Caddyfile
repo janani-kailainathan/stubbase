@@ -2,8 +2,19 @@
 # Caddy terminates TLS for all four zones (certs via Let's Encrypt, automatic).
 
 stubbase.dev {
-	root * /var/www/stubbase-landing/dist
-	file_server
+	# The one non-static route on the apex, and it is forced rather than
+	# chosen: Google One Tap's `g_csrf_token` is a host-only cookie, so its
+	# form POST has to land on the same host that rendered the prompt or the
+	# cookie never arrives. No new process — this is the Dashboard API that
+	# api.app.stubbase.dev already fronts.
+	handle /auth/google/one-tap {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	handle {
+		root * /var/www/stubbase-landing/dist
+		file_server
+	}
 }
 
 # Consolidate www onto the canonical apex domain (SEO + habit-typers).

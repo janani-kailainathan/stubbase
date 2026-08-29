@@ -319,3 +319,71 @@ const pipeline = [
     btn.disabled = false;
   });
 </script>
+
+<script>
+  import { GOOGLE_CLIENT_ID } from '../lib/urls';
+
+  /*
+    Google One Tap.
+
+    The credential goes to the server, never to this page: `ux_mode: 'redirect'`
+    with a `login_uri` makes Google POST the signed ID token straight to the
+    Dashboard API, which verifies it and 302s to the SPA with the session in a
+    URL fragment. That keeps the rule this site is built around — a session
+    token never exists on the stubbase.dev origin.
+
+    `login_uri` is built from location.origin rather than configured, so dev and
+    production each point at themselves with no extra env var. It must be on
+    THIS host: the g_csrf_token cookie GSI sets is host-only, so a login_uri on
+    api.app.stubbase.dev would arrive without it and fail the CSRF check. Caddy
+    proxies that single path to the API. Each origin's URL also has to be
+    registered as an authorized redirect URI on the OAuth client.
+  */
+
+  /*
+    Google's script is fetched from here rather than from a tag in the markup,
+    so the decision not to prompt is also a decision not to call Google at all:
+    a signed-in visitor, or a build with no client id, makes no third-party
+    request from this page. It is the only third-party script on the site, and
+    this keeps it to the visitors it is actually for.
+  */
+  function loadGsi(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = 'https://accounts.google.com/gsi/client';
+      tag.async = true;
+      tag.onload = () => resolve();
+      tag.onerror = () => reject(new Error('one tap unavailable'));
+      document.head.appendChild(tag);
+    });
+  }
+
+  async function startOneTap() {
+    if (!GOOGLE_CLIENT_ID) return;
+
+    // Someone with a session already sees the signed-in nav; prompting them to
+    // sign in would be nonsense. The pre-paint script in BaseLayout stamps this
+    // from the cross-origin `stubbase_session` hint before anything renders.
+    if (document.documentElement.classList.contains('signed-in')) return;
+
+    // A blocked or offline Google is not an error worth surfacing — the page
+    // works, and the nav's Log in link is the path that always exists.
+    try {
+      await loadGsi();
+    } catch {
+      return;
+    }
+
+    const id = (window as any).google?.accounts?.id;
+    if (!id) return;
+
+    id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      ux_mode: 'redirect',
+      login_uri: new URL('/auth/google/one-tap', location.origin).toString(),
+    });
+    id.prompt();
+  }
+
+  void startOneTap();
+</script>

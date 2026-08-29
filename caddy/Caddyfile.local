@@ -5,8 +5,17 @@
 # Caddyfile.dev, which targets the docker-compose bind mounts (/srv/...).
 
 http://stubbase.localhost {
-	root * /var/www/stubbase-landing/dist
-	file_server
+	# Mirrors the apex's One Tap proxy (see caddy/Caddyfile). Google will not
+	# accept a non-HTTPS redirect URI outside localhost/127.0.0.1, so the
+	# prompt does not render on this host — the route keeps the files in step.
+	handle /auth/google/one-tap {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	handle {
+		root * /var/www/stubbase-landing/dist
+		file_server
+	}
 }
 
 http://www.stubbase.localhost {

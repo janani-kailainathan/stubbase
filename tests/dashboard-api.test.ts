@@ -1764,11 +1764,38 @@ describe("OAuth sign-in", () => {
     verified: true,
   };
 
+  // One Tap verifies a Google-signed ID token against Google's published keys,
+  // so the stub provider has to publish a real JWKS and the suite has to hold
+  // the matching private key. Nothing here is Google-specific beyond the shape.
+  const KID = "test-signing-key";
+  let googleKeys: CryptoKeyPair;
+  let otherKeys: CryptoKeyPair;
+  let publicJwk: JsonWebKey;
+
+  const rsaKeyPair = () =>
+    crypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    ) as Promise<CryptoKeyPair>;
+
   beforeAll(async () => {
+    googleKeys = await rsaKeyPair();
+    // A structurally perfect token signed by someone who is not Google.
+    otherKeys = await rsaKeyPair();
+    publicJwk = await crypto.subtle.exportKey("jwk", googleKeys.publicKey);
+
     provider = Bun.serve({
       port: 0,
       async fetch(req) {
         const path = new URL(req.url).pathname;
+        if (path === "/certs")
+          return Response.json({ keys: [{ ...publicJwk, kid: KID, use: "sig", alg: "RS256" }] });
         if (path === "/token") return Response.json({ access_token: "stub-access-token" });
         if (path === "/userinfo")
           return Response.json({
@@ -1798,6 +1825,7 @@ describe("OAuth sign-in", () => {
       OAUTH_GOOGLE_AUTH_URL: `${base}/authorize/google`,
       OAUTH_GOOGLE_TOKEN_URL: `${base}/token`,
       OAUTH_GOOGLE_USERINFO_URL: `${base}/userinfo`,
+      OAUTH_GOOGLE_CERTS_URL: `${base}/certs`,
       OAUTH_GITHUB_AUTH_URL: `${base}/authorize/github`,
       OAUTH_GITHUB_TOKEN_URL: `${base}/token`,
       OAUTH_GITHUB_USER_URL: `${base}/user`,
@@ -1995,6 +2023,208 @@ describe("OAuth sign-in", () => {
     expect(
       readOauthDb((db) => db.query("SELECT token_hash FROM sessions WHERE token_hash = ?").get(token)),
     ).toBeNull();
+  });
+
+  // ── Google One Tap ───────────────────────────────────────────────
+  // Same destination as the redirect flow, different first leg: Google posts a
+  // signed ID token to us instead of us exchanging a code. With no `state` and
+  // no client secret in play, the token's own claims are the entire proof — so
+  // each one gets a test that fails if the check is removed.
+  describe("Google One Tap", () => {
+    const b64url = (value: string | ArrayBuffer) =>
+      Buffer.from(value as any).toString("base64url");
+
+    /** Mints an ID token, defaulting to one this service should accept. */
+    async function idToken(
+      claims: Record<string, unknown> = {},
+      opts: { kid?: string; alg?: string; key?: CryptoKey } = {},
+    ): Promise<string> {
+      const header = b64url(
+        JSON.stringify({ alg: opts.alg ?? "RS256", kid: opts.kid ?? KID, typ: "JWT" }),
+      );
+      const payload = b64url(
+        JSON.stringify({
+          iss: "https://accounts.google.com",
+          aud: "google-client-id",
+          sub: "google-subject-id",
+          exp: Math.floor(Date.now() / 1000) + 300,
+          email: `onetap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.co`,
+          email_verified: true,
+          ...claims,
+        }),
+      );
+      const signature = await crypto.subtle.sign(
+        "RSASSA-PKCS1-v1_5",
+        opts.key ?? googleKeys.privateKey,
+        Buffer.from(`${header}.${payload}`),
+      );
+      return `${header}.${payload}.${b64url(signature)}`;
+    }
+
+    const emailOf = (token: string) =>
+      JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).email as string;
+
+    /**
+     * Posts to the endpoint the way Google does. `csrf` defaults to a matching
+     * pair; pass `null` for either half to drop it.
+     */
+    function oneTap(
+      credential: string,
+      csrf: { body?: string | null; cookie?: string | null } = {},
+      on: Service = oauthApp,
+    ) {
+      const bodyToken = csrf.body === undefined ? "csrf-value" : csrf.body;
+      const cookieToken = csrf.cookie === undefined ? "csrf-value" : csrf.cookie;
+
+      const form = new URLSearchParams({ credential });
+      if (bodyToken !== null) form.set("g_csrf_token", bodyToken);
+      const headers: Record<string, string> = {
+        "content-type": "application/x-www-form-urlencoded",
+      };
+      if (cookieToken !== null) headers.cookie = `g_csrf_token=${cookieToken}`;
+
+      return fetch(`${on.base}/auth/google/one-tap`, {
+        method: "POST",
+        headers,
+        body: form,
+        redirect: "manual",
+      });
+    }
+
+    const noAccountFor = (email: string) =>
+      expect(
+        readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email)),
+      ).toHaveLength(0);
+
+    test("a valid credential returns a working session in the fragment", async () => {
+      const token = await idToken({ name: "Grace" });
+      const res = await oneTap(token);
+
+      expect(res.status).toBe(302);
+      const location = new URL(res.headers.get("location")!);
+      expect(`${location.origin}${location.pathname}`).toBe(`${SPA}/auth/callback`);
+      // Same rule as the redirect flow: the session rides the fragment, never
+      // the query string, so it cannot land in a proxy log.
+      expect(location.search).toBe("");
+
+      const session = new URLSearchParams(fragment(res)).get("token")!;
+      expect(session).toBeTruthy();
+      const me = await fetch(`${oauthApp.base}/auth/me`, { headers: as(session) });
+      expect(me.status).toBe(200);
+      expect((await me.json()).user).toMatchObject({ email: emailOf(token), name: "Grace" });
+    });
+
+    test("the CSRF cookie and body value must both be present and match", async () => {
+      for (const csrf of [
+        { cookie: null }, // host-only cookie never arrived
+        { body: null }, // no double-submit value posted
+        { body: "posted-value", cookie: "different-value" },
+        { body: "", cookie: "" }, // two empties must not count as a match
+      ]) {
+        const token = await idToken();
+        const res = await oneTap(token, csrf);
+        expect(res.status).toBe(302);
+        expect(fragment(res)).toBe("error=invalid_state");
+        expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+        noAccountFor(emailOf(token));
+      }
+    });
+
+    test("a token signed by anyone but Google is refused", async () => {
+      const token = await idToken({}, { key: otherKeys.privateKey });
+      expect(fragment(await oneTap(token))).toBe("error=provider_rejected");
+      noAccountFor(emailOf(token));
+    });
+
+    test("a tampered payload is refused", async () => {
+      const token = await idToken();
+      const [header, payload, signature] = token.split(".");
+      const swapped = b64url(
+        JSON.stringify({
+          ...JSON.parse(Buffer.from(payload, "base64url").toString()),
+          email: "attacker@evil.test",
+        }),
+      );
+      const res = await oneTap(`${header}.${swapped}.${signature}`);
+      expect(fragment(res)).toBe("error=provider_rejected");
+      noAccountFor("attacker@evil.test");
+    });
+
+    test("the algorithm is pinned to RS256", async () => {
+      // `alg: none` with an empty signature is the classic JWT forgery; so is
+      // asking for a symmetric algorithm the verifier might key with the
+      // public JWK. Neither may reach the signature check.
+      const header = b64url(JSON.stringify({ alg: "none", kid: KID, typ: "JWT" }));
+      const payload = b64url(
+        JSON.stringify({
+          iss: "https://accounts.google.com",
+          aud: "google-client-id",
+          exp: Math.floor(Date.now() / 1000) + 300,
+          email: "alg-none@test.co",
+          email_verified: true,
+        }),
+      );
+      expect(fragment(await oneTap(`${header}.${payload}.`))).toBe("error=provider_rejected");
+
+      const hs = await idToken({ email: "alg-hs256@test.co" }, { alg: "HS256" });
+      expect(fragment(await oneTap(hs))).toBe("error=provider_rejected");
+
+      noAccountFor("alg-none@test.co");
+      noAccountFor("alg-hs256@test.co");
+    });
+
+    test("a token minted for another site's client id is refused", async () => {
+      // A perfectly valid Google token — just not one issued to us. Without an
+      // `aud` check, any site's One Tap credential would sign in here.
+      const token = await idToken({ aud: "someone-elses-client-id" });
+      expect(fragment(await oneTap(token))).toBe("error=provider_rejected");
+      noAccountFor(emailOf(token));
+    });
+
+    test("a foreign issuer is refused", async () => {
+      const token = await idToken({ iss: "https://accounts.evil.test" });
+      expect(fragment(await oneTap(token))).toBe("error=provider_rejected");
+      noAccountFor(emailOf(token));
+    });
+
+    test("an expired token is refused", async () => {
+      const token = await idToken({ exp: Math.floor(Date.now() / 1000) - 3600 });
+      expect(fragment(await oneTap(token))).toBe("error=provider_rejected");
+      noAccountFor(emailOf(token));
+    });
+
+    test("an unverified email is refused, exactly as in the redirect flow", async () => {
+      for (const email_verified of [false, "false", undefined]) {
+        const token = await idToken({ email_verified });
+        expect(fragment(await oneTap(token))).toBe("error=provider_rejected");
+        noAccountFor(emailOf(token));
+      }
+    });
+
+    test("One Tap and the redirect flow land on the same account", async () => {
+      const email = `same-account-${Date.now()}@test.co`;
+      const first = await signIn("google", email);
+      const second = await oneTap(await idToken({ email }));
+
+      const ids = await Promise.all(
+        [first, second].map(async (res) => {
+          const session = new URLSearchParams(fragment(res)).get("token")!;
+          const body = await (
+            await fetch(`${oauthApp.base}/auth/me`, { headers: as(session) })
+          ).json();
+          return body.user.id;
+        }),
+      );
+      expect(ids[0]).toBe(ids[1]);
+      expect(
+        readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email)),
+      ).toHaveLength(1);
+    });
+
+    test("the endpoint is absent when Google sign-in is not configured", async () => {
+      const res = await oneTap(await idToken(), {}, app);
+      expect(res.status).toBe(404);
+    });
   });
 });
 

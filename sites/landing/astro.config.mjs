@@ -43,7 +43,17 @@ export default defineConfig({
   },
 
   vite: {
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+
+    // One Tap posts its credential to /auth/google/one-tap on *this* origin,
+    // because the g_csrf_token cookie GSI sets is host-only and never reaches
+    // a sibling subdomain. Hand that one path to the Dashboard API, exactly as
+    // the Caddyfiles do for docker and production.
+    server: {
+      proxy: {
+        '/auth/google/one-tap': 'http://127.0.0.1:3001',
+      },
+    },
   },
 
   integrations: [

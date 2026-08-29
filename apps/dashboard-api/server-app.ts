@@ -14,6 +14,7 @@
  *   GET    /auth/me                             (auth)
  *   GET    /auth/providers                      which OAuth buttons to show
  *   GET    /auth/google|github[/callback]       OAuth sign-in (when configured)
+ *   POST   /auth/google/one-tap                  Google One Tap (landing origin)
  *   GET    /projects                            (auth) list own projects
  *   POST   /projects                            (auth) { name, resources?: { [name]: any[] } }
  *   PATCH  /projects/<tenantId>                 (auth) { name } rename
@@ -549,6 +550,19 @@ async function oauthCallback(req: Request, provider: OauthProvider): Promise<Res
 
   const identity = await fetchOauthIdentity(req, provider, code);
   if (!identity) return oauthFailed("provider_rejected");
+  return signInWithIdentity(identity, provider);
+}
+
+/**
+ * Turn a *verified* provider identity into a dashboard session.
+ *
+ * Shared by the redirect callback and by One Tap so the two can never drift on
+ * how an account is chosen. The join key is the verified email address and not
+ * the provider's subject id: someone who signs in with Google today and GitHub
+ * tomorrow is one customer with one project list. That is only safe because
+ * every caller has already refused an unverified address.
+ */
+function signInWithIdentity(identity: OauthIdentity, provider: OauthProvider): Response {
   const email = identity.email.trim().toLowerCase();
 
   const find = () =>
@@ -570,6 +584,151 @@ async function oauthCallback(req: Request, provider: OauthProvider): Promise<Res
   if (!user) return oauthFailed("provider_rejected");
 
   return toDashboard("/auth/callback", `token=${createSession(user.id)}`);
+}
+
+// ── Google One Tap ────────────────────────────────────────────────
+// The prompt Google renders in the corner of the *landing* site. It ends in
+// the same session as /auth/google and only the first leg differs: instead of
+// us bouncing the browser to Google and exchanging a code, Google posts a
+// signed ID token straight here. So there is no `state` to validate and no
+// client secret in play — the token's own signature and `aud` are the whole
+// proof, which is why every claim below is checked rather than assumed.
+//
+// This endpoint is reached at https://stubbase.dev/auth/google/one-tap — on
+// the *landing* origin, not on api.app.stubbase.dev — and Caddy proxies that
+// one path here. That is forced, not a preference: `g_csrf_token` is a
+// host-only cookie, so a POST to any other host (a sibling subdomain included)
+// arrives without it and could never pass the double-submit check below.
+
+const GOOGLE_CERTS_URL =
+  process.env.OAUTH_GOOGLE_CERTS_URL ?? "https://www.googleapis.com/oauth2/v3/certs";
+const GOOGLE_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
+const ID_TOKEN_SKEW_MS = 60_000;
+
+// Google's published signing keys, cached for as long as Google says. Kept as
+// imported CryptoKeys rather than raw JWKs so a burst of sign-ins doesn't
+// re-import the same key each time.
+let googleKeyCache: { keys: Map<string, CryptoKey>; expires: number } | null = null;
+
+async function googleSigningKey(kid: string): Promise<CryptoKey | null> {
+  const cached = googleKeyCache;
+  if (cached && cached.expires > Date.now()) {
+    const hit = cached.keys.get(kid);
+    // Only a *hit* short-circuits: an unknown kid on a live cache is what a
+    // key rotation looks like, so fall through and refetch.
+    if (hit) return hit;
+  }
+
+  const res = await fetch(GOOGLE_CERTS_URL, { signal: AbortSignal.timeout(10_000) }).catch(
+    () => null,
+  );
+  if (!res?.ok) return null;
+  const body = (await res.json().catch(() => null)) as { keys?: unknown[] } | null;
+  if (!Array.isArray(body?.keys)) return null;
+
+  const keys = new Map<string, CryptoKey>();
+  for (const jwk of body.keys as any[]) {
+    if (typeof jwk?.kid !== "string" || jwk.kty !== "RSA") continue;
+    const key = await crypto.subtle
+      .importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"])
+      .catch(() => null);
+    if (key) keys.set(jwk.kid, key);
+  }
+
+  const maxAge = Number(/max-age=(\d+)/.exec(res.headers.get("cache-control") ?? "")?.[1]);
+  const ttlSec = Number.isFinite(maxAge) && maxAge > 0 ? maxAge : 300;
+  googleKeyCache = { keys, expires: Date.now() + ttlSec * 1000 };
+  return keys.get(kid) ?? null;
+}
+
+/**
+ * Verify a Google-issued ID token and return the identity it asserts.
+ *
+ * Every check here is load-bearing. The signature proves Google minted it;
+ * `aud` proves it was minted for *us*, since a token issued to any other
+ * site's client id is a perfectly valid Google token and must still be
+ * refused; `exp` bounds replay; and `email_verified` is the same rule the
+ * redirect flow enforces, because signInWithIdentity links by email and an
+ * unverified address is an account-takeover primitive.
+ */
+async function verifyGoogleIdToken(raw: string): Promise<OauthIdentity | null> {
+  const [headerB64, payloadB64, sigB64, ...rest] = raw.split(".");
+  if (!headerB64 || !payloadB64 || !sigB64 || rest.length) return null;
+
+  const decode = (s: string): any => {
+    try {
+      return JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
+    } catch {
+      return null;
+    }
+  };
+  const header = decode(headerB64);
+  const claims = decode(payloadB64);
+  if (!header || !claims) return null;
+  // Pin the algorithm: accepting whatever `alg` says is how "alg: none" and
+  // HMAC-with-the-public-key forgeries get in.
+  if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
+
+  const key = await googleSigningKey(header.kid);
+  if (!key) return null;
+  const signed = await crypto.subtle
+    .verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      Buffer.from(sigB64, "base64url"),
+      Buffer.from(`${headerB64}.${payloadB64}`),
+    )
+    .catch(() => false);
+  if (!signed) return null;
+
+  if (typeof claims.iss !== "string" || !GOOGLE_ISSUERS.has(claims.iss)) return null;
+  if (!OAUTH_APPS.google.clientId || claims.aud !== OAUTH_APPS.google.clientId) return null;
+  const expMs = Number(claims.exp) * 1000;
+  if (!Number.isFinite(expMs) || Date.now() > expMs + ID_TOKEN_SKEW_MS) return null;
+
+  const verified = claims.email_verified === true || claims.email_verified === "true";
+  if (!verified || typeof claims.email !== "string" || !EMAIL_RE.test(claims.email)) return null;
+
+  const name = typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null;
+  return { email: claims.email, name };
+}
+
+/** Read one cookie off a request. One value, no cookie jar, no dependency. */
+function readCookie(req: Request, name: string): string | null {
+  for (const part of (req.headers.get("cookie") ?? "").split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return null;
+}
+
+async function googleOneTap(req: Request): Promise<Response> {
+  if (!oauthConfigured("google")) return err(404, "google sign-in is not configured");
+
+  const len = Number(req.headers.get("content-length") ?? 0);
+  if (len > MAX_BODY_BYTES) return err(413, "body too large");
+  const text = await req.text();
+  if (text.length > MAX_BODY_BYTES) return err(413, "body too large");
+  const form = new URLSearchParams(text);
+
+  // Double-submit CSRF: only a page on the origin that set the cookie can read
+  // it back, so a matching pair proves this POST came from our own page rather
+  // than an attacker's form. Both halves must exist — two absent values are
+  // equal, and treating that as a match would delete the check.
+  const posted = form.get("g_csrf_token") ?? "";
+  const cookie = readCookie(req, "g_csrf_token") ?? "";
+  if (!posted || !cookie) return oauthFailed("invalid_state");
+  const a = Buffer.from(posted);
+  const b = Buffer.from(cookie);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return oauthFailed("invalid_state");
+
+  const credential = form.get("credential") ?? "";
+  if (!credential) return oauthFailed("provider_rejected");
+  const identity = await verifyGoogleIdToken(credential);
+  if (!identity) return oauthFailed("provider_rejected");
+
+  return signInWithIdentity(identity, "google");
 }
 
 // ── Core Engine admin client ──────────────────────────────────────
@@ -2000,6 +2159,15 @@ async function route(req: Request): Promise<Response> {
     // bounced between us and the provider, and it has no session yet.
     if (req.method === "GET" && segments[1] === "providers" && segments.length === 2)
       return json({ google: oauthConfigured("google"), github: oauthConfigured("github") });
+    // One Tap posts here from the landing origin; see the block comment on
+    // googleOneTap for why it cannot live on the API subdomain.
+    if (
+      req.method === "POST" &&
+      segments[1] === "google" &&
+      segments[2] === "one-tap" &&
+      segments.length === 3
+    )
+      return googleOneTap(req);
     if (req.method === "GET" && (segments[1] === "google" || segments[1] === "github")) {
       const provider = segments[1] as OauthProvider;
       if (segments.length === 2) return oauthStart(req, provider);
