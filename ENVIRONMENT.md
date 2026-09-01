@@ -296,7 +296,7 @@ Dev-server proxy targets (read by `vite.config.ts` from the *shell*, not
 |---|---|---|---|
 | `PUBLIC_APP_URL` | `http://localhost:5173` | `https://app.stubbase.dev` | Dashboard links (`src/lib/urls.ts`). |
 | `PUBLIC_CORE_URL` | `http://127.0.0.1:3000` | `https://api.stubbase.dev` | Core API base for the Home "Try it live" runner. |
-| `PUBLIC_GOOGLE_CLIENT_ID` | *(unset = no prompt)* | *(must be set at build time)* | Google OAuth client id for the One Tap prompt on Home. Public by design — it is the `aud` the Dashboard API checks a returned ID token against, not a secret. Unset ships no prompt and no request to Google. Must be the **same client** as `DASHBOARD_GOOGLE_CLIENT_ID`, with each origin's `/auth/google/one-tap` registered as an authorized redirect URI. |
+| `PUBLIC_GOOGLE_CLIENT_ID` | *(unset = no prompt)* | *(must be set at build time)* | Google OAuth client id for the One Tap prompt on Home. Public by design — it is the `aud` the Dashboard API checks a returned ID token against, not a secret. Unset ships no prompt and no request to Google. Must be the **same client** as `DASHBOARD_GOOGLE_CLIENT_ID`, with each origin registered as an **authorized JavaScript origin** — without that Google refuses the prompt with `no registered origin` / `invalid_client`. No redirect URI is needed for One Tap: the page posts the credential to `/auth/google/one-tap` itself. |
 
 `.env.docker` in each site pins these to the `*.localhost` hosts for the
 Docker stack; `.env.development` pins the dev-server values above. Ports in the

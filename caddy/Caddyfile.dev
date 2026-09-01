@@ -3,8 +3,8 @@
 
 http://stubbase.localhost {
 	# Mirrors the apex's One Tap proxy. Google will not accept a non-HTTPS
-	# redirect URI outside localhost/127.0.0.1, so the prompt itself does not
-	# render on this host — the route exists to keep the two files in step.
+	# JavaScript origin outside localhost/127.0.0.1, so the prompt itself does
+	# not render on this host — the route exists to keep the two files in step.
 	handle /auth/google/one-tap {
 		reverse_proxy dashboard-api:3001
 	}

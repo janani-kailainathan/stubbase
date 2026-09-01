@@ -326,18 +326,29 @@ const pipeline = [
   /*
     Google One Tap.
 
-    The credential goes to the server, never to this page: `ux_mode: 'redirect'`
-    with a `login_uri` makes Google POST the signed ID token straight to the
-    Dashboard API, which verifies it and 302s to the SPA with the session in a
-    URL fragment. That keeps the rule this site is built around — a session
-    token never exists on the stubbase.dev origin.
+    `ux_mode: 'redirect'` and `login_uri` do **not** apply to One Tap, however
+    much they look like they should: Google's reference says ux_mode "has no
+    impact on the OneTap UX", and One Tap hands its credential to `callback`.
+    Configured the other way the prompt renders and the tap does nothing at all
+    — the token goes to a callback that was never declared, and no POST is ever
+    made. So the credential does pass through this page, and no configuration
+    avoids that: under FedCM the browser mediates the prompt and returns the
+    token to JavaScript.
 
-    `login_uri` is built from location.origin rather than configured, so dev and
-    production each point at themselves with no extra env var. It must be on
-    THIS host: the g_csrf_token cookie GSI sets is host-only, so a login_uri on
-    api.app.stubbase.dev would arrive without it and fail the CSRF check. Caddy
-    proxies that single path to the API. Each origin's URL also has to be
-    registered as an authorized redirect URI on the OAuth client.
+    That costs one sentence of the original design, not the rule it protected.
+    The callback immediately form-POSTs the token to /auth/google/one-tap on
+    THIS origin, the Dashboard API verifies it and 302s to the SPA with the
+    session in a URL fragment — so a *Stubbase session token* still never exists
+    on the stubbase.dev origin. What briefly does is Google's own ID token:
+    short-lived, and pinned by `aud` to our client id, which the API re-checks.
+
+    It has to be a form submission, not fetch — fetch follows the 302 itself and
+    the fragment the session rides in never reaches the address bar.
+
+    The endpoint stays on this host because Caddy proxies that one path to the
+    API and because the CSRF cookie below is host-only. The authorized redirect
+    URI registered for it is now unused (Google no longer posts anything), but
+    the JavaScript origin registration is what lets the prompt render at all.
   */
 
   /*
@@ -356,6 +367,38 @@ const pipeline = [
       tag.onerror = () => reject(new Error('one tap unavailable'));
       document.head.appendChild(tag);
     });
+  }
+
+  /*
+    Double-submit CSRF, minted here. Google sets `g_csrf_token` itself only when
+    *it* posts the credential — the button's redirect mode — and nothing sets it
+    on the One Tap callback path, so this page writes the cookie and echoes the
+    same value in the body. The API's check is unchanged and still means what it
+    meant: only a page on this origin can set and read back a host-only cookie,
+    so a matching pair proves the POST came from here and not from someone
+    else's form.
+  */
+  function postCredential(credential: string) {
+    const csrf = crypto.randomUUID();
+    document.cookie =
+      `g_csrf_token=${csrf}; Path=/; SameSite=Lax` +
+      (location.protocol === 'https:' ? '; Secure' : '');
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = new URL('/auth/google/one-tap', location.origin).toString();
+    for (const [name, value] of [
+      ['credential', credential],
+      ['g_csrf_token', csrf],
+    ]) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    }
+    document.body.append(form);
+    form.submit();
   }
 
   async function startOneTap() {
@@ -379,8 +422,9 @@ const pipeline = [
 
     id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      ux_mode: 'redirect',
-      login_uri: new URL('/auth/google/one-tap', location.origin).toString(),
+      callback: (response: { credential?: string }) => {
+        if (response?.credential) postCredential(response.credential);
+      },
     });
     id.prompt();
   }

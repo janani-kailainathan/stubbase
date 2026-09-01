@@ -589,10 +589,16 @@ function signInWithIdentity(identity: OauthIdentity, provider: OauthProvider): R
 // ── Google One Tap ────────────────────────────────────────────────
 // The prompt Google renders in the corner of the *landing* site. It ends in
 // the same session as /auth/google and only the first leg differs: instead of
-// us bouncing the browser to Google and exchanging a code, Google posts a
-// signed ID token straight here. So there is no `state` to validate and no
+// us bouncing the browser to Google and exchanging a code, a signed Google ID
+// token is posted straight here. So there is no `state` to validate and no
 // client secret in play — the token's own signature and `aud` are the whole
 // proof, which is why every claim below is checked rather than assumed.
+//
+// The poster is Home's own One Tap callback, not Google. One Tap ignores
+// `ux_mode`/`login_uri` (they configure the rendered *button*), and under FedCM
+// the browser returns the credential to the page, so the page form-POSTs it
+// here. Nothing about the checks below changes: an ID token is proof or it is
+// not, whichever leg carried it.
 //
 // This endpoint is reached at https://stubbase.dev/auth/google/one-tap — on
 // the *landing* origin, not on api.app.stubbase.dev — and Caddy proxies that
@@ -714,8 +720,11 @@ async function googleOneTap(req: Request): Promise<Response> {
 
   // Double-submit CSRF: only a page on the origin that set the cookie can read
   // it back, so a matching pair proves this POST came from our own page rather
-  // than an attacker's form. Both halves must exist — two absent values are
-  // equal, and treating that as a match would delete the check.
+  // than an attacker's form. Home mints the pair (Google sets `g_csrf_token`
+  // only on the leg where Google itself posts), which changes nothing here —
+  // the guarantee is the host-only cookie, not who generated the value. Both
+  // halves must exist: two absent values are equal, and treating that as a
+  // match would delete the check.
   const posted = form.get("g_csrf_token") ?? "";
   const cookie = readCookie(req, "g_csrf_token") ?? "";
   if (!posted || !cookie) return oauthFailed("invalid_state");
