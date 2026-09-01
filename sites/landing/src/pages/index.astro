@@ -1,7 +1,8 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight } from 'lucide-astro';
 import Layout from '../layouts/Layout.astro';
 import { APP_URL, CORE_URL } from '../lib/urls';
+import { NAV_GROUPS } from '../lib/nav';
 
 const publicResources = [
   { path: '/posts', count: '100 posts' },
@@ -29,6 +30,11 @@ const capabilities = [
     copy: 'Click "Deploy" to instantly push schema changes live without breaking existing client connections.',
   },
 ];
+
+// Read straight from the nav rather than restating the three spokes here: nav.ts
+// is the single source of truth, so a new feature page shows up in this section
+// the moment it is added there, with no second list to keep in step.
+const features = NAV_GROUPS.find((group) => group.key === 'features')!;
 
 const pipeline = [
   {
@@ -253,6 +259,40 @@ const pipeline = [
             to add delays, errors, or your own data.
           </p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  {/*
+    Hub-to-spoke internal links, and deliberately the last band on the page: a
+    reader who has run the demo and seen the free resources is the one with a
+    reason to go deeper. Rendered as link cards rather than the icon-chip cards
+    used higher up, so the affordance reads as navigation rather than as a third
+    identical feature grid.
+  */}
+  <section>
+    <div class="mx-auto max-w-5xl px-6 py-20">
+      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Explore Stubbase Features</h2>
+      <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
+        Each feature has a page of its own — how it works, the exact configuration it takes, and
+        what it replaces.
+      </p>
+      <div class="grid gap-6 md:grid-cols-3">
+        {
+          features.links.map((link) => (
+            <a
+              href={link.href}
+              class="group flex flex-col rounded-xl border border-border-c bg-card p-6 transition-colors hover:border-border-strong"
+            >
+              <h3 class="mb-2 font-semibold text-foreground">{link.label}</h3>
+              <p class="mb-6 text-sm leading-relaxed text-muted-foreground">{link.blurb}</p>
+              <span class="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink transition-colors group-hover:text-primary-ink-hover">
+                Read more
+                <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </a>
+          ))
+        }
       </div>
     </div>
   </section>

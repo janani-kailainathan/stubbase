@@ -81,9 +81,21 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'features',
     label: 'Features',
     links: [
-      { href: '/features/ai-rest-api-generation', label: 'AI API Generation' },
-      { href: '/features/google-github-social-login', label: 'Social Login' },
-      { href: '/features/instant-api-deployments', label: 'Instant Deployments' },
+      {
+        href: '/features/ai-rest-api-generation',
+        label: 'AI API Generation',
+        blurb: 'Describe a domain in one sentence and get a relational schema, seed data and live endpoints.',
+      },
+      {
+        href: '/features/google-github-social-login',
+        label: 'Social Login',
+        blurb: 'Google and GitHub sign-in from four config values, with verified-email identity and record ownership.',
+      },
+      {
+        href: '/features/instant-api-deployments',
+        label: 'Instant Deployments',
+        blurb: 'Stage every edit as a draft, then swap it live with no downtime — or stop the project outright.',
+      },
     ],
   },
   {
