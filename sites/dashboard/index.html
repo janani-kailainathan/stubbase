@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/stubbase-logo.png" />
+    <!-- SVG first for anything modern; the 32px PNG is the fallback for the
+         handful of clients that ignore it. apple-touch-icon must stay an opaque
+         PNG — iOS renders transparency black and applies its own corner mask. -->
+    <link rel="icon" type="image/svg+xml" href="/stubbase-logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta id="theme-color" name="theme-color" content="#09090B" />
     <title>Stubbase Dashboard</title>

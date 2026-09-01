@@ -124,8 +124,13 @@ Hard constraints that shape the product:
 
 - **Name:** Stubbase. **Canonical domain:** `stubbase.dev` — the `.com` is not
   owned and must never be used in copy, links or schema markup.
-- **Assets:** `stubbase-logo.png`, `stubbase-logo-text.png` (dashboard),
-  `stubbase-logo-text-dark.png` and `dashboard-ui.png` (landing).
+- **Assets:** the wordmark ships as SVG with text converted to outlines, so it
+  is resolution-independent and carries no font dependency — both sites hold the
+  identical set in `public/`: `stubbase-logo-text-dark.svg`,
+  `stubbase-logo-text-light.svg` (theme-paired; every call site sizes them by
+  height with `w-auto`), `stubbase-logo.svg` (icon only, no theme variant — the
+  mark is emerald in both), plus `favicon-32.png` and an opaque
+  `apple-touch-icon.png`. `dashboard-ui.png` (landing) is the og:image.
 - **Voice:** technical, exact, developer-direct. Concrete mechanisms and real
   endpoint names over adjectives.
 - **Copy on the landing pages is SEO/RAG-tuned.** H2 wording, code blocks and

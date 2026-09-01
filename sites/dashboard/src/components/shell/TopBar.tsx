@@ -16,7 +16,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { deployProject } from '@/lib/api'
+import { deployProject, LANDING_URL } from '@/lib/api'
 import { useProjectStatus, useSetProjectStatus } from '@/hooks/config'
 import {
   DropdownMenu,
@@ -499,6 +499,19 @@ export function TopBar() {
   const setNewProjectOpen = useWorkspaceStore((s) => s.setNewProjectOpen)
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  // Signing out lands on the marketing site, not /login. Someone who clicked
+  // "log out" chose to leave; the login form they'd otherwise be dropped on is
+  // an invitation to come straight back, and reads as though the sign-out
+  // failed. An *involuntary* logout — the 401 handler in the auth store — still
+  // falls through to /login, where getting the session back is the whole point,
+  // which is why this redirect lives at the click and not in the store.
+  //
+  // The hint cookie the landing nav reads is cleared synchronously inside
+  // logout(), so the page we arrive at already renders its signed-out header.
+  const signOut = () => {
+    logout()
+    window.location.href = LANDING_URL
+  }
   const [renaming, setRenaming] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   // Which project the confirm dialog is about — any row in the list, not just
@@ -508,12 +521,12 @@ export function TopBar() {
   return (
     <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-background px-5">
       <img
-        src="/stubbase-logo-text-light.png"
+        src="/stubbase-logo-text-light.svg"
         alt="Stubbase"
         className="h-5 w-auto dark:hidden"
       />
       <img
-        src="/stubbase-logo-text.png"
+        src="/stubbase-logo-text-dark.svg"
         alt="Stubbase"
         className="hidden h-5 w-auto dark:block"
       />
@@ -632,7 +645,7 @@ export function TopBar() {
       <ThemeToggle />
       <button
         title={`Log out${user ? ` (${user.email})` : ''}`}
-        onClick={logout}
+        onClick={signOut}
         className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
       >
         <LogOut className="h-3.5 w-3.5" />
