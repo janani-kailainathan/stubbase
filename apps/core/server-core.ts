@@ -1750,6 +1750,16 @@ async function handleAdmin(
 
   // POST /<tenant>/_admin/deploy — promote every draft_<name>.json over <name>.json.
   // Lives here (not the dashboard) because only the core may write TENANTS_DIR.
+  //
+  // A promoted draft is DELETED, not left behind. It has done its job: its
+  // contents are the live file now, so keeping it would leave a second, frozen
+  // copy of the resource that nothing ever updates again — and two things read
+  // drafts in preference to live files. The dashboard editor would show that
+  // frozen copy forever, hiding every record the public API created since; and
+  // the next deploy would re-promote it over the live file, destroying those
+  // records even if the user never touched that resource. Both were real bugs.
+  // Consuming the draft is what makes "a draft exists" mean "edited since the
+  // last deploy" instead of "edited once, ever".
   if (segments[0] === "deploy" && segments.length === 1) {
     if (req.method !== "POST") return err(405, "method not allowed");
     let entries: string[];
@@ -1763,7 +1773,11 @@ async function handleAdmin(
       if (!f.startsWith("draft_") || !f.endsWith(".json")) continue;
       const target = f.slice("draft_".length, -".json".length);
       if (!NAME_RE.test(target)) continue;
-      await Bun.write(resourceFile(tenantId, target), Bun.file(join(tenantDir(tenantId), f)));
+      const draftPath = join(tenantDir(tenantId), f);
+      await Bun.write(resourceFile(tenantId, target), Bun.file(draftPath));
+      // Only after the copy has landed: a failed write must leave the draft
+      // alone, or the staged edit is gone with nothing live to show for it.
+      await rm(draftPath, { force: true });
       promoted.push(target);
     }
     evict(tenantId); // CRITICAL: flush cache so the promoted files go live now

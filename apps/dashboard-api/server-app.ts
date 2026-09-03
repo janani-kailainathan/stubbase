@@ -1046,8 +1046,11 @@ async function deleteProject(user: User, tenantId: string): Promise<Response> {
 
 // Draft model: UI saves land as draft_<name>.json (invisible to the public
 // plane — the core skips draft_* on load); POST /projects/:id/deploy promotes
-// drafts over their production files. Reads prefer the draft so the editor
-// always shows the staged state.
+// drafts over their production files and deletes them. Reads prefer whichever
+// copy `dirty` says is current — the draft while an edit is staged, the live
+// file otherwise — and fall back to the other, never 404ing when only one
+// exists. See getFile: preferring the draft unconditionally is what hid a
+// project's own API writes behind a stranded snapshot.
 //
 // `config` is the tenant's env-style settings (the dashboard's .env editor
 // compiles to it): an object, not a record array, and never a CRUD resource —
@@ -1114,8 +1117,25 @@ async function getFile(user: User, tenantId: string, resource: string): Promise<
   if (!row) return err(404, "project not found");
   const invalid = invalidResourceName(resource);
   if (invalid) return invalid;
-  let res = await coreAdmin("GET", tenantId, `${DRAFT_PREFIX}${resource}`);
-  if (res.status === 404) res = await coreAdmin("GET", tenantId, resource);
+  // `dirty` chooses which copy wins, but both are always tried.
+  //
+  // Preferring the draft unconditionally is what hid a project's own API writes:
+  // deploys made before drafts were consumed stranded one for every resource
+  // ever edited, and that frozen snapshot then shadowed the live file forever.
+  // Reading live first whenever nothing is staged makes those leftovers inert
+  // without having to hunt them down — the next promote sweeps the file itself.
+  //
+  // The fallback is not optional, in either direction. `dirty` is only a hint:
+  // it was added by ALTER TABLE defaulting to 0 and deliberately not
+  // back-filled, so a project older than the column reads "clean" even while
+  // holding genuinely un-deployed drafts — and some hold resources that exist
+  // *only* as a draft, which trusting the flag alone would turn into a 404.
+  const order =
+    row.dirty === 1
+      ? [`${DRAFT_PREFIX}${resource}`, resource]
+      : [resource, `${DRAFT_PREFIX}${resource}`];
+  let res = await coreAdmin("GET", tenantId, order[0]);
+  if (res.status === 404) res = await coreAdmin("GET", tenantId, order[1]);
   if (res.status === 404) return err(404, "file not found");
   if (!res.ok) return err(502, `core engine refused the read (status ${res.status})`);
   return json(res.data);

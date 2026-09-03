@@ -359,6 +359,37 @@ describe("write-through persistence", () => {
     const after = await fetch(`${core.base}/deployable/posts`).then((r) => r.json());
     expect(after[0]).toMatchObject({ title: "promoted" });
   });
+
+  /**
+   * A promoted draft has to be consumed, or it becomes a frozen second copy of
+   * the resource that nothing updates again — and drafts are read in preference
+   * to live files. Left behind, it hides every record the public API creates
+   * from the dashboard editor, and the next deploy re-promotes it over the live
+   * file, destroying those records even for a resource nobody edited.
+   */
+  test("a promoted draft is consumed, so a second deploy promotes nothing", async () => {
+    const files = await readdir(join(core.dir, "deployable"));
+    expect(files).toContain("posts.json");
+    expect(files).not.toContain("draft_posts.json");
+
+    // The live data now belongs to whoever writes it, including the public API.
+    const created = await fetch(`${core.base}/deployable/posts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "written through the API" }),
+    });
+    expect(created.status).toBe(201);
+
+    const redeploy = await fetch(`${core.base}/deployable/_admin/deploy`, {
+      method: "POST",
+      headers: adminAuth,
+    });
+    expect(await redeploy.json()).toMatchObject({ promoted: [] });
+
+    // The API-created record is still there — the stale draft did not come back.
+    const posts = await fetch(`${core.base}/deployable/posts`).then((r) => r.json());
+    expect(posts.map((p: any) => p.title)).toEqual(["promoted", "written through the API"]);
+  });
 });
 
 // ── QA chaos engine ────────────────────────────────────────────────

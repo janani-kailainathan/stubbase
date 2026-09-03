@@ -485,6 +485,153 @@ describe("files proxy and the draft model", () => {
   }, 20_000);
 
   /**
+   * Deploy consumes the draft, so the editor falls back to the live file — which
+   * is the only copy the public API writes to.
+   *
+   * Left in place, a promoted draft is a frozen snapshot that reads take in
+   * preference to live data: every record created through the project's own API
+   * became invisible in the dashboard the moment its owner deployed once, and
+   * the next deploy rolled the live file back over them. Both symptoms come from
+   * the same leftover file, so both are pinned here.
+   */
+  test("records created through the live API show up in the editor after a deploy", async () => {
+    const { tenantId: id } = await createProject(owner.token, "Library", {
+      books: [{ id: "1", title: "Dune" }],
+    });
+    await activate(owner.token, id);
+
+    // One ordinary dashboard edit, deployed. This is what used to strand a draft.
+    await fetch(`${app.base}/projects/${id}/files/books`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1", title: "Dune" }]),
+    });
+    await fetch(`${app.base}/projects/${id}/deploy`, { method: "POST", headers: as(owner.token) });
+    expect(await coreFile(id, "draft_books").exists()).toBe(false);
+
+    // Now the project's own API creates a record, as a real client would.
+    const created = await fetch(`${core.base}/${id}/books`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Neuromancer" }),
+    });
+    expect(created.status).toBe(201);
+
+    const editor = await fetch(`${app.base}/projects/${id}/files/books`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(editor.map((b: any) => b.title)).toEqual(["Dune", "Neuromancer"]);
+  }, 30_000);
+
+  /**
+   * The same symptom from the other direction: a draft that is already on disk
+   * with nothing staged. Deploys made before drafts were consumed left one
+   * behind for every resource ever edited, and the editor served that frozen
+   * snapshot in preference to the live file — so the fix above stops new ones
+   * appearing but cannot help a project that already has them. Reads gate on
+   * `dirty` instead of on the file existing, which makes a stranded draft inert
+   * without having to hunt it down first.
+   */
+  test("a stranded draft is ignored when the project has nothing staged", async () => {
+    const { tenantId: id } = await createProject(owner.token, "Stranded", {
+      books: [{ id: "1", title: "Dune" }],
+    });
+    await activate(owner.token, id);
+
+    // Exactly the on-disk shape a pre-fix deploy left: a draft beside a live
+    // file the API has since moved on from, and dirty already cleared.
+    await Bun.write(coreFile(id, "draft_books").name!, JSON.stringify([{ id: "1", title: "Dune" }]));
+    await fetch(`${core.base}/${id}/_admin/flush`, { method: "POST", headers: { authorization: `Bearer ${ADMIN_SECRET}` } });
+    await fetch(`${core.base}/${id}/books`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Neuromancer" }),
+    });
+
+    const project = await fetch(`${app.base}/projects`, { headers: as(owner.token) })
+      .then((r) => r.json())
+      .then((rows: any[]) => rows.find((p) => p.tenant_id === id));
+    expect(project.dirty).toBe(false); // nothing staged — the draft is a leftover
+
+    const editor = await fetch(`${app.base}/projects/${id}/files/books`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(editor.map((b: any) => b.title)).toEqual(["Dune", "Neuromancer"]);
+  }, 30_000);
+
+  test("a resource that exists only as a draft is still readable", async () => {
+    // `dirty` was added by ALTER TABLE defaulting to 0 and never back-filled,
+    // so a project older than the column reads clean while genuinely holding
+    // un-deployed drafts. Trusting the flag alone would 404 its only copy.
+    const { tenantId: id } = await createProject(owner.token, "DraftOnly");
+    // Staged straight on the core, the way a file predating the flag looks:
+    // a draft on disk with no live counterpart and the project reading clean.
+    await Bun.write(coreFile(id, "draft_products").name!, JSON.stringify([{ id: "p1", name: "Widget" }]));
+    const project = await fetch(`${app.base}/projects`, { headers: as(owner.token) })
+      .then((r) => r.json())
+      .then((rows: any[]) => rows.find((p) => p.tenant_id === id));
+    expect(project.dirty).toBe(false);
+
+    const res = await fetch(`${app.base}/projects/${id}/files/products`, {
+      headers: as(owner.token),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ id: "p1", name: "Widget" }]);
+  }, 30_000);
+
+  test("an actually-staged edit is still what the editor shows", async () => {
+    const { tenantId: id } = await createProject(owner.token, "Staged", {
+      books: [{ id: "1", title: "Dune" }],
+    });
+    // A real dashboard edit: dirty is set, and the draft must win over live.
+    await fetch(`${app.base}/projects/${id}/files/books`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1", title: "Dune (staged)" }]),
+    });
+    const editor = await fetch(`${app.base}/projects/${id}/files/books`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(editor.map((b: any) => b.title)).toEqual(["Dune (staged)"]);
+  }, 30_000);
+
+  test("deploying one resource does not roll another one back over live data", async () => {
+    const { tenantId: id } = await createProject(owner.token, "Catalogue", {
+      books: [{ id: "1", title: "Dune" }],
+      authors: [],
+    });
+    await activate(owner.token, id);
+
+    await fetch(`${app.base}/projects/${id}/files/books`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1", title: "Dune" }]),
+    });
+    await fetch(`${app.base}/projects/${id}/deploy`, { method: "POST", headers: as(owner.token) });
+
+    await fetch(`${core.base}/${id}/books`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Snow Crash" }),
+    });
+
+    // An edit to an unrelated resource. `books` must not be touched by it.
+    await fetch(`${app.base}/projects/${id}/files/authors`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ name: "Gibson" }]),
+    });
+    const deployed = await fetch(`${app.base}/projects/${id}/deploy`, {
+      method: "POST",
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(deployed.promoted).toEqual(["authors"]);
+
+    const books = await fetch(`${core.base}/${id}/books`).then((r) => r.json());
+    expect(books.map((b: any) => b.title)).toEqual(["Dune", "Snow Crash"]);
+  }, 30_000);
+
+  /**
    * The `resources` column is a projection of what is on the core's disk, and
    * every writer rebuilds the whole list. Bun.serve interleaves requests while
    * one is awaiting the core, so a writer that took its snapshot *before* that
