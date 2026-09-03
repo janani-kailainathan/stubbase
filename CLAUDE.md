@@ -141,3 +141,89 @@ Breaking any of these is a correctness bug:
 - `caddy/Caddyfile` (production, structure is spec-frozen) and `caddy/Caddyfile.dev` (local, mirrors it on `*.localhost`). Keep the two in sync when routes change.
 - `deploy/files/*.service`: sandboxed units — `ProtectSystem=strict` with exactly one `ReadWritePaths` each (core → tenants dir, app → SQLite dir). If a service needs a new writable path, add it there deliberately.
 - Secrets never go in unit files or git — only `/etc/stubbase/stubbase.env`, templated by Ansible from `STUBBASE_ADMIN_SECRET`.
+
+## Writing FEATURES.md
+
+`FEATURES.md` is the user-facing feature list, and it is the one document here
+that does **not** use the brand voice in PRODUCT.md. Write it in plain second
+person — what *you* do, what *you* get ("add a JSON file to your project and the
+CRUD endpoints are created for you"). Say "project", never "tenant". Leave the
+internals out: RAM caching, write-through, eviction, pipeline stage names and
+draft file naming are `README.md` / `ENVIRONMENT.md` material. The technical
+voice stays correct everywhere else.
+
+Three top-level groups, and a feature belongs to exactly one of the first two:
+
+1. **User-level** — what a *project's* API does, i.e. what the person calling
+   the endpoints experiences.
+2. **App-level** — what Stubbase itself does: dashboard, accounts, Co-Pilot,
+   metering, keys.
+3. **Env settings** — the central reference, one table per feature.
+
+**A feature entry is written in three parts, in this order:**
+
+1. **What it is and how you use it.** Prose plus the endpoints or requests a
+   user actually writes. Lead with the outcome, not the mechanism.
+2. **Its env keys, one heading per thing you might want to do** —
+   "To enable this feature, add to your `.env`:", "To control how long a login
+   lasts:". Under each: a fenced env block, then what it does, then the other
+   possibilities (a small table of values earns its place when the choice is a
+   trade-off, as with `AUTH_JWT_TTL_SECONDS`). The enable switch always comes
+   first, and keys that are useless apart — an OAuth client id and its secret —
+   share one block, because they are one decision.
+3. **A table in section 3**, listing every key of that feature with an example
+   value and what it does. The feature's enable flag is always the first row.
+
+**Sub-levels: what to group, what to split.** A feature gets sub-sections only
+when it has genuinely separable parts. Decide with these, in order:
+
+- **Split when the parts switch on independently.** Google login and GitHub
+  login each have their own key pair and either can run without the other, so
+  they are `1.3.1` and `1.3.2`. Email and SMS notifications will split the same
+  way — different credentials, either one alone is a working setup.
+- **Group when one switch turns all of it on.** The four chaos headers
+  (`delay`, `status`, `error-rate`, `empty`) are one feature behind `QA_MODE`,
+  not four; the list query params (filter, `_sort`, `_page`, `_expand`) are one
+  feature behind nothing at all. Parts that cannot be enabled separately are
+  paragraphs or table rows, never sub-sections.
+- **Keep what is common to every part in the parent.** Auth is `1.3` and that
+  is where email-and-password lives, because the switch, the token, the public
+  routes and the TTL are the base every login shares. A part that everything
+  else depends on is not a sibling of the things depending on it.
+- **Never split below one decision.** An OAuth client id and its secret are
+  useless apart, so they share one block. If a sub-section's env example is a
+  single key that nobody sets on its own, it should have been a row in the
+  parent's table.
+- **Stop at two levels.** `1.3.1` is as deep as this document goes. Needing
+  `1.3.1.1` means the parent was really two features — split it at the top
+  instead.
+
+Section 3 mirrors the numbering exactly — `3.1.1` is the table for `1.3.1`, and
+the parent's own keys sit in a table directly under `3.1`. Sub-features take
+`####`; the "To …" env headings are `#####` everywhere, including in the parent,
+so a heading's level always says which of the two it is.
+
+When a key serves several sub-features but not all of them, **repeat it under
+each one** and say it is shared — clarity for the person reading a single
+sub-feature beats not repeating yourself. `AUTH_OAUTH_REDIRECT` appears under
+both Google and GitHub, and does not appear in the parent, because password
+login never redirects. Only lift a key into the parent when it genuinely applies
+to every path below it, and check the code before deciding which it is: the
+answer is where the key is *read*, not where it looks like it belongs.
+
+**Say what a sub-feature depends on, every time.** Google login needs
+`AUTH_ENABLED=true` as well as its own pair — `handleAuth` 404s before it ever
+reaches the OAuth branch — so each block repeats the switch in its env example
+instead of trusting the reader to have read the parent section.
+
+**The duplication between parts 2 and 3 is deliberate — do not collapse it.**
+They serve different readers: someone setting the feature up for the first time
+reads the walkthrough, someone who already runs it and wants to check a key name
+reads the table. Cross-link the two section headings, but do not add prose
+telling the reader the same keys appear elsewhere.
+
+Two standing rules for the content itself: state a feature's *intended*
+behaviour and add a dated `> **Known issue:**` blockquote when the shipped
+behaviour differs (never quietly document the bug as the design), and never
+describe a plan-gated feature as freely available — check `PLANS` in
+`apps/dashboard-api/server-app.ts`.
