@@ -867,6 +867,50 @@ function parseResources(raw: string): string[] {
 }
 
 /**
+ * Add/remove one name in a project's `resources` column.
+ *
+ * Both re-read the column and write it back with **no `await` in between**, so
+ * the whole read-modify-write runs in a single synchronous turn and concurrent
+ * requests cannot interleave inside it. That is the entire point of these
+ * helpers: putFile and deleteFile each hold a project row from *before* their
+ * call out to the core, and a row fetched on the far side of an `await` is a
+ * stale snapshot — two creates landing together would each write back a list
+ * that never contained the other, and a delete would write back one that never
+ * contained a resource created moments earlier, silently un-listing a file that
+ * is really on disk. Never rebuild this list from a row read before an await.
+ *
+ * Deliberately not part of the ownership check, for the same reason as
+ * markDirty: a caller has passed ownedProject by the time it writes anything,
+ * and the tenant id is the primary key.
+ */
+function addResources(tenantId: string, names: string[]): void {
+  const row = db
+    .query("SELECT resources FROM projects WHERE tenant_id = ?")
+    .get(tenantId) as { resources: string } | null;
+  if (!row) return;
+  const resources = parseResources(row.resources);
+  const added = names.filter((n) => !resources.includes(n));
+  if (added.length === 0) return;
+  db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
+    JSON.stringify([...resources, ...added]),
+    tenantId,
+  );
+}
+
+function removeResource(tenantId: string, name: string): void {
+  const row = db
+    .query("SELECT resources FROM projects WHERE tenant_id = ?")
+    .get(tenantId) as { resources: string } | null;
+  if (!row) return;
+  const resources = parseResources(row.resources);
+  if (!resources.includes(name)) return;
+  db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
+    JSON.stringify(resources.filter((r) => r !== name)),
+    tenantId,
+  );
+}
+
+/**
  * Mark the project as holding an undeployed draft — what the dashboard's
  * "not live yet" strip reads.
  *
@@ -1118,16 +1162,9 @@ async function putFile(
   // claiming changes it does not have.
   markDirty(tenantId);
 
-  if (!isConfig) {
-    const resources = JSON.parse(row.resources) as string[];
-    if (!resources.includes(resource)) {
-      resources.push(resource);
-      db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
-        JSON.stringify(resources),
-        tenantId,
-      );
-    }
-  }
+  // Re-read inside addResources rather than reusing `row`: that snapshot was
+  // taken before the core write above, so it is stale by the time we get here.
+  if (!isConfig) addResources(tenantId, [resource]);
   const records = Array.isArray(body) ? body.length : Object.keys(body as object).length;
   return json({ ok: true, tenant: tenantId, resource, records, draft: true });
 }
@@ -1149,11 +1186,9 @@ async function deleteFile(user: User, tenantId: string, resource: string): Promi
   // staged, and clearing would hide them. Leaving it costs at most one
   // redeploy that promotes nothing.
 
-  const resources = (JSON.parse(row.resources) as string[]).filter((r) => r !== resource);
-  db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
-    JSON.stringify(resources),
-    tenantId,
-  );
+  // Same reason as putFile: `row` predates the core calls above, so filtering
+  // it would write back a list missing anything created in the meantime.
+  removeResource(tenantId, resource);
   return json({ ok: true, tenant: tenantId, resource, deleted: true });
 }
 
@@ -1323,7 +1358,6 @@ function sanitizeTables(raw: unknown[]): {
 /** stage_schema_drafts — write draft_<table>.json files. Never touches live data. */
 async function toolStageSchemaDrafts(
   args: Record<string, unknown>,
-  user: User,
   tenantId: string,
 ): Promise<ToolOutcome> {
   // Phrased as a capability limit, not a schema complaint. Told "your arguments
@@ -1362,19 +1396,7 @@ async function toolStageSchemaDrafts(
   markDirty(tenantId);
 
   // Keep the sidebar in sync: the new tables are real resources once deployed.
-  const row = ownedProject(tenantId, user.id)!;
-  const resources = parseResources(row.resources);
-  let added = false;
-  for (const t of staged)
-    if (!resources.includes(t.name)) {
-      resources.push(t.name);
-      added = true;
-    }
-  if (added)
-    db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
-      JSON.stringify(resources),
-      tenantId,
-    );
+  addResources(tenantId, staged.map((t) => t.name));
 
   return {
     changed: true,
@@ -1555,7 +1577,7 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
   try {
     switch (call.name) {
       case "stage_schema_drafts":
-        return await toolStageSchemaDrafts(call.args, user, tenantId);
+        return await toolStageSchemaDrafts(call.args, tenantId);
       case "set_server_status":
         return await toolSetServerStatus(call.args, tenantId);
       case "deploy_project":

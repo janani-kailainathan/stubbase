@@ -484,6 +484,61 @@ describe("files proxy and the draft model", () => {
     expect(await coreFile(tenantId, "draft_tags").exists()).toBe(false);
   }, 20_000);
 
+  /**
+   * The `resources` column is a projection of what is on the core's disk, and
+   * every writer rebuilds the whole list. Bun.serve interleaves requests while
+   * one is awaiting the core, so a writer that took its snapshot *before* that
+   * await writes back a list that never saw the others — the files land on
+   * disk, the column loses them, and the sidebar shows nothing with no error
+   * anywhere. These two pin the read-modify-write shut.
+   */
+  test("concurrent creates all survive in the resources column", async () => {
+    const { tenantId: id } = await createProject(owner.token, "Concurrent");
+    const names = ["books", "authors", "orders", "shelves", "labels"];
+
+    const writes = await Promise.all(
+      names.map((n) =>
+        fetch(`${app.base}/projects/${id}/files/${n}`, {
+          method: "PUT",
+          headers: jsonHeaders(owner.token),
+          body: JSON.stringify([{ n }]),
+        }),
+      ),
+    );
+    for (const res of writes) expect(res.status).toBe(200);
+
+    const list = await fetch(`${app.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    const resources = list.find((p: any) => p.tenant_id === id).resources as string[];
+    expect(resources.sort()).toEqual([...names].sort());
+
+    // The column is only believable if it matches what really got written.
+    for (const n of names) expect(await coreFile(id, `draft_${n}`).exists()).toBe(true);
+  }, 30_000);
+
+  test("a create is not erased by a delete of another resource running alongside it", async () => {
+    const { tenantId: id } = await createProject(owner.token, "CreateVsDelete");
+    await fetch(`${app.base}/projects/${id}/files/old`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1" }]),
+    });
+
+    const [create, remove] = await Promise.all([
+      fetch(`${app.base}/projects/${id}/files/brand_new`, {
+        method: "PUT",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify([{ id: "2" }]),
+      }),
+      fetch(`${app.base}/projects/${id}/files/old`, { method: "DELETE", headers: as(owner.token) }),
+    ]);
+    expect(create.status).toBe(200);
+    expect(remove.status).toBe(200);
+
+    const list = await fetch(`${app.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    const resources = list.find((p: any) => p.tenant_id === id).resources as string[];
+    expect(resources).toEqual(["brand_new"]);
+  }, 30_000);
+
   test("callers cannot address a draft_ file directly", async () => {
     // Otherwise a client could stage into draft_draft_x, or write a live file
     // straight past the draft model.
