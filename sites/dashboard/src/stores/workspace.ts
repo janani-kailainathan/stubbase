@@ -48,7 +48,6 @@ export interface LiveState {
  * TanStack Query via src/hooks/*.
  */
 interface WorkspaceState {
-  currentProjectId: string | null
   selection: Selection
   editing: boolean
   draft: string
@@ -69,7 +68,12 @@ interface WorkspaceState {
    */
   chatInput: string
 
-  setProject: (id: string) => void
+  /**
+   * Drop the view state that belonged to the project we just navigated away
+   * from. Which project is *open* is the URL's business (hooks/projects.ts) —
+   * this store only holds what is on screen inside one.
+   */
+  leaveProject: () => void
   /** Clear all per-user state (called on logout). */
   reset: () => void
   select: (selection: Selection) => void
@@ -89,7 +93,6 @@ interface WorkspaceState {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
-  currentProjectId: null,
   selection: null,
   editing: false,
   draft: '',
@@ -102,11 +105,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   chat: {},
   chatInput: '',
 
-  setProject: (id) => set({ currentProjectId: id, selection: null, editing: false }),
+  leaveProject: () => set({ selection: null, editing: false }),
 
   reset: () =>
     set({
-      currentProjectId: null,
       selection: null,
       editing: false,
       draft: '',

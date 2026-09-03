@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import { StarterGrid } from '@/components/shell/StarterGrid'
+import { useOpenProject } from '@/hooks/projects'
 import { useCreateProjectFromStarter } from '@/hooks/starters'
 import type { Starter } from '@/lib/starters'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -11,14 +12,14 @@ import { useWorkspaceStore } from '@/stores/workspace'
  */
 export function NoProjects() {
   const setNewProjectOpen = useWorkspaceStore((s) => s.setNewProjectOpen)
-  const setProject = useWorkspaceStore((s) => s.setProject)
+  const openProject = useOpenProject()
   const create = useCreateProjectFromStarter()
 
   const pick = (starter: Starter) => {
     if (create.isPending) return
     create.mutate(starter, {
       onSuccess: (created) => {
-        setProject(created.tenantId)
+        openProject(created.tenantId)
         toast.success(`Created ${created.tenantId} — Deploy, then try ${starter.example}`)
       },
       onError: (e) => toast.error(`Could not create the ${starter.title} example: ${e.message}`),

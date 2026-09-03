@@ -115,61 +115,120 @@ describe("project ownership scoping", () => {
       .tenantId;
   }, 30_000);
 
+  /**
+   * Every per-project route, with a body where one is required.
+   *
+   * Kept as one list because the anonymous check, the cross-user check and the
+   * deep-link check all have to cover the *same* surface: a route that is added
+   * to one of them and not the others is exactly the gap these tests exist to
+   * close. Adding a `/projects/<id>/…` route to server-app.ts means adding a
+   * row here.
+   */
+  const projectRoutes = (
+    tenantId: string,
+  ): Array<{ method: string; path: string; body?: string }> => [
+    { method: "PATCH", path: `/projects/${tenantId}`, body: JSON.stringify({ name: "stolen" }) },
+    { method: "DELETE", path: `/projects/${tenantId}` },
+    { method: "GET", path: `/projects/${tenantId}/usage` },
+    { method: "GET", path: `/projects/${tenantId}/diagnostics` },
+    { method: "GET", path: `/projects/${tenantId}/live-logs` },
+    { method: "GET", path: `/projects/${tenantId}/keys` },
+    { method: "POST", path: `/projects/${tenantId}/keys`, body: JSON.stringify({ name: "k" }) },
+    { method: "POST", path: `/projects/${tenantId}/deploy` },
+    {
+      method: "POST",
+      path: `/projects/${tenantId}/status`,
+      body: JSON.stringify({ status: "stopped" }),
+    },
+    { method: "GET", path: `/projects/${tenantId}/files/config` },
+    {
+      method: "PUT",
+      path: `/projects/${tenantId}/files/config`,
+      body: JSON.stringify({ QA_MODE: "true" }),
+    },
+    { method: "GET", path: `/projects/${tenantId}/files/posts` },
+    { method: "PUT", path: `/projects/${tenantId}/files/posts`, body: JSON.stringify([{ id: "x" }]) },
+    { method: "DELETE", path: `/projects/${tenantId}/files/posts` },
+    {
+      method: "POST",
+      path: `/projects/${tenantId}/ai/chat`,
+      body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "a blog" }] }] }),
+    },
+  ];
+
+  /** Fires one row of the matrix. Never leaves an SSE body streaming. */
+  async function callRoute(
+    { method, path, body }: { method: string; path: string; body?: string },
+    token?: string,
+  ): Promise<number> {
+    const res = await fetch(`${app.base}${path}`, {
+      method,
+      headers: jsonHeaders(token),
+      ...(body ? { body } : {}),
+    });
+    await res.body?.cancel();
+    return res.status;
+  }
+
   test("every /projects route rejects an anonymous caller", async () => {
-    const routes: Array<[string, string]> = [
-      ["GET", "/projects"],
-      ["POST", "/projects"],
-      ["PATCH", `/projects/${aliceProject}`],
-      ["DELETE", `/projects/${aliceProject}`],
-      ["GET", `/projects/${aliceProject}/usage`],
-      ["POST", `/projects/${aliceProject}/deploy`],
-      ["POST", `/projects/${aliceProject}/status`],
-      ["GET", `/projects/${aliceProject}/files/posts`],
-      ["PUT", `/projects/${aliceProject}/files/posts`],
-      ["DELETE", `/projects/${aliceProject}/files/posts`],
-      ["POST", `/projects/${aliceProject}/ai/chat`],
-    ];
-    for (const [method, path] of routes) {
-      const res = await fetch(`${app.base}${path}`, {
-        method,
-        headers: jsonHeaders(),
-        ...(method === "GET" ? {} : { body: "{}" }),
-      });
-      expect({ method, path, status: res.status }).toEqual({ method, path, status: 401 });
+    for (const route of [
+      { method: "GET", path: "/projects" },
+      { method: "POST", path: "/projects", body: "{}" },
+      ...projectRoutes(aliceProject),
+    ]) {
+      const status = await callRoute(route);
+      expect({ ...route, status }).toEqual({ ...route, status: 401 });
     }
-  });
+  }, 20_000);
 
   test("a second user cannot reach another user's project on ANY route", async () => {
     // The single most important test in this suite: every /projects* route
     // must ownership-check before it touches the core.
-    const routes: Array<[string, string, string | undefined]> = [
-      ["PATCH", `/projects/${aliceProject}`, JSON.stringify({ name: "stolen" })],
-      ["DELETE", `/projects/${aliceProject}`, undefined],
-      ["GET", `/projects/${aliceProject}/usage`, undefined],
-      ["POST", `/projects/${aliceProject}/deploy`, undefined],
-      ["POST", `/projects/${aliceProject}/status`, JSON.stringify({ status: "stopped" })],
-      ["GET", `/projects/${aliceProject}/files/posts`, undefined],
-      ["PUT", `/projects/${aliceProject}/files/posts`, JSON.stringify([{ id: "x" }])],
-      ["DELETE", `/projects/${aliceProject}/files/posts`, undefined],
-      [
-        "POST",
-        `/projects/${aliceProject}/ai/chat`,
-        JSON.stringify({ messages: [{ role: "user", parts: [{ text: "a blog" }] }] }),
-      ],
-    ];
-    for (const [method, path, body] of routes) {
-      const res = await fetch(`${app.base}${path}`, {
-        method,
-        headers: jsonHeaders(bob.token),
-        ...(body ? { body } : {}),
-      });
-      expect({ path, method, status: res.status }).toEqual({ path, method, status: 404 });
+    for (const route of projectRoutes(aliceProject)) {
+      const status = await callRoute(route, bob.token);
+      expect({ ...route, status }).toEqual({ ...route, status: 404 });
     }
 
     // Nothing was mutated on the core by any of those attempts.
     expect(await coreFile(aliceProject, "posts").json()).toEqual([{ id: "1" }]);
     expect(await coreFile(aliceProject, "draft_posts").exists()).toBe(false);
-  }, 20_000);
+    expect(await coreFile(aliceProject, "draft_config").exists()).toBe(false);
+  }, 30_000);
+
+  test("a stranger's project id in the URL opens nothing", async () => {
+    // The dashboard puts the tenant id in its own address bar (`/p/<id>`), so
+    // a project link is now something a person can copy, bookmark and paste
+    // into an account that does not own it. That is a UI convenience and must
+    // never be an authorisation one: the id is a *name*, and knowing it grants
+    // nothing. Bob signing in and loading Alice's URL is exactly this.
+    //
+    // Guarded here rather than in the SPA because the SPA is static and its
+    // session token is in the browser — anything it decides, its user can
+    // undo with devtools. The 404s below are the actual boundary.
+    const seenByBob = await fetch(`${app.base}/projects`, { headers: as(bob.token) }).then((r) =>
+      r.json(),
+    );
+    expect(seenByBob.map((p: any) => p.tenant_id)).not.toContain(aliceProject);
+
+    // Everything the workspace loads when a project id is opened.
+    for (const path of [
+      `/projects/${aliceProject}/files/posts`,
+      `/projects/${aliceProject}/files/config`,
+      `/projects/${aliceProject}/usage`,
+      `/projects/${aliceProject}/diagnostics`,
+      `/projects/${aliceProject}/live-logs`,
+      `/projects/${aliceProject}/keys`,
+    ]) {
+      const res = await fetch(`${app.base}${path}`, { headers: as(bob.token) });
+      const text = await res.text();
+      // 404, not 403: a 403 would confirm that a project with this id exists,
+      // which is the one bit the id alone should not buy you.
+      expect({ path, status: res.status }).toEqual({ path, status: 404 });
+      // And the refusal itself leaks nothing about Alice's project.
+      expect(text).not.toContain("Alice");
+      expect(text).not.toContain("posts");
+    }
+  }, 30_000);
 
   test("listing only ever returns your own projects", async () => {
     await createProject(bob.token, "Bob Project");

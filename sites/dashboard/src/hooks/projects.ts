@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createProject,
@@ -6,7 +8,6 @@ import {
   renameProject,
   type ProjectRow,
 } from '@/lib/api'
-import { useWorkspaceStore } from '@/stores/workspace'
 
 export const PROJECT_COLORS = [
   'bg-emerald-500',
@@ -40,11 +41,41 @@ export function useProjects() {
   })
 }
 
-/** The project the workspace is pointed at (or undefined while loading/none). */
+/**
+ * The tenant id the URL names, or undefined on `/`.
+ *
+ * This is the only place the open project is stored. It used to live in the
+ * workspace store, which meant a reload had nothing to restore it from and the
+ * Editor silently adopted the first project instead — you came back to someone
+ * else's page every refresh.
+ */
+export function useCurrentProjectId(): string | undefined {
+  return useParams<{ tenantId: string }>().tenantId
+}
+
+/**
+ * The project the URL names — undefined while the list is loading, and also
+ * when the id is not one of yours.
+ *
+ * Deliberately **no fallback to the first project**: an id that isn't in your
+ * list is either deleted or someone else's, and quietly showing a different
+ * project would misrepresent whose data is on screen (and hide the 404 the
+ * Dashboard API is answering). Editor renders an unknown-project screen for
+ * that case; every consumer here is already inside it.
+ */
 export function useCurrentProject(): Project | undefined {
   const { data: projects } = useProjects()
-  const currentProjectId = useWorkspaceStore((s) => s.currentProjectId)
-  return projects?.find((p) => p.tenantId === currentProjectId) ?? projects?.[0]
+  const tenantId = useCurrentProjectId()
+  return projects?.find((p) => p.tenantId === tenantId)
+}
+
+/**
+ * Open a project. Switching projects is a navigation now, not a store write,
+ * so the back button walks the projects you visited and a refresh stays put.
+ */
+export function useOpenProject(): (tenantId: string) => void {
+  const navigate = useNavigate()
+  return useCallback((tenantId: string) => navigate(`/p/${tenantId}`), [navigate])
 }
 
 export function useCreateProject() {

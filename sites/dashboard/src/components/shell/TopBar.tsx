@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 import {
@@ -30,7 +31,9 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
   useCreateProject,
   useCurrentProject,
+  useCurrentProjectId,
   useDeleteProject,
+  useOpenProject,
   useProjects,
   useRenameProject,
   type Project,
@@ -45,7 +48,7 @@ const dialogInputClass =
 export function NewProjectDialog() {
   const open = useWorkspaceStore((s) => s.newProjectOpen)
   const setOpen = useWorkspaceStore((s) => s.setNewProjectOpen)
-  const setProject = useWorkspaceStore((s) => s.setProject)
+  const openProject = useOpenProject()
   const createProject = useCreateProject()
 
   const [name, setName] = useState('')
@@ -59,7 +62,7 @@ export function NewProjectDialog() {
       { name: trimmed },
       {
         onSuccess: (created) => {
-          setProject(created.tenantId)
+          openProject(created.tenantId)
           setOpen(false)
           setName('')
           toast.success(`Provisioned ${created.tenantId}`)
@@ -126,6 +129,11 @@ function DeleteProjectDialog({
   const status = useProjectStatus(tenantId)
   const setStatus = useSetProjectStatus(tenantId)
   const running = status === 'active'
+  // Any row in the menu can be the target, so deleting is only a navigation
+  // when it was the project the URL names — which would otherwise be left
+  // pointing at a tenant that no longer exists.
+  const openTenantId = useCurrentProjectId()
+  const navigate = useNavigate()
 
   const stop = useMutation({
     mutationFn: () => setStatus.mutateAsync('stopped'),
@@ -138,6 +146,7 @@ function DeleteProjectDialog({
     deleteProject.mutate(tenantId, {
       onSuccess: () => {
         onOpenChange(false)
+        if (tenantId === openTenantId) navigate('/', { replace: true })
         toast.success(`Deleted ${name}`)
       },
       onError: (e) => toast.error(`Could not delete ${name}: ${e.message}`),
@@ -495,7 +504,7 @@ function StatusBadge({ tenantId }: { tenantId: string }) {
 export function TopBar() {
   const { data: projects, isLoading } = useProjects()
   const current = useCurrentProject()
-  const setProject = useWorkspaceStore((s) => s.setProject)
+  const openProject = useOpenProject()
   const setNewProjectOpen = useWorkspaceStore((s) => s.setNewProjectOpen)
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
@@ -560,7 +569,7 @@ export function TopBar() {
             {(projects ?? []).map((p) => (
               <DropdownMenuItem
                 key={p.tenantId}
-                onSelect={() => setProject(p.tenantId)}
+                onSelect={() => openProject(p.tenantId)}
                 className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${
                   p.tenantId === current?.tenantId ? 'bg-muted/80' : ''
                 }`}
