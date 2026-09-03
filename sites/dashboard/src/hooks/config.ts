@@ -7,6 +7,7 @@ import {
   type ProjectStatus,
 } from '@/lib/api'
 import type { TenantConfig } from '@/lib/env'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 /** The tenant's config.json; a project without one reads as empty. */
 export function useTenantConfig(tenantId: string | undefined) {
@@ -28,7 +29,12 @@ export function useSaveTenantConfig(tenantId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (config: TenantConfig) => saveTenantConfig(tenantId!, config),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['config', tenantId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', tenantId] })
+      // Staged like any other file — see useSaveResource.
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      useWorkspaceStore.getState().resurfaceStaged()
+    },
   })
 }
 

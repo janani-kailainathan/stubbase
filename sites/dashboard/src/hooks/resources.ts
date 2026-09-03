@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteResourceFile, fetchResource, saveResourceFile } from '@/lib/api'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 export function useResource(tenantId: string | undefined, resource: string | undefined) {
   return useQuery({
@@ -18,8 +19,14 @@ export function useSaveResource(tenantId: string | undefined, resource: string |
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (data: unknown[]) => saveResourceFile(tenantId!, resource!, data),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['resource', tenantId, resource] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resource', tenantId, resource] })
+      // The save staged a draft, so the project is dirty now — this refetch is
+      // what raises the "not live yet" strip.
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      // …and a new change undoes an earlier dismissal of it.
+      useWorkspaceStore.getState().resurfaceStaged()
+    },
   })
 }
 
@@ -44,6 +51,7 @@ export function useCreateResources(tenantId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       for (const name of names)
         queryClient.invalidateQueries({ queryKey: ['resource', tenantId, name] })
+      useWorkspaceStore.getState().resurfaceStaged()
     },
   })
 }
@@ -73,6 +81,8 @@ export function useApplyDeletion(tenantId: string | undefined) {
       }
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['diagnostics', tenantId] })
+      // Emptying a resource stages a draft like any other save.
+      if (mode === 'empty') useWorkspaceStore.getState().resurfaceStaged()
     },
   })
 }

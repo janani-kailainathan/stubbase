@@ -21,6 +21,14 @@ export interface Project {
   tenantId: string
   name: string
   resources: string[]
+  /**
+   * A save is staged that the live API is not serving yet.
+   *
+   * Server-owned: a save writes a draft file the live API does not serve, and
+   * that outlives this tab, so the flag has to come back with the project
+   * rather than being remembered in a store (see StagedChanges).
+   */
+  dirty: boolean
   createdAt: string
   color: string
 }
@@ -29,6 +37,9 @@ const toProject = (row: ProjectRow, index: number): Project => ({
   tenantId: row.tenant_id,
   name: row.name,
   resources: row.resources,
+  // Tolerated as missing: a Dashboard API from before the column shipped
+  // reports clean rather than crashing the workspace.
+  dirty: row.dirty ?? false,
   createdAt: row.created_at,
   color: PROJECT_COLORS[index % PROJECT_COLORS.length],
 })

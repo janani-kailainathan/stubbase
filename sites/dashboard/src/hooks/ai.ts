@@ -1,5 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chatWithCoPilot, type ChatTurn } from '@/lib/api'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 export const aiChatKey = (tenantId: string | undefined) => ['ai-chat', tenantId]
 
@@ -29,6 +30,9 @@ export function useCoPilotChat(tenantId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['resource', tenantId] })
       queryClient.invalidateQueries({ queryKey: ['config', tenantId] })
       queryClient.invalidateQueries({ queryKey: ['diagnostics', tenantId] })
+      // A tool that staged drafts is a new change, so an earlier dismissal of
+      // the staged-changes strip no longer applies.
+      useWorkspaceStore.getState().resurfaceStaged()
     },
   })
 }

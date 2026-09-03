@@ -67,6 +67,16 @@ interface WorkspaceState {
    * composer — half-typed prompts must survive that.
    */
   chatInput: string
+  /**
+   * Whether the "changes aren't live yet" strip has been dismissed.
+   *
+   * Deliberately transient and *not* the flag itself — the project's `dirty`
+   * is server-owned and outlives the tab; this only says "I have seen it for
+   * now". It comes back on the two events the user cares about: another save
+   * (hooks/resources.ts, hooks/config.ts, hooks/ai.ts all clear it) and
+   * revisiting the project, which `leaveProject` and a reload both cover.
+   */
+  stagedDismissed: boolean
 
   /**
    * Drop the view state that belonged to the project we just navigated away
@@ -74,6 +84,10 @@ interface WorkspaceState {
    * this store only holds what is on screen inside one.
    */
   leaveProject: () => void
+  /** Hide the staged-changes strip until the next save or project visit. */
+  dismissStaged: () => void
+  /** Put it back — called wherever a new change is staged. */
+  resurfaceStaged: () => void
   /** Clear all per-user state (called on logout). */
   reset: () => void
   select: (selection: Selection) => void
@@ -104,8 +118,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   live: {},
   chat: {},
   chatInput: '',
+  stagedDismissed: false,
 
-  leaveProject: () => set({ selection: null, editing: false }),
+  // Dismissing is scoped to one visit of one project, so leaving clears it.
+  leaveProject: () => set({ selection: null, editing: false, stagedDismissed: false }),
+
+  dismissStaged: () => set({ stagedDismissed: true }),
+
+  resurfaceStaged: () => set({ stagedDismissed: false }),
 
   reset: () =>
     set({
@@ -116,6 +136,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       live: {},
       chat: {}, // prompts and generated data must not leak between users
       chatInput: '',
+      stagedDismissed: false,
     }),
 
   select: (selection) =>

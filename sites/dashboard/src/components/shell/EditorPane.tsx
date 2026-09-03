@@ -15,6 +15,7 @@ import { LiveLogViewer } from './LiveLogViewer'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { DeveloperKeysPanel } from './DeveloperKeysPanel'
 import { StarterExamples } from './StarterExamples'
+import { StagedChanges } from './StagedChanges'
 
 /** CodeMirror is ~150kB gz — keep it off the initial route. */
 const JsonEditor = lazy(() => import('./JsonEditor'))
@@ -385,6 +386,11 @@ export function EditorPane() {
           </PaneTabs>
         )}
       </div>
+
+      {/* Above every mode, not just the editor: an API serving stale data is
+          worth knowing about while you are reading its logs or asking the
+          Co-Pilot about it, not only while you are editing a file. */}
+      <StagedChanges />
 
       {aiMode ? (
         <AiChat tenantId={tenantId} />

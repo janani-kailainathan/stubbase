@@ -164,6 +164,8 @@ export interface ProjectRow {
   tenant_id: string
   name: string
   resources: string[]
+  /** True when a save is staged that the live API is not serving yet. */
+  dirty: boolean
   created_at: string
 }
 

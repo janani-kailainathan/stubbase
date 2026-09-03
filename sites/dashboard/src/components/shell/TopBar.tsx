@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
   ChevronDown,
@@ -397,6 +397,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
   const status = useProjectStatus(tenantId)
   const setStatus = useSetProjectStatus(tenantId)
   const stopped = status !== 'active'
+  const queryClient = useQueryClient()
 
   const deploy = useMutation({
     mutationFn: async () => {
@@ -411,6 +412,9 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
           ? `${res.promoted.length} file${res.promoted.length === 1 ? '' : 's'}: ${res.promoted.join(', ')}`
           : 'no draft changes'
       toast.success(stopped ? `API is live again (${files})` : `Deployed ${files}`)
+      // The project's staged set is empty now — this refetch is what takes the
+      // StagedChanges strip down.
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
     onError: (e) => toast.error(`Deploy failed: ${e.message}`),
   })

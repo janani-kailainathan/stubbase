@@ -133,6 +133,7 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES users(id),
     name       TEXT NOT NULL,
     resources  TEXT NOT NULL DEFAULT '[]',  -- JSON array of resource names
+    dirty      INTEGER NOT NULL DEFAULT 0,  -- 1 when a draft is staged but not deployed
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS api_usage (
@@ -164,6 +165,15 @@ if (!userCols.includes("name")) db.exec("ALTER TABLE users ADD COLUMN name TEXT"
 // OAuth identity and an account is the verified email address, never this.
 if (!userCols.includes("oauth_provider"))
   db.exec("ALTER TABLE users ADD COLUMN oauth_provider TEXT");
+// Whether a draft is staged but not yet deployed. Existing rows come back 0, so
+// a project sitting on an undeployed draft right now reads clean until its next
+// save — a one-time blind spot, and the alternative (assuming every project is
+// dirty) would warn about changes most of them do not have.
+const projectCols = (db.query("PRAGMA table_info(projects)").all() as { name: string }[]).map(
+  (c) => c.name,
+);
+if (!projectCols.includes("dirty"))
+  db.exec("ALTER TABLE projects ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0");
 
 // ── Plans and entitlements ────────────────────────────────────────
 //
@@ -828,18 +838,23 @@ interface ProjectRow {
   tenant_id: string;
   name: string;
   resources: string;
+  dirty: number;
   created_at: string;
 }
 
 function ownedProject(tenantId: string, userId: number): ProjectRow | null {
   return db
     .query(
-      "SELECT tenant_id, name, resources, created_at FROM projects WHERE tenant_id = ? AND user_id = ?",
+      "SELECT tenant_id, name, resources, dirty, created_at FROM projects WHERE tenant_id = ? AND user_id = ?",
     )
     .get(tenantId, userId) as ProjectRow | null;
 }
 
-const projectJson = (r: ProjectRow) => ({ ...r, resources: JSON.parse(r.resources) });
+const projectJson = (r: ProjectRow) => ({
+  ...r,
+  resources: JSON.parse(r.resources),
+  dirty: r.dirty === 1,
+});
 
 /** The resources column as a string[], tolerating a legacy/corrupt value. */
 function parseResources(raw: string): string[] {
@@ -849,6 +864,34 @@ function parseResources(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Mark the project as holding an undeployed draft — what the dashboard's
+ * "not live yet" strip reads.
+ *
+ * A flag rather than anything derived from disk, because draft_*.json is not a
+ * usable signal: deploy copies a draft over its live file and leaves the draft
+ * in place, so "a draft exists" means "was edited once", not "differs from
+ * live". This records the edit instead, and deploy clears it.
+ *
+ * That makes every writer of a draft responsible for calling this. There are
+ * exactly two — putFile and the Co-Pilot's stage_schema_drafts, which writes
+ * through coreAdmin directly — and anything added later that stages a draft
+ * without calling it will silently under-report. Nothing on disk can correct
+ * that, so route new draft writers through here.
+ *
+ * Deliberately not part of the ownership check: a caller has already passed
+ * ownedProject by the time it stages anything, and the tenant id is the primary
+ * key, so these are safe as plain updates.
+ */
+function markDirty(tenantId: string): void {
+  db.query("UPDATE projects SET dirty = 1 WHERE tenant_id = ?").run(tenantId);
+}
+
+/** Everything staged is now live. Called only from promoteDrafts, on success. */
+function clearDirty(tenantId: string): void {
+  db.query("UPDATE projects SET dirty = 0 WHERE tenant_id = ?").run(tenantId);
 }
 
 // ── Projects ──────────────────────────────────────────────────────
@@ -1070,6 +1113,11 @@ async function putFile(
   const res = await coreAdmin("POST", tenantId, `${DRAFT_PREFIX}${resource}`, body);
   if (!res.ok) return err(502, `core engine refused the write (status ${res.status})`);
 
+  // The draft is on disk, so the live API is now behind — recorded after the
+  // write rather than before, so a refused write never leaves the project
+  // claiming changes it does not have.
+  markDirty(tenantId);
+
   if (!isConfig) {
     const resources = JSON.parse(row.resources) as string[];
     if (!resources.includes(resource)) {
@@ -1094,6 +1142,12 @@ async function deleteFile(user: User, tenantId: string, resource: string): Promi
   const res = await coreAdmin("DELETE", tenantId, resource);
   if (!res.ok && res.status !== 404)
     return err(502, `core engine failed to delete (status ${res.status})`);
+
+  // Deliberately does not clear the flag. A delete applies to the live file
+  // immediately, so it stages nothing — but with one boolean for the whole
+  // project there is no way to tell whether *other* resources are still
+  // staged, and clearing would hide them. Leaving it costs at most one
+  // redeploy that promotes nothing.
 
   const resources = (JSON.parse(row.resources) as string[]).filter((r) => r !== resource);
   db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
@@ -1302,6 +1356,10 @@ async function toolStageSchemaDrafts(
     });
   }
   if (staged.length === 0) return { result: { error: "nothing could be staged", warnings } };
+
+  // This tool writes drafts through coreAdmin rather than putFile, so it is the
+  // second of the two places that has to record them as undeployed.
+  markDirty(tenantId);
 
   // Keep the sidebar in sync: the new tables are real resources once deployed.
   const row = ownedProject(tenantId, user.id)!;
@@ -1818,6 +1876,14 @@ async function promoteDrafts(
   // staged to promote. Without this, Deploy fails on every brand-new project.
   if (res.status === 404) return { promoted: [] };
   if (!res.ok) return { error: `core engine refused the deploy (status ${res.status})` };
+  // Cleared here rather than in deployProject so the Deploy button and the
+  // Co-Pilot's deploy_project tool cannot disagree about what a deploy means.
+  // Only on success: a refused deploy returns above with the flag standing,
+  // which is the safe direction — a project that over-reports staged changes
+  // costs a redundant redeploy, one that under-reports serves stale data
+  // silently. The core promotes every draft it finds, including any staged
+  // before this column existed, so clearing the whole set is right.
+  clearDirty(tenantId);
   return { promoted: ((res.data as any)?.promoted ?? []) as string[] };
 }
 
@@ -2206,7 +2272,7 @@ async function route(req: Request): Promise<Response> {
       if (req.method === "GET") {
         const rows = db
           .query(
-            "SELECT tenant_id, name, resources, created_at FROM projects WHERE user_id = ? ORDER BY created_at DESC",
+            "SELECT tenant_id, name, resources, dirty, created_at FROM projects WHERE user_id = ? ORDER BY created_at DESC",
           )
           .all(user.id) as ProjectRow[];
         return json(rows.map(projectJson));

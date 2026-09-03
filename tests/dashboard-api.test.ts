@@ -515,6 +515,125 @@ describe("files proxy and the draft model", () => {
   });
 });
 
+// ── The dirty flag ─────────────────────────────────────────────────
+
+/**
+ * `dirty` is what tells the dashboard a running project's live API is behind.
+ * It has to be a record of the *edit*, not of the draft file: deploy copies a
+ * draft over its live file and leaves the draft in place, so file existence
+ * would read as "changed" forever after the first save.
+ *
+ * Because it is a projection, every writer of a draft has to maintain it —
+ * which is what these tests pin down.
+ */
+describe("the dirty flag", () => {
+  let owner: Account;
+  let tenantId: string;
+
+  const dirtyOf = async (id = tenantId, token = owner.token): Promise<boolean> => {
+    const list = await fetch(`${app.base}/projects`, { headers: as(token) }).then((r) => r.json());
+    return list.find((p: any) => p.tenant_id === id).dirty;
+  };
+
+  beforeAll(async () => {
+    owner = await signup();
+    tenantId = (await createProject(owner.token, "Dirty", { posts: [{ id: "1" }] })).tenantId;
+  }, 30_000);
+
+  test("a project seeded at creation is clean", async () => {
+    // createProject writes live files, not drafts — a new project is already
+    // consistent with what it would serve, so it must not nag for a deploy.
+    expect(await dirtyOf()).toBe(false);
+  });
+
+  test("saving a resource marks it dirty", async () => {
+    await fetch(`${app.base}/projects/${tenantId}/files/posts`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1", title: "edited" }]),
+    });
+    expect(await dirtyOf()).toBe(true);
+  }, 15_000);
+
+  test("deploy clears it", async () => {
+    const res = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: as(owner.token),
+    });
+    expect(res.status).toBe(200);
+    expect(await dirtyOf()).toBe(false);
+  }, 15_000);
+
+  test("saving the .env marks it dirty too", async () => {
+    await fetch(`${app.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ PROJECT_STATUS: "active" }),
+    });
+    expect(await dirtyOf()).toBe(true);
+
+    await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: as(owner.token),
+    });
+    expect(await dirtyOf()).toBe(false);
+  }, 20_000);
+
+  test("a refused write leaves it clean", async () => {
+    const res = await fetch(`${app.base}/projects/${tenantId}/files/rejected`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ not: "an array" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await dirtyOf()).toBe(false);
+  });
+
+  test("a refused deploy leaves it dirty", async () => {
+    // The safe direction: over-reporting costs a redundant redeploy, while
+    // under-reporting serves stale data with a dashboard that looks clean.
+    // The plan re-check is a deploy that fails before anything is promoted.
+    const pro = await signup();
+    setPlan(pro.email, "pro");
+    const project = (await createProject(pro.token, "Refused", { posts: [] })).tenantId;
+
+    const write = await fetch(`${app.base}/projects/${project}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(pro.token),
+      body: JSON.stringify({ QA_MODE: "true" }),
+    });
+    expect(write.status).toBe(200);
+    expect(await dirtyOf(project, pro.token)).toBe(true);
+
+    setPlan(pro.email, "free");
+    const deploy = await fetch(`${app.base}/projects/${project}/deploy`, {
+      method: "POST",
+      headers: as(pro.token),
+    });
+    expect(deploy.status).toBe(402);
+    expect(await dirtyOf(project, pro.token)).toBe(true);
+  }, 30_000);
+
+  test("deleting a resource does not clear it", async () => {
+    // A delete stages nothing, but one boolean cannot say whether *other*
+    // resources are still staged — so it deliberately leaves the flag alone
+    // rather than risk hiding them. Over-reporting is the safe direction.
+    await fetch(`${app.base}/projects/${tenantId}/files/tags`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "t1" }]),
+    });
+    expect(await dirtyOf()).toBe(true);
+
+    const del = await fetch(`${app.base}/projects/${tenantId}/files/tags`, {
+      method: "DELETE",
+      headers: as(owner.token),
+    });
+    expect(del.status).toBe(200);
+    expect(await dirtyOf()).toBe(true);
+  }, 20_000);
+});
+
 // ── Tenant config ──────────────────────────────────────────────────
 
 describe("tenant config writes", () => {
