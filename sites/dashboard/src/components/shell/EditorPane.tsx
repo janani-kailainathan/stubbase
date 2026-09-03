@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { toast } from 'sonner'
-import { Check, Rocket, X, Zap } from 'lucide-react'
+import { Check, RefreshCw, Rocket, X, Zap } from 'lucide-react'
 import { CORE_PUBLIC_URL } from '@/lib/api'
 import { JsonHighlight } from '@/lib/json-highlight'
 import { useCurrentProject } from '@/hooks/projects'
@@ -58,7 +58,7 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
   const draft = useWorkspaceStore((s) => s.draft)
   const startEdit = useWorkspaceStore((s) => s.startEdit)
   const stopEdit = useWorkspaceStore((s) => s.stopEdit)
-  const { data } = useResource(tenantId, resource)
+  const { data, refetch, isFetching } = useResource(tenantId, resource)
   const save = useSaveResource(tenantId, resource)
 
   const onSave = () => {
@@ -84,15 +84,37 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
 
   useSaveShortcut(editing && !save.isPending, onSave)
 
+  // Reads are cached for 30s and only invalidated by writes made *here*, so a
+  // record created through the project's own API — or by a teammate, or the
+  // Co-Pilot — does not show up on its own. This is the manual way to go and
+  // look. Deliberately absent while editing: refetching under an open editor
+  // would either discard what has been typed or silently disagree with it.
+  const onRefresh = () => {
+    refetch().then((res) => {
+      if (res.error) toast.error(`Could not refresh ${resource}.json: ${res.error.message}`)
+    })
+  }
+
   if (!editing) {
     return (
-      <button
-        onClick={() => startEdit(stringify(data ?? []))}
-        disabled={data === undefined}
-        className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
-      >
-        Edit
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={onRefresh}
+          disabled={isFetching}
+          title={`Reload ${resource}.json from the server`}
+          className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+        <button
+          onClick={() => startEdit(stringify(data ?? []))}
+          disabled={data === undefined}
+          className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
+        >
+          Edit
+        </button>
+      </div>
     )
   }
   return (
