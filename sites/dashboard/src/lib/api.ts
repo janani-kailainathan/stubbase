@@ -137,10 +137,14 @@ export const login = (email: string, password: string) =>
     body: JSON.stringify({ email, password }),
   })
 
+// `keepalive` because signing out navigates away to the marketing site: without
+// it the browser cancels this fetch on unload and the session is never revoked
+// server-side. The request has no body, so it is nowhere near the keepalive cap.
 export const logout = () =>
   request<{ ok: boolean }>(`${APP_API_URL}/auth/logout`, {
     method: 'POST',
     headers: appHeaders(),
+    keepalive: true,
   })
 
 export const me = () => request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, { headers: appHeaders() })
