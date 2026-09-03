@@ -188,6 +188,7 @@ const modules: Module[] = [
         run: () => verifyZeroDeps(`${root}/apps/dashboard-api`),
       },
       testGoal("tests/dashboard-api.test.ts"),
+      testGoal("tests/dashboard-api.auth.test.ts"),
     ],
   },
   {
