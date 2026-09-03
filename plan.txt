@@ -27,3 +27,47 @@
 -- ws support
 
 -- support push notification
+
+-- one click backend
+
+-- login with email verification ( register with email code )
+
+-- subscription support
+
+-- full auth ( with user management, role basee access control )
+
+-- image upload ( s3 upload, other image upload service linking )
+
+-- examples
+    - subscription ( ws )
+    - google, facebook, login
+    - user management
+
+
+the features are
+ - protected and public api
+ - one click deployment
+ - REST and GrapQL support
+ - Google / github / login
+ - Websocket support
+ - Payment gateway support
+ - Email gateway support
+ - File upload support via S3 bucket
+ - Push notification support
+ - Templates to pick from
+ - Build and sell your api
+ - Debug logs
+ - Easy edit and fast deploys
+ - Free to start with
+
+I need assets for these topics, how do I get these from canva ?
+
+
+## bugs and improvements I found
+
+- when I enter 'books.json' it doesn't allow to create
+- auth is part of pro feature it should not ( fix messaging )
+
+- on payment related - think of atomicity ( like when it's updated by manually and api ask user which one to use ? )
+
+- when I refresh only the first project is shown, add project to url

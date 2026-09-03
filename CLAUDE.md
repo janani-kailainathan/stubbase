@@ -200,10 +200,15 @@ when it has genuinely separable parts. Decide with these, in order:
   `1.3.1.1` means the parent was really two features — split it at the top
   instead.
 
-Section 3 mirrors the numbering exactly — `3.1.1` is the table for `1.3.1`, and
-the parent's own keys sit in a table directly under `3.1`. Sub-features take
-`####`; the "To …" env headings are `#####` everywhere, including in the parent,
-so a heading's level always says which of the two it is.
+Section 3's tables are numbered independently of section 1, because a feature
+with no env keys gets no table at all — relations (`1.2`) configure nothing, so
+auth stays `3.1`. Within a table, the sub-numbers do track the feature's:
+`3.1.1` is the table for auth's first sub-feature, and the parent's own keys sit
+in a table directly under `3.1`. Every table names and links its feature in a
+`Feature:` line, which is what actually ties the two sections together — so
+renumbering section 1 means fixing those links, not renumbering section 3.
+Sub-features take `####`; the "To …" env headings are `#####` everywhere,
+including in the parent, so a heading's level always says which of the two it is.
 
 When a key serves several sub-features but not all of them, **repeat it under
 each one** and say it is shared — clarity for the person reading a single

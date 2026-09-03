@@ -50,7 +50,66 @@ they are still there when you come back tomorrow.
 > confirmed by testing on 2026-09-03. The behaviour described above is what is
 > intended; we will fix this.
 
-### 1.2 Env settings
+### 1.2 Relations — pull linked records in one request
+
+Name a field `userId` and we treat it as a link to your `users.json`. Ask for it
+with `_expand` and the whole linked record comes back nested inside, so your UI
+does not have to fire a second request per row.
+
+```
+GET /<project>/posts?_expand=users
+```
+
+```json
+[
+  {
+    "id": "1",
+    "title": "Hello world",
+    "userId": "7",
+    "user": { "id": "7", "name": "Ada", "email": "ada@example.com" }
+  }
+]
+```
+
+**The field name is the whole setup.** No join tables, no foreign-key
+declarations, nothing to configure — name the field after the resource it points
+at and we do the rest:
+
+| Your field | We look in | It arrives under |
+|---|---|---|
+| `userId` | `users.json` | `user` |
+| `authorId` | `authors.json` | `author` |
+| `categoryId` | `categories.json` | `category` |
+
+Ask for it either way — `_expand=users` and `_expand=user` both work.
+
+**Expand more than one**, comma-separated:
+
+```
+GET /<project>/orders?_expand=customers,products
+```
+
+**Expand a single record too**, not just a list:
+
+```
+GET /<project>/posts/1?_expand=users
+```
+
+**Combine it with everything else.** Expansion happens last, so you can filter
+and sort first and still get the linked records back:
+
+```
+GET /<project>/posts?_expand=authors&_sort=publishedAt&_order=desc
+```
+
+If a record's `userId` points at something that no longer exists, `user` comes
+back as `null` — you get the row, not an error. If the record has no `userId` at
+all, nothing is added to it.
+
+Nothing to switch on: relations work on every project, and an expanded user
+record never includes their password.
+
+### 1.3 Env settings
 
 Every feature below is off until you switch it on, and you do that yourself
 from the **.env editor** in your project. It reads like any `.env` file you have
@@ -85,7 +144,7 @@ configuration to pause a feature.
 → **[Section 3](#3-env-settings--the-central-reference) is the full reference**,
 with one table per feature: every key, an example value, and what it does.
 
-### 1.3 Auth — sign-up and login for your users
+### 1.4 Auth — sign-up and login for your users
 
 Give *your* users accounts, without building an auth service. Turn it on and a
 `users.json` in your project becomes your user table, and two endpoints appear:
@@ -151,7 +210,7 @@ The minimum is `60`. Shorter is safer but means signing in more often, and
 there is no refresh flow — so pick the longest span you are comfortable with
 rather than the shortest one you can bear.
 
-#### 1.3.1 Google login
+#### 1.4.1 Google login
 
 Let your users sign in with their Google account instead of picking a password.
 Register your own Google OAuth app, paste the two values in, and this route goes
@@ -190,7 +249,7 @@ to your app with `#token=…` on the end for you to read.
 
 This key is shared with GitHub login: set it once and it applies to both.
 
-#### 1.3.2 GitHub login
+#### 1.4.2 GitHub login
 
 The same, for GitHub:
 
@@ -224,7 +283,7 @@ to your app with `#token=…` on the end for you to read.
 
 This key is shared with Google login: set it once and it applies to both.
 
-### 1.4 Atomic operations
+### 1.5 Atomic operations
 
 _To be written — placeholder._
 
@@ -270,7 +329,7 @@ and production — see [ENVIRONMENT.md](ENVIRONMENT.md).
 
 ### 3.1 Auth
 
-Feature: [1.3 Auth](#13-auth--sign-up-and-login-for-your-users)
+Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 
 | Key | Example | What it does |
 |---|---|---|
