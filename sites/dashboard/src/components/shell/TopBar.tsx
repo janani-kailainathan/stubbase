@@ -415,6 +415,10 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
       // The project's staged set is empty now — this refetch is what takes the
       // StagedChanges strip down.
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      // …and the promoted config is the live one now. The APIs rail reads the
+      // deployed copy, so this refetch is what moves the auth routes in or out
+      // of the list — the deploy is the only thing that should.
+      queryClient.invalidateQueries({ queryKey: ['config', tenantId] })
     },
     onError: (e) => toast.error(`Deploy failed: ${e.message}`),
   })

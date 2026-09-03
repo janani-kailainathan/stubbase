@@ -243,6 +243,17 @@ export const fetchTenantConfig = (tenantId: string) =>
     headers: appHeaders(),
   })
 
+/**
+ * The *deployed* config, ignoring anything staged. For UI that describes what
+ * the public API is serving rather than what is being edited — the APIs rail,
+ * whose route list must not change until a deploy actually changes it.
+ */
+export const fetchLiveTenantConfig = (tenantId: string) =>
+  request<Record<string, string>>(
+    `${APP_API_URL}/projects/${tenantId}/files/config?source=live`,
+    { headers: appHeaders() },
+  )
+
 export const saveTenantConfig = (tenantId: string, config: Record<string, string>) =>
   request<{ ok: boolean; records: number }>(`${APP_API_URL}/projects/${tenantId}/files/config`, {
     method: 'PUT',

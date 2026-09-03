@@ -1050,7 +1050,9 @@ async function deleteProject(user: User, tenantId: string): Promise<Response> {
 // copy `dirty` says is current — the draft while an edit is staged, the live
 // file otherwise — and fall back to the other, never 404ing when only one
 // exists. See getFile: preferring the draft unconditionally is what hid a
-// project's own API writes behind a stranded snapshot.
+// project's own API writes behind a stranded snapshot. A caller that needs the
+// *deployed* file rather than the edit in progress asks for `?source=live`,
+// which reads the production copy alone.
 //
 // `config` is the tenant's env-style settings (the dashboard's .env editor
 // compiles to it): an object, not a record array, and never a CRUD resource —
@@ -1112,7 +1114,12 @@ function planForbidsConfig(user: User, env: Record<string, unknown>): Response |
   return null;
 }
 
-async function getFile(user: User, tenantId: string, resource: string): Promise<Response> {
+async function getFile(
+  user: User,
+  tenantId: string,
+  resource: string,
+  liveOnly = false,
+): Promise<Response> {
   const row = ownedProject(tenantId, user.id);
   if (!row) return err(404, "project not found");
   const invalid = invalidResourceName(resource);
@@ -1130,12 +1137,23 @@ async function getFile(user: User, tenantId: string, resource: string): Promise<
   // back-filled, so a project older than the column reads "clean" even while
   // holding genuinely un-deployed drafts — and some hold resources that exist
   // *only* as a draft, which trusting the flag alone would turn into a 404.
-  const order =
-    row.dirty === 1
+  //
+  // `?source=live` (liveOnly) asks a different question, and gets a different
+  // answer: not "what am I editing" but "what is the public API serving right
+  // now". The APIs rail asks it — the routes a project exposes follow its
+  // *deployed* config, so an un-deployed AUTH_ENABLED must neither add the
+  // auth routes to that list nor, switched off, take them away before the
+  // deploy that actually retires them. There is no fallback in this mode, for
+  // the same reason: a file that exists only as a draft is not live, and 404
+  // is the honest answer rather than the draft standing in for one.
+  const order = liveOnly
+    ? [resource]
+    : row.dirty === 1
       ? [`${DRAFT_PREFIX}${resource}`, resource]
       : [resource, `${DRAFT_PREFIX}${resource}`];
   let res = await coreAdmin("GET", tenantId, order[0]);
-  if (res.status === 404) res = await coreAdmin("GET", tenantId, order[1]);
+  if (order[1] !== undefined && res.status === 404)
+    res = await coreAdmin("GET", tenantId, order[1]);
   if (res.status === 404) return err(404, "file not found");
   if (!res.ok) return err(502, `core engine refused the read (status ${res.status})`);
   return json(res.data);
@@ -2349,7 +2367,8 @@ async function route(req: Request): Promise<Response> {
       return aiChat(req, user, segments[1]);
 
     if (segments.length === 4 && segments[2] === "files") {
-      if (req.method === "GET") return getFile(user, segments[1], segments[3]);
+      if (req.method === "GET")
+        return getFile(user, segments[1], segments[3], url.searchParams.get("source") === "live");
       if (req.method === "PUT") return putFile(req, user, segments[1], segments[3]);
       if (req.method === "DELETE") return deleteFile(user, segments[1], segments[3]);
     }

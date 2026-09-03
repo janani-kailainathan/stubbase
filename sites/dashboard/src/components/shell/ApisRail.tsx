@@ -1,25 +1,10 @@
 import { useState } from 'react'
 import { ChevronDown, Route } from 'lucide-react'
+import { useEndpointGroups } from '@/hooks/endpoints'
 import { useCurrentProject } from '@/hooks/projects'
+import type { Endpoint } from '@/lib/endpoints'
 import { useWorkspaceStore, type Method } from '@/stores/workspace'
 import { UsagePanel } from './UsagePanel'
-
-export interface Endpoint {
-  resource: string
-  method: Method
-  /** Display path relative to the tenant base. */
-  path: string
-  needsId: boolean
-}
-
-export function endpointsFor(resources: string[]): Endpoint[] {
-  return resources.flatMap((resource): Endpoint[] => [
-    { resource, method: 'GET', path: `/${resource}`, needsId: false },
-    { resource, method: 'POST', path: `/${resource}`, needsId: false },
-    { resource, method: 'PUT', path: `/${resource}/{id}`, needsId: true },
-    { resource, method: 'DELETE', path: `/${resource}/{id}`, needsId: true },
-  ])
-}
 
 /**
  * Colour carries the method, the way every REST client does it. Without it the
@@ -37,14 +22,22 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
   const selection = useWorkspaceStore((s) => s.selection)
   const select = useWorkspaceStore((s) => s.select)
 
+  // Path, not just resource + method: the auth group holds two POSTs.
   const isSelected =
     selection?.kind === 'api' &&
-    selection.resource === endpoint.resource &&
-    selection.method === endpoint.method
+    selection.method === endpoint.method &&
+    selection.path === endpoint.path
 
   return (
     <div
-      onClick={() => select({ kind: 'api', resource: endpoint.resource, method: endpoint.method })}
+      onClick={() =>
+        select({
+          kind: 'api',
+          resource: endpoint.resource,
+          method: endpoint.method,
+          path: endpoint.path,
+        })
+      }
       className={
         isSelected
           ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-7'
@@ -65,7 +58,7 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
 
 export function ApisRail() {
   const project = useCurrentProject()
-  const resources = project?.resources ?? []
+  const grouped = useEndpointGroups()
   // Collapsed groups, by resource name — everything starts expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -76,11 +69,6 @@ export function ApisRail() {
       else next.add(resource)
       return next
     })
-
-  const grouped = resources.map((resource) => ({
-    resource,
-    endpoints: endpointsFor([resource]),
-  }))
 
   return (
     <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-border">
@@ -115,7 +103,7 @@ export function ApisRail() {
             </div>
           )
         })}
-        {project && resources.length === 0 && (
+        {project && grouped.length === 0 && (
           <p className="px-3 py-1.5 font-mono text-xs text-faint">No endpoints yet.</p>
         )}
       </div>

@@ -141,6 +141,7 @@ describe("project ownership scoping", () => {
       body: JSON.stringify({ status: "stopped" }),
     },
     { method: "GET", path: `/projects/${tenantId}/files/config` },
+    { method: "GET", path: `/projects/${tenantId}/files/config?source=live` },
     {
       method: "PUT",
       path: `/projects/${tenantId}/files/config`,
@@ -214,6 +215,7 @@ describe("project ownership scoping", () => {
     for (const path of [
       `/projects/${aliceProject}/files/posts`,
       `/projects/${aliceProject}/files/config`,
+      `/projects/${aliceProject}/files/config?source=live`,
       `/projects/${aliceProject}/usage`,
       `/projects/${aliceProject}/diagnostics`,
       `/projects/${aliceProject}/live-logs`,
@@ -715,6 +717,83 @@ describe("files proxy and the draft model", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  /**
+   * `?source=live` is the read for UI that describes the *running* API rather
+   * than the edit in progress — the dashboard's APIs rail, whose list of routes
+   * follows the deployed config. A list that moved on save would advertise
+   * routes the public plane still 404s, and retire routes it is still serving.
+   * `dirty` cannot answer this: it says an edit exists, not what the edit said.
+   */
+  test("?source=live reads the deployed config and ignores a staged edit", async () => {
+    const pro = await signup();
+    setPlan(pro.email, "pro"); // AUTH_ENABLED is plan-gated at write time
+    const id = (await createProject(pro.token, "Live config", { posts: [] })).tenantId;
+
+    const liveConfig = () =>
+      fetch(`${app.base}/projects/${id}/files/config?source=live`, { headers: as(pro.token) }).then(
+        (r) => r.json(),
+      );
+    const editorConfig = () =>
+      fetch(`${app.base}/projects/${id}/files/config`, { headers: as(pro.token) }).then((r) =>
+        r.json(),
+      );
+    const stage = (value: string) =>
+      fetch(`${app.base}/projects/${id}/files/config`, {
+        method: "PUT",
+        headers: jsonHeaders(pro.token),
+        body: JSON.stringify({ AUTH_ENABLED: value }),
+      });
+    const deploy = () =>
+      fetch(`${app.base}/projects/${id}/deploy`, { method: "POST", headers: as(pro.token) });
+
+    // Staged, not deployed: the editor shows the edit, the live read does not.
+    expect((await stage("true")).status).toBe(200);
+    expect(await editorConfig()).toMatchObject({ AUTH_ENABLED: "true" });
+    expect(await liveConfig()).not.toHaveProperty("AUTH_ENABLED");
+
+    // Deploying is what turns it on.
+    expect((await deploy()).status).toBe(200);
+    expect(await liveConfig()).toMatchObject({ AUTH_ENABLED: "true" });
+
+    // …and the same holds in the other direction, which is the half that is
+    // easy to get wrong: switching a feature off must not retire its routes
+    // until the deploy that actually stops serving them.
+    expect((await stage("false")).status).toBe(200);
+    expect(await editorConfig()).toMatchObject({ AUTH_ENABLED: "false" });
+    expect(await liveConfig()).toMatchObject({ AUTH_ENABLED: "true" });
+
+    expect((await deploy()).status).toBe(200);
+    expect(await liveConfig()).toMatchObject({ AUTH_ENABLED: "false" });
+  }, 30_000);
+
+  test("?source=live does not fall back to a draft", async () => {
+    // The fallback the editor's read depends on would defeat the point here: a
+    // file that exists only as a draft is not live, and saying so is the whole
+    // job of this mode.
+    const res = await fetch(`${app.base}/projects/${tenantId}/files/tags`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "t1" }]),
+    });
+    expect(res.status).toBe(200);
+
+    const editor = await fetch(`${app.base}/projects/${tenantId}/files/tags`, {
+      headers: as(owner.token),
+    });
+    expect(editor.status).toBe(200);
+    expect(await editor.json()).toEqual([{ id: "t1" }]);
+
+    const live = await fetch(`${app.base}/projects/${tenantId}/files/tags?source=live`, {
+      headers: as(owner.token),
+    });
+    expect(live.status).toBe(404);
+
+    await fetch(`${app.base}/projects/${tenantId}/files/tags`, {
+      method: "DELETE",
+      headers: as(owner.token),
+    });
+  }, 20_000);
 });
 
 // ── The dirty flag ─────────────────────────────────────────────────

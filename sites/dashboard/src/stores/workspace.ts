@@ -5,7 +5,9 @@ export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 export type Selection =
   | { kind: 'resource'; resource: string }
-  | { kind: 'api'; resource: string; method: Method }
+  // `path` is what identifies the endpoint: the auth group holds two POSTs,
+  // so resource + method is no longer unique.
+  | { kind: 'api'; resource: string; method: Method; path: string }
   | { kind: 'env' }
   | null
 

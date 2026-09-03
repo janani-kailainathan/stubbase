@@ -2,13 +2,14 @@ import { Suspense, lazy } from 'react'
 import { toast } from 'sonner'
 import { Check, RefreshCw, Rocket, X, Zap } from 'lucide-react'
 import { CORE_PUBLIC_URL } from '@/lib/api'
+import type { Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
 import { useCurrentProject } from '@/hooks/projects'
+import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
 import { useWorkspaceStore, type EditorTab, type LogView, type Method } from '@/stores/workspace'
 import { PaneTab, PaneTabs } from './pane-tabs'
-import { endpointsFor, type Endpoint } from './ApisRail'
 import { EnvActions, EnvView } from './EnvEditor'
 import { AiChat, AiComposer } from './AiChat'
 import { LiveLogViewer } from './LiveLogViewer'
@@ -185,7 +186,8 @@ function LogTabButton({ view, label }: { view: LogView; label: string }) {
 }
 
 function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
-  const { data } = useResource(tenantId, endpoint.resource)
+  // No resource file behind an auth route — nothing to read, so don't ask.
+  const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
   const hasBody = endpoint.method === 'POST' || endpoint.method === 'PUT'
   const url = `${CORE_PUBLIC_URL}/${tenantId}${endpoint.path}`
 
@@ -210,7 +212,7 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
           <span className="font-mono text-xs text-faint">None required</span>
         )}
       </div>
-      {endpoint.method === 'GET' && (
+      {endpoint.method === 'GET' && endpoint.kind === 'crud' && (
         <div>
           <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">
             Query params
@@ -243,7 +245,7 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
         <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">Body</div>
         {hasBody ? (
           <div className="rounded-md border border-border bg-code-bg p-3">
-            <JsonHighlight raw={sampleBody(data)} />
+            <JsonHighlight raw={requestBody(endpoint, data)} />
           </div>
         ) : (
           <span className="font-mono text-xs text-faint">No body</span>
@@ -253,10 +255,40 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
   )
 }
 
+/**
+ * The Response tab for an endpoint with no file behind it: the documented
+ * shape, labelled as such, rather than a resource read that would 403 — `auth`
+ * is a reserved name on the public plane, not a resource.
+ */
+function SampleResponseView({ endpoint }: { endpoint: Endpoint }) {
+  return (
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+      <p className="font-mono text-xs text-subtle">
+        {endpoint.path === '/auth/signup'
+          ? '201 Created — the new user, and a token to send as Authorization: Bearer.'
+          : '200 OK — the signed-in user, and a token to send as Authorization: Bearer.'}{' '}
+        The stored password hash never leaves the server.
+      </p>
+      <div className="rounded-md border border-border bg-code-bg p-3">
+        <JsonHighlight raw={stringify(endpoint.sample?.response ?? {})} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The body to show for a request. A CRUD endpoint derives one from the
+ * resource's own records; an auth route has no records, so it carries the
+ * documented shape with it.
+ */
+function requestBody(endpoint: Endpoint, data: unknown[] | undefined): string {
+  return endpoint.sample?.request ? stringify(endpoint.sample.request) : sampleBody(data)
+}
+
 function curlFor(endpoint: Endpoint, tenantId: string, data: unknown[] | undefined): string {
   const url = `${CORE_PUBLIC_URL}/${tenantId}${endpoint.path.replace('{id}', '<id>')}`
   if (endpoint.method === 'POST' || endpoint.method === 'PUT') {
-    const body = sampleBody(data).replace(/\n\s*/g, ' ')
+    const body = requestBody(endpoint, data).replace(/\n\s*/g, ' ')
     return `curl -X ${endpoint.method} ${url} \\\n  -H 'content-type: application/json' \\\n  -d '${body}'`
   }
   return `curl -X ${endpoint.method} ${url}`
@@ -266,13 +298,15 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
   const liveKey = `${tenantId}/${endpoint.resource}`
   const live = useWorkspaceStore((s) => s.live[liveKey]) ?? { status: 'idle' as const }
   const runLive = useWorkspaceStore((s) => s.runLive)
-  const { data } = useResource(tenantId, endpoint.resource)
+  const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
 
   if (endpoint.method !== 'GET') {
     return (
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
         <p className="font-mono text-xs text-subtle">
-          Mutating requests run against your live data — fire them from your app, tests, or curl:
+          {endpoint.kind === 'auth'
+            ? 'Auth requests create real users and issue real tokens — fire them from your app, tests, or curl:'
+            : 'Mutating requests run against your live data — fire them from your app, tests, or curl:'}
         </p>
         <div className="overflow-x-auto rounded-md border border-border bg-code-bg p-3">
           <pre className="font-mono text-xs leading-relaxed whitespace-pre text-body">
@@ -340,17 +374,20 @@ function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string
 
 export function EditorPane() {
   const project = useCurrentProject()
+  const groups = useEndpointGroups()
   const selection = useWorkspaceStore((s) => s.selection)
   const activeTab = useWorkspaceStore((s) => s.activeTab)
   const paneMode = useWorkspaceStore((s) => s.paneMode)
 
   const tenantId = project?.tenantId
 
+  // Looked up in the same list the rail offered, so an endpoint that is only
+  // there conditionally (the auth plane) resolves on the same condition.
   const endpoint: Endpoint | undefined =
-    selection?.kind === 'api' && project
-      ? endpointsFor(project.resources).find(
-          (e) => e.resource === selection.resource && (e.method as Method) === selection.method,
-        )
+    selection?.kind === 'api'
+      ? groups
+          .flatMap((g) => g.endpoints)
+          .find((e) => e.path === selection.path && (e.method as Method) === selection.method)
       : undefined
 
   const label =
@@ -424,7 +461,10 @@ export function EditorPane() {
         <DeveloperKeysPanel tenantId={tenantId} />
       ) : (
         <>
-          {!selection &&
+          {/* An endpoint can stop existing under a selection that outlives it —
+              deploying AUTH_ENABLED=false retires its two routes — so treat a
+              selection that no longer resolves as no selection at all. */}
+          {(!selection || (selection.kind === 'api' && !endpoint)) &&
             (tenantId && project?.resources.length === 0 ? (
               <StarterExamples tenantId={tenantId} />
             ) : (
@@ -446,12 +486,18 @@ export function EditorPane() {
           )}
           {endpoint && tenantId && activeTab === 'response' && (
             <>
-              {endpoint.method === 'GET' && (
-                <div className="flex shrink-0 justify-end px-4 pt-3">
-                  <ResourceActions tenantId={tenantId} resource={endpoint.resource} />
-                </div>
+              {endpoint.kind === 'auth' ? (
+                <SampleResponseView endpoint={endpoint} />
+              ) : (
+                <>
+                  {endpoint.method === 'GET' && (
+                    <div className="flex shrink-0 justify-end px-4 pt-3">
+                      <ResourceActions tenantId={tenantId} resource={endpoint.resource} />
+                    </div>
+                  )}
+                  <ResourceView tenantId={tenantId} resource={endpoint.resource} />
+                </>
               )}
-              <ResourceView tenantId={tenantId} resource={endpoint.resource} />
             </>
           )}
           {endpoint && tenantId && activeTab === 'live' && (

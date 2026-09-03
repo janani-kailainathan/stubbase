@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiError,
+  fetchLiveTenantConfig,
   fetchTenantConfig,
   saveTenantConfig,
   setProjectStatus,
@@ -16,6 +17,29 @@ export function useTenantConfig(tenantId: string | undefined) {
     queryFn: async (): Promise<TenantConfig> => {
       try {
         return await fetchTenantConfig(tenantId!)
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return {}
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+  })
+}
+
+/**
+ * The deployed config. Same shape, different question: `useTenantConfig` reads
+ * the edit in progress, this reads what the running API is configured with. A
+ * project with nothing deployed yet reads as empty, like one with no config.
+ *
+ * Keyed under the same prefix as the editor's copy on purpose — a config write
+ * or a deploy invalidates `['config', tenantId]` and refreshes both.
+ */
+export function useLiveTenantConfig(tenantId: string | undefined) {
+  return useQuery({
+    queryKey: ['config', tenantId, 'live'],
+    queryFn: async (): Promise<TenantConfig> => {
+      try {
+        return await fetchLiveTenantConfig(tenantId!)
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) return {}
         throw e
