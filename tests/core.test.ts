@@ -93,6 +93,200 @@ afterAll(async () => {
   if (ROOT) await rm(ROOT, { recursive: true, force: true });
 });
 
+// ── Sorting and server-owned timestamps ────────────────────────────
+
+describe("sorting with _sort and _direction", () => {
+  const ids = (tenant: string, query: string) =>
+    fetch(`${core.base}/${tenant}/items?${query}`)
+      .then((r) => r.json())
+      .then((rows: any[]) => rows.map((r) => r.id));
+
+  beforeAll(async () => {
+    await seed(core, "sorting", {
+      items: [
+        { id: "a", price: 20, name: "b", createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-03-01T00:00:00.000Z" },
+        { id: "b", price: 5, name: "a", createdAt: "2026-01-03T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z" },
+        { id: "c", name: "c" }, // imported: no price, no timestamps
+        { id: "d", price: 20, name: "a", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      ],
+    });
+  });
+
+  test("an ordinary field sorts ascending unless _direction says desc", async () => {
+    expect(await ids("sorting", "_sort=price")).toEqual(["b", "a", "d", "c"]);
+    expect(await ids("sorting", "_sort=price&_direction=desc")).toEqual(["a", "d", "b", "c"]);
+  });
+
+  test("records missing the sort field go last in either direction", async () => {
+    expect((await ids("sorting", "_sort=price&_direction=asc")).at(-1)).toBe("c");
+    expect((await ids("sorting", "_sort=price&_direction=desc")).at(-1)).toBe("c");
+  });
+
+  test("created and updated sort by the timestamps, newest first by default", async () => {
+    expect(await ids("sorting", "_sort=created")).toEqual(["b", "a", "d", "c"]);
+    expect(await ids("sorting", "_sort=createdAt")).toEqual(["b", "a", "d", "c"]);
+    expect(await ids("sorting", "_sort=updated&_direction=asc")).toEqual(["d", "b", "a", "c"]);
+  });
+
+  test("one _direction per key, and a single one applies to every key", async () => {
+    expect(await ids("sorting", "_sort=price,name&_direction=desc,asc")).toEqual(["d", "a", "b", "c"]);
+    expect(await ids("sorting", "_sort=price,name&_direction=desc")).toEqual(["a", "d", "b", "c"]);
+  });
+
+  test("_order is no longer read", async () => {
+    expect(await ids("sorting", "_sort=price&_order=desc")).toEqual(["b", "a", "d", "c"]);
+  });
+});
+
+describe("server-owned timestamps", () => {
+  const send = (method: string, url: string, body: unknown) =>
+    fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const ANCIENT = "1999-01-01T00:00:00.000Z";
+
+  test("POST stamps createdAt and updatedAt, overwriting what the client sent", async () => {
+    await seed(core, "stamped", { posts: [] });
+    const before = Date.now();
+    const res = await send("POST", `${core.base}/stamped/posts`, {
+      title: "new",
+      createdAt: ANCIENT,
+      updatedAt: ANCIENT,
+    });
+    expect(res.status).toBe(201);
+    const created = await res.json();
+    expect(created.createdAt).not.toBe(ANCIENT);
+    expect(created.updatedAt).toBe(created.createdAt);
+    expect(Date.parse(created.createdAt)).toBeGreaterThanOrEqual(before - 1000);
+
+    const onDisk = await readFile(core, "stamped", "posts");
+    expect(onDisk[0]).toMatchObject({ createdAt: created.createdAt, updatedAt: created.updatedAt });
+  });
+
+  test("PUT keeps createdAt and stamps updatedAt, ignoring what the client sent", async () => {
+    await seed(core, "restamped", { posts: [] });
+    const created = await send("POST", `${core.base}/restamped/posts`, { title: "v1" }).then((r) => r.json());
+    await Bun.sleep(10); // a later write must carry a later timestamp
+
+    const res = await send("PUT", `${core.base}/restamped/posts/${created.id}`, {
+      ...created,
+      title: "v2",
+      createdAt: ANCIENT,
+      updatedAt: ANCIENT,
+    });
+    expect(res.status).toBe(200);
+    const updated = await res.json();
+    expect(updated.createdAt).toBe(created.createdAt);
+    expect(updated.updatedAt > created.updatedAt).toBe(true);
+  });
+
+  test("PUT never invents a createdAt for a record that had none", async () => {
+    await seed(core, "imported", { posts: [{ id: "1", title: "from a file" }] });
+    const updated = await send("PUT", `${core.base}/imported/posts/1`, {
+      title: "edited",
+      createdAt: ANCIENT,
+    }).then((r) => r.json());
+    expect("createdAt" in updated).toBe(false);
+    expect(typeof updated.updatedAt).toBe("string");
+  });
+
+  test("a signup stamps the new user", async () => {
+    const res = await send("POST", `${core.base}/secure/auth/signup`, {
+      email: `stamped-${Date.now()}@example.com`,
+      password: "long-enough-password",
+    });
+    expect(res.status).toBe(201);
+    const { user } = await res.json();
+    expect(typeof user.createdAt).toBe("string");
+    expect(user.updatedAt).toBe(user.createdAt);
+  });
+
+  test("the _admin plane never stamps — a file keeps exactly what was written", async () => {
+    await seed(core, "unstamped", { posts: [] });
+    const write = await fetch(`${core.base}/unstamped/_admin/files/posts`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify([{ id: "1", title: "as written" }]),
+    });
+    expect(write.status).toBe(201);
+    expect(await fetch(`${core.base}/unstamped/posts`).then((r) => r.json())).toEqual([
+      { id: "1", title: "as written" },
+    ]);
+  });
+});
+
+describe("filters: plain is exact, brackets are operators", () => {
+  const ids = (tenant: string, query: string) =>
+    fetch(`${core.base}/${tenant}/products?${query}`)
+      .then((r) => r.json())
+      .then((rows: any[]) => rows.map((r) => r.id));
+
+  beforeAll(async () => {
+    await seed(core, "filtering", {
+      products: [
+        { id: "1", brand: "Samsung", category: "phone", price: 799, tags: ["android", "5G"], releasedAt: "2026-02-01T00:00:00.000Z" },
+        { id: "2", brand: "Sam's Club", category: "grocery", price: 12, releasedAt: "2025-11-15T00:00:00.000Z" },
+        { id: "3", brand: "Škoda", category: "car", price: "90", releasedAt: "2026-06-30T00:00:00.000Z" },
+        { id: "4", brand: "Apple", category: "headphones", price: 249, tags: ["wireless"] },
+        { id: "5", brand: "Sony", category: "phone", price: null },
+      ],
+    });
+    await seed(core, "hashes", {
+      users: [{ id: "1", email: "ada@example.com", passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$abc" }],
+    });
+  });
+
+  test("a plain field=value stays exact and case-sensitive", async () => {
+    expect(await ids("filtering", "category=phone")).toEqual(["1", "5"]); // not headphones
+    expect(await ids("filtering", "brand=samsung")).toEqual([]);
+  });
+
+  test("contains ignores case and accents", async () => {
+    expect(await ids("filtering", "brand[contains]=SAM")).toEqual(["1", "2"]);
+    expect(await ids("filtering", "brand[contains]=skod")).toEqual(["3"]);
+  });
+
+  test("contains on a list matches when any item does", async () => {
+    expect(await ids("filtering", "tags[contains]=wire")).toEqual(["4"]);
+    expect(await ids("filtering", "tags[contains]=5g")).toEqual(["1"]);
+  });
+
+  test("gt / gte / lt / lte compare numbers, and skip values that are missing", async () => {
+    expect(await ids("filtering", "price[gt]=12&price[lt]=800")).toEqual(["1", "3", "4"]);
+    expect(await ids("filtering", "price[lte]=12")).toEqual(["2"]);
+    // Text holding a number orders naturally: "90" is below 100. Compared
+    // letter by letter it would not be, since "9" sorts after "1".
+    expect(await ids("filtering", "price[gte]=100")).toEqual(["1", "4"]);
+  });
+
+  test("comparisons order ISO dates by time", async () => {
+    expect(await ids("filtering", "releasedAt[gte]=2026-01-01")).toEqual(["1", "3"]);
+    expect(await ids("filtering", "releasedAt[lt]=2026-01-01")).toEqual(["2"]);
+  });
+
+  test("filters combine with each other, sorting and paging — and the total counts matches", async () => {
+    const res = await fetch(
+      `${core.base}/filtering/products?category=phone&brand[contains]=s&_sort=price&_direction=desc&_limit=1`,
+    );
+    expect((await res.json()).map((r: any) => r.id)).toEqual(["1"]);
+    expect(res.headers.get("x-total-count")).toBe("2");
+  });
+
+  test("an unknown or empty operator is a 400 that names it, never ignored", async () => {
+    const typo = await fetch(`${core.base}/filtering/products?price[gtee]=10`);
+    expect(typo.status).toBe(400);
+    expect((await typo.json()).error).toContain("'gtee'");
+    expect((await fetch(`${core.base}/filtering/products?price[]=10`)).status).toBe(400);
+  });
+
+  test("passwordHash on users can never be filtered, with or without an operator", async () => {
+    expect((await fetch(`${core.base}/hashes/users?passwordHash[contains]=argon`)).status).toBe(400);
+    expect((await fetch(`${core.base}/hashes/users?passwordHash[gte]=$`)).status).toBe(400);
+    const exact = encodeURIComponent("$argon2id$v=19$m=19456,t=2,p=1$abc");
+    expect((await fetch(`${core.base}/hashes/users?passwordHash=${exact}`)).status).toBe(400);
+    // …while every other field on users filters normally.
+    expect((await fetch(`${core.base}/hashes/users?email[contains]=ada`)).status).toBe(200);
+  });
+});
+
 // ── CORS split ─────────────────────────────────────────────────────
 
 describe("CORS split", () => {

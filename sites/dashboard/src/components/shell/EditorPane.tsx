@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Fragment, Suspense, lazy } from 'react'
 import { toast } from 'sonner'
 import { Check, RefreshCw, X } from 'lucide-react'
 import { CORE_PUBLIC_URL } from '@/lib/api'
@@ -177,14 +177,21 @@ function LogTabButton({ view, label }: { view: LogView; label: string }) {
   return <PaneTab active={logView === view} label={label} onClick={() => setLogView(view)} />
 }
 
-const QUERY_PARAM_DOCS = [
-  ['_page', '1', 'page number, 1-based (default 10 per page)'],
-  ['_limit', '20', 'rows per page'],
-  ['_offset', '0', 'raw index alternative to _page'],
-  ['_sort', 'price', 'field(s) to sort by, comma-separated'],
-  ['_order', 'desc', 'asc (default) or desc'],
-  ['_expand', 'users', 'nest the record referenced by <name>Id'],
-  ['<field>', 'value', 'exact-match filter on any record field'],
+/** A param takes several `values` when it is one of a few keywords, shown side by side. */
+const QUERY_PARAM_DOCS: { name: string; values: string[]; note: string }[] = [
+  { name: '_page', values: ['1'], note: 'page number, 1-based' },
+  { name: '_limit', values: ['20'], note: 'rows per page (default 10)' },
+  { name: '_offset', values: ['0'], note: 'raw index alternative to _page' },
+  { name: '_sort', values: ['created', 'updated'], note: 'or any field(s), comma-separated' },
+  {
+    name: '_direction',
+    values: ['asc', 'desc'],
+    note: 'created / updated default to desc, other fields to asc',
+  },
+  { name: '_expand', values: ['users'], note: 'nest the record referenced by <name>Id' },
+  { name: '<field>', values: ['value'], note: 'exact match on any field, case-sensitive' },
+  { name: '<field>[contains]', values: ['text'], note: 'text contains, ignoring case and accents' },
+  { name: '<field>[gte]', values: ['100'], note: 'also gt / lt / lte — numbers, and dates in time order' },
 ]
 
 function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
@@ -195,7 +202,7 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
   // A single-record read still expands relations; filtering, sorting and
   // paging only mean something on a list.
   const queryParams = endpoint.needsId
-    ? QUERY_PARAM_DOCS.filter(([name]) => name === '_expand')
+    ? QUERY_PARAM_DOCS.filter((param) => param.name === '_expand')
     : QUERY_PARAM_DOCS
 
   return (
@@ -225,11 +232,18 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
             Query params
           </div>
           <div className="space-y-1">
-            {queryParams.map(([name, value, note]) => (
+            {queryParams.map(({ name, values, note }) => (
               <div key={name} className="flex gap-2 font-mono text-xs">
                 <span className="text-subtle">{name}:</span>
-                <span className={name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'}>
-                  {value}
+                <span>
+                  {values.map((value, i) => (
+                    <Fragment key={value}>
+                      {i > 0 && <span className="text-faint"> / </span>}
+                      <span className={name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'}>
+                        {value}
+                      </span>
+                    </Fragment>
+                  ))}
                 </span>
                 <span className="text-faint">— {note}</span>
               </div>

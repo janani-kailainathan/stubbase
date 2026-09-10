@@ -1076,7 +1076,7 @@ async function handleOauth(
       ...(typeof profile.name === "string" && profile.name ? { name: profile.name } : {}),
       role: "user",
       provider,
-      createdAt: new Date().toISOString(),
+      ...newTimestamps(),
     };
     users.push(user);
     await persist(state, tenantId, "users");
@@ -1096,6 +1096,16 @@ const safeUser = (u: Record<string, any>) => {
   const { passwordHash: _ph, ...rest } = u;
   return rest;
 };
+
+/**
+ * Server-owned timestamps for a record created on the public plane — a CRUD
+ * POST, a signup, an OAuth first login. Spread last, so nothing a client sent
+ * for them survives. The `_admin` plane never calls this.
+ */
+function newTimestamps(): { createdAt: string; updatedAt: string } {
+  const now = new Date().toISOString();
+  return { createdAt: now, updatedAt: now };
+}
 
 async function handleAuth(req: Request, tenantId: string, segments: string[]): Promise<Response> {
   const state = await getTenant(tenantId);
@@ -1133,7 +1143,7 @@ async function handleAuth(req: Request, tenantId: string, segments: string[]): P
       ...(typeof name === "string" && name ? { name } : {}),
       role: "user",
       passwordHash,
-      createdAt: new Date().toISOString(),
+      ...newTimestamps(),
     };
     users.push(user);
     await persist(state, tenantId, "users");
@@ -1200,14 +1210,24 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
       get: {
         summary: `List ${resource}`,
         description:
-          "Filter with ?<field>=<value>; sort with _sort/_order; paginate with _page/_limit (or _offset/_limit); expand relations with _expand. Total row count is returned in the X-Total-Count header.",
+          "Filter with ?<field>=<value> (exact) or ?<field>[contains|gt|gte|lt|lte]=<value> (contains ignores case and accents; comparisons order numbers numerically and text, such as ISO dates, naturally; an unknown operator is a 400); sort with _sort/_direction (created and updated sort by the server-set timestamps, newest first by default); paginate with _page/_limit (or _offset/_limit); expand relations with _expand. Total row count is returned in the X-Total-Count header.",
         security: secured(resource, "get"),
         parameters: [
           { name: "_page", in: "query", description: "1-based page number", schema: { type: "integer" } },
           { name: "_limit", in: "query", schema: { type: "integer" } },
           { name: "_offset", in: "query", schema: { type: "integer" } },
-          { name: "_sort", in: "query", description: "field(s), comma-separated", schema: { type: "string" } },
-          { name: "_order", in: "query", schema: { type: "string", enum: ["asc", "desc"] } },
+          {
+            name: "_sort",
+            in: "query",
+            description: "field(s), comma-separated; created and updated sort by createdAt / updatedAt",
+            schema: { type: "string" },
+          },
+          {
+            name: "_direction",
+            in: "query",
+            description: "asc or desc, per sort key; created and updated default to desc, other fields to asc",
+            schema: { type: "string", enum: ["asc", "desc"] },
+          },
           { name: "_expand", in: "query", description: "related resource(s) to nest", schema: { type: "string" } },
         ],
         responses: { "200": { description: "OK", content: jsonOf({ type: "array", items: ref }) } },
@@ -1831,18 +1851,91 @@ async function handleAdmin(
 }
 
 // ── Query processing (GET collections) ────────────────────────────
-// Filtering (?field=value), sorting (?_sort=&_order=), pagination
+// Filtering (?field=value, ?field[op]=value), sorting (?_sort=&_direction=), pagination
 // (?_page=&_limit= or ?_offset=&_limit=) and relation expansion (?_expand=).
 // Everything runs in memory over the tenant's arrays.
 
-/** Missing values sort last (ascending); numbers numerically, strings naturally. */
+/**
+ * Numbers numerically, booleans false-first, anything else as natural text.
+ * Missing values are the caller's to place — they go last in either direction.
+ */
 function compareValues(a: unknown, b: unknown): number {
-  const aEmpty = a === undefined || a === null;
-  const bEmpty = b === undefined || b === null;
-  if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
   if (typeof a === "number" && typeof b === "number") return a - b;
   if (typeof a === "boolean" && typeof b === "boolean") return Number(a) - Number(b);
   return String(a).localeCompare(String(b), undefined, { numeric: true });
+}
+
+/**
+ * `_sort` keywords, GitHub-style: `created` and `updated` name the timestamps
+ * every public-plane write stamps. A record field literally called `created`
+ * therefore cannot be sorted on by that name.
+ */
+const SORT_ALIASES: Record<string, string> = { created: "createdAt", updated: "updatedAt" };
+
+/** The timestamps read newest-first unless `_direction` says otherwise, as on GitHub. */
+const DESC_BY_DEFAULT = new Set(["createdAt", "updatedAt"]);
+
+/** The operators `field[op]=value` accepts. A plain `field=value` is an exact match. */
+const FILTER_OPS = new Set(["contains", "gt", "gte", "lt", "lte"]);
+const OPERATOR_KEY_RE = /^(.+)\[([^[\]]*)\]$/;
+
+interface Filter {
+  field: string;
+  op: "eq" | "contains" | "gt" | "gte" | "lt" | "lte";
+  value: string;
+  /** `value` case- and accent-folded, once per request rather than once per row. */
+  needle: string;
+}
+
+/** How `contains` compares text: lower-cased, accents stripped. */
+const foldText = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/**
+ * The filter params of a list request. Underscore params belong to the query
+ * language (`_sort`, `_page`, …) and are not filters.
+ *
+ * An operator nobody defined is a 400, never ignored: dropping a misspelt
+ * `price[gtee]` would return everything and look like it worked. And
+ * `passwordHash` on `users` can never be filtered — with an operator the
+ * filter becomes an oracle that recovers the hash a few characters at a time.
+ */
+function parseFilters(params: URLSearchParams, resource: string): Filter[] | Response {
+  const filters: Filter[] = [];
+  for (const [key, value] of params) {
+    if (key.startsWith("_")) continue;
+    const bracket = OPERATOR_KEY_RE.exec(key);
+    const field = bracket ? bracket[1] : key;
+    const op = bracket ? bracket[2] : "eq";
+    if (bracket && !FILTER_OPS.has(op))
+      return err(400, `unknown filter operator '${op}' on '${field}' — use contains, gt, gte, lt or lte`);
+    if (resource === "users" && field === "passwordHash") return err(400, "passwordHash cannot be filtered");
+    filters.push({ field, op: op as Filter["op"], value, needle: op === "contains" ? foldText(value) : "" });
+  }
+  return filters;
+}
+
+function matchesFilter(row: any, { field, op, value, needle }: Filter): boolean {
+  const actual = row?.[field];
+  // Exactly as before operators existed: ids, enums and ownership lookups rely on it.
+  if (op === "eq") return String(actual) === value;
+  if (actual === undefined || actual === null) return false;
+  if (op === "contains") {
+    const items = Array.isArray(actual) ? actual : [actual];
+    return items.some((item) => typeof item === "string" && foldText(item).includes(needle));
+  }
+  // gt / gte / lt / lte: numbers numerically, text naturally — which is what
+  // puts ISO timestamps in time order. Anything else never matches.
+  let c: number;
+  if (typeof actual === "number") {
+    const n = Number(value);
+    if (value.trim() === "" || !Number.isFinite(n)) return false;
+    c = actual - n;
+  } else if (typeof actual === "string") {
+    c = compareValues(actual, value);
+  } else {
+    return false;
+  }
+  return op === "gt" ? c > 0 : op === "gte" ? c >= 0 : op === "lt" ? c < 0 : c <= 0;
 }
 
 const singularize = (n: string) =>
@@ -2085,27 +2178,44 @@ const coreOperation: Middleware = async (ctx) => {
     const expansions = parseExpansions(params, state);
 
     if (id === undefined) {
-      // 1. filter — every non-underscore param is an exact-match field filter
+      // 1. filter — `field=value` exact, `field[op]=value` an operator; all must hold
+      const filters = parseFilters(params, resource);
+      if (filters instanceof Response) return filters;
       let out = rows;
-      for (const [k, v] of params) {
-        if (k.startsWith("_")) continue;
-        out = out.filter((row) => String(row?.[k]) === v);
-      }
+      for (const filter of filters) out = out.filter((row) => matchesFilter(row, filter));
 
       // 2. sort — on a copy, so the cached array keeps its insertion order
       const sortKeys = (params.get("_sort") ?? "")
         .split(",")
         .map((s) => s.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((key) => SORT_ALIASES[key] ?? key);
       if (sortKeys.length > 0) {
-        const orders = (params.get("_order") ?? "")
+        // One _direction per key, and a single value applies to every key.
+        // Anything but asc/desc falls back to that key's own default.
+        const given = (params.get("_direction") ?? "")
           .split(",")
           .map((s) => s.trim().toLowerCase());
+        const dirs = sortKeys.map((key, i) => {
+          const d = given[i] || given[0];
+          if (d === "desc") return -1;
+          if (d === "asc") return 1;
+          return DESC_BY_DEFAULT.has(key) ? -1 : 1;
+        });
         out = out.slice().sort((a, b) => {
           for (let i = 0; i < sortKeys.length; i++) {
-            const dir = (orders[i] ?? orders[0] ?? "asc") === "desc" ? -1 : 1;
-            const c = compareValues(a?.[sortKeys[i]], b?.[sortKeys[i]]);
-            if (c !== 0) return c * dir;
+            const x = a?.[sortKeys[i]];
+            const y = b?.[sortKeys[i]];
+            // A record without the field goes last whichever way the sort runs,
+            // or a newest-first sort would open on every untimestamped row.
+            const xMissing = x === undefined || x === null;
+            const yMissing = y === undefined || y === null;
+            if (xMissing || yMissing) {
+              if (xMissing && yMissing) continue;
+              return xMissing ? 1 : -1;
+            }
+            const c = compareValues(x, y);
+            if (c !== 0) return c * dirs[i];
           }
           return 0;
         });
@@ -2143,7 +2253,12 @@ const coreOperation: Middleware = async (ctx) => {
     const body = ctx.body;
     if (body === null || body === undefined || typeof body !== "object" || Array.isArray(body))
       return err(400, "body must be a JSON object");
-    const record: Record<string, any> = { id: crypto.randomUUID(), ...(body as object) };
+    // Timestamps spread last: whatever the client sent for them is overwritten.
+    const record: Record<string, any> = {
+      id: crypto.randomUUID(),
+      ...(body as object),
+      ...newTimestamps(),
+    };
     if (state.config.authEnabled && ctx.user && resource !== "users" && !("userId" in record))
       record.userId = ctx.user.sub; // stamp ownership
     if (rows.some((r) => String(r?.id) === String(record.id)))
@@ -2174,6 +2289,13 @@ const coreOperation: Middleware = async (ctx) => {
         record.userId = prevObj.userId; // ownership cannot be reassigned
       }
     }
+    // Server-owned timestamps: keep when the record was created — or leave it
+    // unset if that was never recorded, rather than inventing a date — and
+    // stamp this write. A PUT that echoes a fetched record would otherwise
+    // send its old updatedAt straight back.
+    delete record.createdAt;
+    if (prevObj?.createdAt !== undefined) record.createdAt = prevObj.createdAt;
+    record.updatedAt = new Date().toISOString();
     rows[idx] = record;
     await persist(state, tenantId, resource);
     ctx.result = record;

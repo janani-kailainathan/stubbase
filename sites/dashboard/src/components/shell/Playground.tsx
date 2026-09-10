@@ -30,7 +30,7 @@ import { useWorkspaceStore, type Method } from '@/stores/workspace'
 const JsonEditor = lazy(() => import('./JsonEditor'))
 
 /** Query keys every list route understands; field names are added from the records. */
-const LIST_PARAMS = ['_page', '_limit', '_offset', '_sort', '_order', '_expand']
+const LIST_PARAMS = ['_page', '_limit', '_offset', '_sort', '_direction', '_expand']
 
 const SEND_HINT = isMac ? '⌘↵' : 'Ctrl+Enter'
 
@@ -260,6 +260,31 @@ function Locked({ reason }: { reason: string }) {
   )
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/
+
+/**
+ * `field[op]` suggestions that fit what the records hold: `[contains]` for
+ * text and lists of text, `[gte]` / `[lte]` for numbers and ISO dates.
+ */
+function operatorKeys(records: unknown[] | null | undefined): string[] {
+  const text = new Set<string>()
+  const range = new Set<string>()
+  for (const row of (records ?? []).slice(0, 20)) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue
+    for (const [key, value] of Object.entries(row)) {
+      if (key === 'id') continue
+      if (typeof value === 'number' || (typeof value === 'string' && ISO_DATE_RE.test(value)))
+        range.add(key)
+      else if (typeof value === 'string' || (Array.isArray(value) && value.some((v) => typeof v === 'string')))
+        text.add(key)
+    }
+  }
+  return [
+    ...[...text].map((key) => `${key}[contains]`),
+    ...[...range].flatMap((key) => [`${key}[gte]`, `${key}[lte]`]),
+  ]
+}
+
 /** Field names across the first records, for filter suggestions. */
 function fieldNames(records: unknown[] | null | undefined): string[] {
   const names = new Set<string>()
@@ -342,7 +367,11 @@ function QueryPanel({
     update({ query: [...inputs.query, { key: '', value: '', enabled: true, ...patch }] })
   const suggestions = endpoint.needsId
     ? ['_expand']
-    : [...LIST_PARAMS, ...fieldNames(records).filter((f) => !LIST_PARAMS.includes(f))]
+    : [
+        ...LIST_PARAMS,
+        ...fieldNames(records).filter((f) => !LIST_PARAMS.includes(f)),
+        ...operatorKeys(records),
+      ]
 
   return (
     <div>

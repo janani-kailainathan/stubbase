@@ -64,7 +64,7 @@ export const STARTERS: Starter[] = [
     title: 'Blog',
     blurb: 'Posts reference authors, comments reference posts.',
     features: ['relations'],
-    example: '/posts?_expand=authors&_sort=publishedAt&_order=desc',
+    example: '/posts?_expand=authors&_sort=publishedAt&_direction=desc',
     resources: {
       posts: [
         { id: '1', authorId: '1', title: 'Scaling to zero on a 1GB box', slug: 'scaling-to-zero', published: true, publishedAt: '2026-01-14', views: 1840 },

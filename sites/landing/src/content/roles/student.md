@@ -87,7 +87,7 @@ sections:
       content: |
         GET /<tenant>/todos
           ?completed=false
-          &_sort=title&_order=asc
+          &_sort=title&_direction=asc
           &_page=1&_limit=10
 
         200 OK

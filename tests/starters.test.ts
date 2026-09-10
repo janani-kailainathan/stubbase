@@ -166,12 +166,12 @@ describe("starter examples", () => {
         expect(Number(res.headers.get("x-total-count"))).toBeGreaterThanOrEqual(rows.length);
       }
 
-      // _sort/_order really ordered the result.
+      // _sort/_direction really ordered the result.
       const sort = params.get("_sort");
       if (sort) {
         const values = rows.map((r) => r[sort]).filter((v) => v !== null && v !== undefined);
         const sorted = [...values].sort((a, b) => String(a).localeCompare(String(b)));
-        if (params.get("_order") === "desc") sorted.reverse();
+        if (params.get("_direction") === "desc") sorted.reverse();
         expect(values).toEqual(sorted);
       }
     }, 15_000);

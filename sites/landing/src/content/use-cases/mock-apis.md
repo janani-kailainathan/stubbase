@@ -25,7 +25,7 @@ spec:
   - label: 'Relations'
     value: 'Name a key `<name>Id` and the engine infers the relationship. `?_expand=user` nests the referenced record instead of making you fetch it twice.'
   - label: 'Query'
-    value: 'Exact-match filtering on any field, `_sort`/`_order` across multiple keys, and `_page`/`_limit` or `_offset`/`_limit` pagination. The unpaginated total comes back in `X-Total-Count`.'
+    value: 'Exact-match filtering on any field, `_sort`/`_direction` across multiple keys, and `_page`/`_limit` or `_offset`/`_limit` pagination. The unpaginated total comes back in `X-Total-Count`.'
   - label: 'Persistence'
     value: 'A POST is still there tomorrow. Mutations write through to disk immediately, so the data your UI created survives a refresh, a redeploy and a colleague.'
   - label: 'Contract'
@@ -71,7 +71,7 @@ sections:
       content: |
         GET /<tenant>/posts
           ?status=published
-          &_sort=createdAt&_order=desc
+          &_sort=createdAt&_direction=desc
           &_page=2&_limit=20
 
         200 OK

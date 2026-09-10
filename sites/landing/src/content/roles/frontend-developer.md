@@ -11,7 +11,7 @@ cta:
 proof:
   caption: 'Page 2, newest first — and the total your pager needs'
   method: 'GET'
-  path: '/<tenant>/posts?_sort=createdAt&_order=desc&_page=2&_limit=3'
+  path: '/<tenant>/posts?_sort=createdAt&_direction=desc&_page=2&_limit=3'
   headers:
     - 'X-Total-Count: 128'
   response: |
@@ -51,7 +51,7 @@ sections:
       caption: 'the fetch layer you keep'
       content: |
         const res = await fetch(
-          `${API}/posts?_sort=createdAt&_order=desc&_page=${page}&_limit=20`,
+          `${API}/posts?_sort=createdAt&_direction=desc&_page=${page}&_limit=20`,
         );
 
         const rows = await res.json();

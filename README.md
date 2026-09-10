@@ -44,8 +44,8 @@ The Core Engine (`apps/core/server-core.ts`) is the product: per-tenant CRUD ove
 ```
 GET    /<tenant>/<resource>          list  (see query params below)
 GET    /<tenant>/<resource>/<id>     read  (supports _expand)
-POST   /<tenant>/<resource>          create (id auto-generated if omitted)
-PUT    /<tenant>/<resource>/<id>     replace (id preserved)
+POST   /<tenant>/<resource>          create (id auto-generated if omitted; createdAt/updatedAt always set)
+PUT    /<tenant>/<resource>/<id>     replace (id and createdAt preserved; updatedAt set)
 DELETE /<tenant>/<resource>/<id>     delete
 GET    /<tenant>/openapi.json        auto-generated OpenAPI 3.0 spec
 ```
@@ -56,8 +56,10 @@ Each resource is one file: `/tenants/<tenant>/<resource>.json`, a JSON array of 
 
 | Param | Example | Effect |
 |---|---|---|
-| `<field>` | `?category=shoes&status=active` | exact-match filter on any record field |
-| `_sort` / `_order` | `?_sort=price&_order=desc` | sort by field(s), comma-separated; `asc` (default) or `desc` |
+| `<field>` | `?category=shoes&status=active` | exact-match filter on any record field (case-sensitive) |
+| `<field>[contains]` | `?brand[contains]=sams` | text contains the value, ignoring case and accents; on an array, any item |
+| `<field>[gt]` `[gte]` `[lt]` `[lte]` | `?price[gte]=100&createdAt[lt]=2026-07-01` | numbers compare numerically, text (e.g. ISO dates) naturally. An unknown operator is a `400`; `passwordHash` on `users` can't be filtered |
+| `_sort` / `_direction` | `?_sort=created&_direction=desc` | sort by field(s), comma-separated; `created` / `updated` sort by the server-set timestamps. `_direction` is `asc` or `desc` per key — `desc` by default for `created`/`updated`, `asc` for other fields. Records missing the field sort last |
 | `_page` / `_limit` | `?_page=2&_limit=10` | 1-based pagination (default 10 per page) |
 | `_offset` / `_limit` | `?_offset=20&_limit=10` | raw-index alternative to `_page` |
 | `_expand` | `?_expand=users` | nest the record referenced by `<name>Id` under `<name>` |

@@ -50,6 +50,43 @@ they are still there when you come back tomorrow.
 > confirmed by testing on 2026-09-03. The behaviour described above is what is
 > intended; we will fix this.
 
+**Every entry knows when it was created and last changed.** When you create an
+entry through your API we add `createdAt` and `updatedAt`, and every update
+refreshes `updatedAt`. You never set them yourself — anything you send for them
+is replaced. Entries you write straight into a JSON file in the dashboard keep
+exactly what you wrote.
+
+**Filter a list** by any field. `field=value` keeps the entries whose field is
+exactly that value; put an operator in brackets for anything looser:
+
+```
+GET /<project>/products?category=phone                 category is exactly "phone"
+GET /<project>/products?brand[contains]=sams           brand contains "sams", any case or accents
+GET /<project>/products?price[gte]=100&price[lt]=800   price from 100 up to, not including, 800
+GET /<project>/posts?createdAt[gte]=2026-01-01         created this year or later
+```
+
+`contains` works on text, and on a list of text it matches when any item does.
+`gt`, `gte`, `lt` and `lte` compare numbers as numbers and dates in time order.
+Every condition you add has to match, and filters combine with sorting and
+pages. A plain `field=value` is case-sensitive; `contains` is not. If you use an
+operator we don't have — say `price[gtee]` — you get a 400 that names it, rather
+than every entry back. A user's password hash can never be filtered on.
+
+**Sort a list** with `_sort`, and choose the way with `_direction`:
+
+```
+GET /<project>/posts?_sort=created                        newest first
+GET /<project>/posts?_sort=updated&_direction=asc         least recently changed first
+GET /<project>/posts?_sort=price,title&_direction=desc,asc
+```
+
+`_sort` takes any field, and `created` and `updated` sort by those two
+timestamps. `_direction` is `asc` or `desc` — one per field, or one for all of
+them — and when you leave it out, `created` and `updated` come back newest first
+and every other field ascending. Entries without the field you sort by come
+last either way.
+
 ### 1.2 Relations — pull linked records in one request
 
 Name a field `userId` and we treat it as a link to your `users.json`. Ask for it
@@ -99,7 +136,7 @@ GET /<project>/posts/1?_expand=users
 and sort first and still get the linked records back:
 
 ```
-GET /<project>/posts?_expand=authors&_sort=publishedAt&_order=desc
+GET /<project>/posts?_expand=authors&_sort=publishedAt&_direction=desc
 ```
 
 If a record's `userId` points at something that no longer exists, `user` comes

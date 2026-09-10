@@ -85,7 +85,8 @@ core tenant API — each on its own subdomain of `stubbase.dev`.
 Shipped and working:
 
 - Multi-tenant JSON-to-CRUD core: list/read/create/replace/delete, exact-match
-  filtering, `_sort`/`_order`, `_page`/`_limit`/`_offset`, `_expand` relational
+  filtering plus `[contains]` and `[gt|gte|lt|lte]` operators, `_sort`/`_direction` (incl. server-set `created`/`updated`
+  timestamps), `_page`/`_limit`/`_offset`, `_expand` relational
   nesting, `X-Total-Count`, auto-generated `openapi.json`.
 - Dashboard: email/password accounts, projects, a JSON resource editor with a
   draft-then-deploy model, live streaming request logs, usage metering, JSON
