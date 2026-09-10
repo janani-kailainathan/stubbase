@@ -12,7 +12,7 @@ export type Selection =
   | { kind: 'env' }
   | null
 
-export type EditorTab = 'request' | 'response' | 'live'
+export type EditorTab = 'docs' | 'live'
 
 /** The log viewer's sub-tabs — the Logs pane's equivalent of EditorTab. */
 export type LogView = 'raw' | 'pretty' | 'lifecycle'
@@ -56,7 +56,7 @@ interface WorkspaceState {
   editing: boolean
   draft: string
   /**
-   * The endpoint pane's Request / Response / Live tab. A preference, not part
+   * The endpoint pane's Docs / Live tab. A preference, not part
    * of a selection: picking another endpoint keeps it, so someone working in
    * Live stays in Live while they walk the rail. Files and .env never read it.
    */
@@ -148,7 +148,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selection: null,
   editing: false,
   draft: '',
-  activeTab: 'request',
+  activeTab: 'docs',
   logView: 'lifecycle',
   paneMode: 'editor',
   dataExpanded: true,

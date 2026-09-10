@@ -102,7 +102,7 @@ function LogRow({ entry, view, focused }: { entry: LogEntry; view: LogView; focu
 export function LiveLogViewer({ tenantId }: { tenantId: string | undefined }) {
   const { entries, status, clear } = useLiveLogs(tenantId)
   // The Raw/Pretty/Lifecycle tabs are rendered by the pane header, exactly like
-  // the editor's Request/Response/Live, so the selection lives in the store.
+  // the editor's Docs/Live, so the selection lives in the store.
   const view = useWorkspaceStore((s) => s.logView)
   // The entry the playground's "Open in logs" asked for.
   const focusLog = useWorkspaceStore((s) => s.focusLog)

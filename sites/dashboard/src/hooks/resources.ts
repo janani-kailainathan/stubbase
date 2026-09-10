@@ -14,7 +14,7 @@ export function useResource(tenantId: string | undefined, resource: string | und
     queryFn: () => fetchResource(tenantId!, resource!),
     enabled: Boolean(tenantId && resource),
     // Without this the default staleTime of 0 refetches on every remount, so
-    // simply clicking between the Request/Response/Live tabs re-hit the API
+    // simply clicking between the Docs/Live tabs re-hit the API
     // each time. Writes invalidate this key explicitly, so nothing goes stale.
     staleTime: 30_000,
   })

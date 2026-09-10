@@ -1,6 +1,6 @@
 /**
  * The pane header's tab control, shared so every pane's sub-tabs are literally
- * the same widget: the editor's Request/Response/Live and the log viewer's
+ * the same widget: the editor's Docs/Live and the log viewer's
  * Raw/Pretty/Lifecycle. Lives in its own module because EditorPane imports
  * LiveLogViewer, so the two panes cannot import from each other.
  */

@@ -20,11 +20,11 @@ export interface Endpoint {
   /**
    * `auth` routes are served by the Core Engine itself, not by a JSON file:
    * there is no `auth.json` to read, so anything that would fetch the group's
-   * records (the Response tab, the body sample) has to use `sample` instead.
+   * records (the body sample) has to use `sample` instead.
    */
   kind: 'crud' | 'auth'
-  /** Documented shapes, for endpoints with no resource file behind them. */
-  sample?: { request?: object; response: object }
+  /** A documented request body, for endpoints with no resource file behind them. */
+  sample?: { request: object }
 }
 
 export function endpointsFor(resources: string[]): Endpoint[] {
@@ -35,18 +35,6 @@ export function endpointsFor(resources: string[]): Endpoint[] {
     { resource, method: 'PUT', path: `/${resource}/{id}`, needsId: true, kind: 'crud' },
     { resource, method: 'DELETE', path: `/${resource}/{id}`, needsId: true, kind: 'crud' },
   ])
-}
-
-/** What a signup or login answers with — `passwordHash` never leaves the core. */
-const AUTH_RESPONSE = {
-  token: '<jwt>',
-  user: {
-    id: '<uuid>',
-    email: 'ada@example.com',
-    name: 'Ada',
-    role: 'user',
-    createdAt: '<iso-8601>',
-  },
 }
 
 /**
@@ -63,7 +51,6 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     kind: 'auth',
     sample: {
       request: { email: 'ada@example.com', password: 'at least 8 chars', name: 'Ada' },
-      response: AUTH_RESPONSE,
     },
   },
   {
@@ -74,7 +61,6 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     kind: 'auth',
     sample: {
       request: { email: 'ada@example.com', password: 'at least 8 chars' },
-      response: AUTH_RESPONSE,
     },
   },
 ]

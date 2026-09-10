@@ -194,7 +194,8 @@ const QUERY_PARAM_DOCS: { name: string; values: string[]; note: string }[] = [
   { name: '<field>[gte]', values: ['100'], note: 'also gt / lt / lte — numbers, and dates in time order' },
 ]
 
-function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
+/** The Docs tab: what a request to this endpoint looks like — URL, headers, params, body. */
+function DocsView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
   // No resource file behind an auth route — nothing to read, so don't ask.
   const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
   const hasBody = endpoint.method === 'POST' || endpoint.method === 'PUT'
@@ -271,27 +272,6 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
 }
 
 /**
- * The Response tab for an endpoint with no file behind it: the documented
- * shape, labelled as such, rather than a resource read that would 403 — `auth`
- * is a reserved name on the public plane, not a resource.
- */
-function SampleResponseView({ endpoint }: { endpoint: Endpoint }) {
-  return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-      <p className="font-mono text-xs text-subtle">
-        {endpoint.path === '/auth/signup'
-          ? '201 Created — the new user, and a token to send as Authorization: Bearer.'
-          : '200 OK — the signed-in user, and a token to send as Authorization: Bearer.'}{' '}
-        The stored password hash never leaves the server.
-      </p>
-      <div className="rounded-md border border-border bg-code-bg p-3">
-        <JsonHighlight raw={stringify(endpoint.sample?.response ?? {})} />
-      </div>
-    </div>
-  )
-}
-
-/**
  * The body to show for a request. A CRUD endpoint derives one from the
  * resource's own records; an auth route has no records, so it carries the
  * documented shape with it.
@@ -333,7 +313,7 @@ export function EditorPane() {
   const logsMode = paneMode === 'logs'
   const diagnosticsMode = paneMode === 'diagnostics'
   const keysMode = paneMode === 'keys'
-  // Editor chrome (file actions, request/response tabs) only applies to the
+  // Editor chrome (file actions, the Docs/Live tabs) only applies to the
   // editor itself; the other panes own their whole surface.
   const editorMode = paneMode === 'editor'
 
@@ -360,8 +340,7 @@ export function EditorPane() {
             {selection?.kind === 'env' && tenantId && <EnvActions tenantId={tenantId} />}
             {endpoint && (
               <PaneTabs>
-                <TabButton tab="request" label="Request" />
-                <TabButton tab="response" label="Response" />
+                <TabButton tab="docs" label="Docs" />
                 <TabButton tab="live" label="Live" />
               </PaneTabs>
             )}
@@ -411,24 +390,8 @@ export function EditorPane() {
 
           {selection?.kind === 'env' && tenantId && <EnvView tenantId={tenantId} />}
 
-          {endpoint && tenantId && activeTab === 'request' && (
-            <RequestView endpoint={endpoint} tenantId={tenantId} />
-          )}
-          {endpoint && tenantId && activeTab === 'response' && (
-            <>
-              {endpoint.kind === 'auth' ? (
-                <SampleResponseView endpoint={endpoint} />
-              ) : (
-                <>
-                  {endpoint.method === 'GET' && (
-                    <div className="flex shrink-0 justify-end px-4 pt-3">
-                      <ResourceActions tenantId={tenantId} resource={endpoint.resource} />
-                    </div>
-                  )}
-                  <ResourceView tenantId={tenantId} resource={endpoint.resource} />
-                </>
-              )}
-            </>
+          {endpoint && tenantId && activeTab === 'docs' && (
+            <DocsView endpoint={endpoint} tenantId={tenantId} />
           )}
           {endpoint && tenantId && activeTab === 'live' && (
             // Keyed by route so switching endpoints remounts the body editor
