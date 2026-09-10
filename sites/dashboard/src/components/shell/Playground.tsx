@@ -88,7 +88,7 @@ type ResponseTab = 'body' | 'headers'
 
 /** A borderless input that fills its table cell — the cell draws the grid. */
 const cellInput =
-  'h-8 w-full min-w-0 bg-transparent px-2.5 font-mono text-xs text-emphasis outline-none placeholder:text-muted-foreground focus:bg-primary-soft-weak aria-[invalid=true]:text-danger-ink'
+  'h-8 w-full min-w-0 bg-transparent px-2.5 font-mono text-xs text-emphasis outline-none placeholder:text-faint focus:bg-primary-soft-weak aria-[invalid=true]:text-danger-ink'
 
 // ── Building blocks ───────────────────────────────────────────────
 
@@ -296,7 +296,7 @@ function PathPanel({
                 value={inputs.id}
                 onChange={(e) => update({ id: e.target.value })}
                 list={`${domId}-ids`}
-                placeholder="record id"
+                placeholder="Value"
                 aria-label="id"
                 aria-invalid={idError !== null && inputs.id !== ''}
                 spellCheck={false}
@@ -311,7 +311,11 @@ function PathPanel({
           }
         />
       </KeyValueTable>
-      {idError && <p className="mt-1.5 font-mono text-[11px] text-danger-ink">{idError}</p>}
+      {/* An empty id needs no sentence: the blank field and the tab's red dot
+          already say it. Only an id that was typed and refused is explained. */}
+      {idError && inputs.id !== '' && (
+        <p className="mt-1.5 font-mono text-[11px] text-danger-ink">{idError}</p>
+      )}
     </div>
   )
 }
@@ -422,45 +426,32 @@ function QueryPanel({
   )
 }
 
-function AuthPanel({
-  auth,
-  token,
-  onToken,
-}: {
-  auth: boolean
-  token: string
-  onToken: (token: string) => void
-}) {
+/** Only offered when the deployed config has auth on — see `requestTabs`. */
+function AuthPanel({ token, onToken }: { token: string; onToken: (token: string) => void }) {
   const domId = useId()
   return (
     <div className="grid gap-5 @2xl:grid-cols-[13rem_minmax(0,1fr)]">
       <div>
         <PanelHeading>Auth Type</PanelHeading>
         <div className="flex h-8 items-center rounded border border-border bg-panel px-2.5 font-mono text-xs text-emphasis">
-          {auth ? 'Bearer Token' : 'No Auth'}
+          Bearer Token
         </div>
       </div>
       <div>
-        {auth ? (
-          <>
-            <label htmlFor={`${domId}-token`} className="mb-2 block text-xs font-semibold text-body">
-              Token
-            </label>
-            <Input
-              id={`${domId}-token`}
-              value={token}
-              onChange={(e) => onToken(e.target.value)}
-              placeholder="token from /auth/login"
-              spellCheck={false}
-              autoComplete="off"
-              className="h-8 rounded font-mono text-xs md:text-xs"
-            />
-          </>
-        ) : (
-          <p className="pt-7 font-mono text-xs text-muted-foreground">
-            AUTH_ENABLED is off in the deployed config, so this route needs no token.
-          </p>
-        )}
+        <label htmlFor={`${domId}-token`} className="mb-2 block text-xs font-semibold text-body">
+          Token
+        </label>
+        <Input
+          id={`${domId}-token`}
+          value={token}
+          onChange={(e) => onToken(e.target.value)}
+          placeholder="Auto generated"
+          spellCheck={false}
+          autoComplete="off"
+          // No focus ring: in a dense panel shadcn's 3px glow reads as an
+          // alert. The border still turns --ring, which marks focus on its own.
+          className="h-8 rounded font-mono text-xs placeholder:text-faint focus-visible:ring-0 md:text-xs"
+        />
       </div>
     </div>
   )
@@ -665,9 +656,10 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   const hasQuery = inputs.query.some((p) => p.enabled !== false && p.key.trim() !== '')
   const headerCount = Object.keys(headers).length
   const dot = <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
-  // A tab with nothing to set is not offered. A route without a body has no
-  // Body tab, and one that can send no headers — no JSON body, and neither
-  // auth nor QA_MODE in the deployed config — has no Headers tab.
+  // A tab with nothing to set is not offered. Authorization needs auth on in
+  // the deployed config; a route without a body has no Body tab; and one that
+  // can send no headers — no JSON body, and neither auth nor QA_MODE deployed —
+  // has no Headers tab. Every route keeps at least one: an id, a query or a body.
   const needsHeaders = withBody || auth || qaMode
   const requestTabs: TabDef<RequestTab>[] = [
     ...(endpoint.needsId
@@ -691,7 +683,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     ...(acceptsQuery(endpoint)
       ? [{ id: 'query' as const, label: 'Query Params', badge: hasQuery ? dot : undefined }]
       : []),
-    { id: 'auth', label: 'Authorization' },
+    ...(auth ? [{ id: 'auth' as const, label: 'Authorization' }] : []),
     ...(needsHeaders
       ? [
           {
@@ -824,7 +816,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
               <QueryPanel endpoint={endpoint} inputs={inputs} update={update} records={records} />
             )}
             {activeTab === 'auth' && (
-              <AuthPanel auth={auth} token={token} onToken={(t) => setTestToken(tenantId, t)} />
+              <AuthPanel token={token} onToken={(t) => setTestToken(tenantId, t)} />
             )}
             {activeTab === 'headers' && (
               <HeadersPanel
