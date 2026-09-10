@@ -78,6 +78,13 @@ interface WorkspaceState {
   testTokens: Record<string, string>
   /** The log entry the playground's "Open in logs" jumped to. */
   focusLog: string | null
+  /**
+   * The playground's layout — request pane height as a percentage, and whether
+   * the response pane is folded away. A preference, not per-endpoint state, so
+   * it holds while you move between routes; not user data, so `reset` keeps it.
+   */
+  playgroundSplit: number
+  playgroundCollapsed: boolean
   /** AI chat history keyed by tenantId, so switching projects keeps context. */
   chat: Record<string, ChatEntry[]>
   /**
@@ -128,6 +135,8 @@ interface WorkspaceState {
   runPlayground: (key: string, send: () => Promise<RunResult>) => Promise<RunResult>
   /** Switch to the Logs pane with this request's entry highlighted. */
   openLog: (correlationId: string) => void
+  setPlaygroundSplit: (split: number) => void
+  setPlaygroundCollapsed: (collapsed: boolean) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -143,6 +152,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   playgroundRuns: {},
   testTokens: {},
   focusLog: null,
+  playgroundSplit: 55,
+  playgroundCollapsed: false,
   chat: {},
   chatInput: '',
   stagedDismissed: false,
@@ -231,4 +242,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   openLog: (correlationId) =>
     set({ paneMode: 'logs', logView: 'lifecycle', focusLog: correlationId }),
+
+  setPlaygroundSplit: (split) => set({ playgroundSplit: split }),
+
+  setPlaygroundCollapsed: (collapsed) => set({ playgroundCollapsed: collapsed }),
 }))

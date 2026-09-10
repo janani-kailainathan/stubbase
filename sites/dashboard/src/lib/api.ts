@@ -393,6 +393,12 @@ export interface RunResult {
   correlationId: string | null
   /** X-Total-Count, which a list route sends with the pre-pagination total. */
   totalCount: string | null
+  /**
+   * Every response header the browser lets script read: all of them
+   * same-origin, and cross-origin only the CORS-safelisted ones plus what the
+   * core exposes (X-Total-Count, X-Correlation-Id).
+   */
+  headers: [string, string][]
 }
 
 /**
@@ -413,6 +419,8 @@ export async function runRequest(
     // browser replays from its cache.
     const res = await fetch(`${CORE_API_URL}${path}`, { ...init, cache: 'no-store' })
     const body = await res.text()
+    const headers: [string, string][] = []
+    res.headers.forEach((value, name) => headers.push([name, value]))
     return {
       ok: res.ok,
       status: res.status,
@@ -420,6 +428,7 @@ export async function runRequest(
       body,
       correlationId: res.headers.get('x-correlation-id'),
       totalCount: res.headers.get('x-total-count'),
+      headers,
     }
   } catch (e) {
     return {
@@ -429,6 +438,7 @@ export async function runRequest(
       body: e instanceof Error ? e.message : String(e),
       correlationId: null,
       totalCount: null,
+      headers: [],
     }
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent)
+export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent)
 
 /** Rendered next to the Save button so the shortcut is discoverable. */
 export const SAVE_HINT = isMac ? '⌘S' : 'Ctrl+S'

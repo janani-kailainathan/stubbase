@@ -17,6 +17,8 @@ import type { Endpoint } from './endpoints'
 export interface QueryParam {
   key: string
   value: string
+  /** Unticked rows stay in the table but are not sent. Absent means sent. */
+  enabled?: boolean
 }
 
 /** The four QA simulation headers, by their suffix after `x-stubbase-`. */
@@ -74,9 +76,9 @@ export function requestPath(tenantId: string, endpoint: Endpoint, id: string): s
 export function requestQuery(endpoint: Endpoint, query: QueryParam[]): string {
   if (!acceptsQuery(endpoint)) return ''
   const params = new URLSearchParams()
-  for (const { key, value } of query) {
+  for (const { key, value, enabled } of query) {
     const name = key.trim()
-    if (name) params.append(name, value)
+    if (name && enabled !== false) params.append(name, value)
   }
   const text = params.toString()
   return text ? `?${text}` : ''

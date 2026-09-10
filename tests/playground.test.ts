@@ -147,6 +147,16 @@ describe("query params", () => {
     expect(res.status).toBe(200);
   });
 
+  test("skip rows that are switched off", () => {
+    expect(
+      requestQuery(list, [
+        { key: "_limit", value: "1", enabled: false },
+        { key: "title", value: "Hello", enabled: true },
+        { key: "_sort", value: "title" },
+      ]),
+    ).toBe("?title=Hello&_sort=title");
+  });
+
   test("are only sent on reads", () => {
     const params = [{ key: "_expand", value: "users" }];
     expect(requestQuery(find("GET", "/posts/{id}"), params)).toBe("?_expand=users");
