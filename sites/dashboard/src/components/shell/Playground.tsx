@@ -8,7 +8,11 @@ import { authEnabled, type Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
 import {
   CHAOS_HEADERS,
+  DIRECTIONS,
+  SORT_KEYWORDS,
   acceptsQuery,
+  normalizeParamValue,
+  paramValueKind,
   hasBody,
   idProblem,
   initialInputs,
@@ -285,6 +289,68 @@ function operatorKeys(records: unknown[] | null | undefined): string[] {
   ]
 }
 
+/** `_sort` choices: the timestamp keywords first, then the fields the records hold. */
+function sortChoices(records: unknown[] | null | undefined): string[] {
+  return [
+    ...SORT_KEYWORDS,
+    ...fieldNames(records).filter((f) => f !== 'createdAt' && f !== 'updatedAt'),
+  ]
+}
+
+const cellSelect =
+  'h-8 w-full min-w-0 cursor-pointer bg-transparent px-2 font-mono text-xs text-emphasis outline-none focus:bg-primary-soft-weak'
+
+/**
+ * A query param's value cell, shaped by its key: digits only for `_page`,
+ * `_limit` and `_offset`, a pick list for `_direction` and `_sort`, and free
+ * text for everything else.
+ */
+function ParamValueControl({
+  param,
+  sortOptions,
+  onChange,
+}: {
+  param: QueryParam
+  sortOptions: string[]
+  onChange: (value: string) => void
+}) {
+  const kind = paramValueKind(param.key)
+  const muted = param.enabled === false ? 'text-faint' : ''
+  const label = `Value of ${param.key.trim() || 'param'}`
+
+  if (kind === 'direction' || kind === 'sort') {
+    const options: readonly string[] = kind === 'direction' ? DIRECTIONS : sortOptions
+    return (
+      <select
+        value={param.value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className={`${cellSelect} ${muted}`}
+      >
+        {options.map((option) => (
+          <option key={option} value={option} className="bg-popover text-popover-foreground">
+            {option}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  return (
+    <input
+      value={param.value}
+      onChange={(e) =>
+        onChange(kind === 'count' ? e.target.value.replace(/\D/g, '') : e.target.value)
+      }
+      inputMode={kind === 'count' ? 'numeric' : undefined}
+      placeholder="Value"
+      aria-label={label}
+      spellCheck={false}
+      className={`${cellInput} ${muted}`}
+    />
+  )
+}
+
 /** Field names across the first records, for filter suggestions. */
 function fieldNames(records: unknown[] | null | undefined): string[] {
   const names = new Set<string>()
@@ -365,6 +431,7 @@ function QueryPanel({
   // focus stays where it was.
   const addParam = (patch: Partial<QueryParam>) =>
     update({ query: [...inputs.query, { key: '', value: '', enabled: true, ...patch }] })
+  const sortOptions = sortChoices(records)
   const suggestions = endpoint.needsId
     ? ['_expand']
     : [
@@ -391,7 +458,12 @@ function QueryPanel({
             name={
               <input
                 value={param.key}
-                onChange={(e) => setParam(i, { key: e.target.value })}
+                onChange={(e) =>
+                  setParam(i, {
+                    key: e.target.value,
+                    value: normalizeParamValue(e.target.value, param.value, sortOptions),
+                  })
+                }
                 list={`${domId}-params`}
                 placeholder="Key"
                 aria-label="Param key"
@@ -400,13 +472,10 @@ function QueryPanel({
               />
             }
             value={
-              <input
-                value={param.value}
-                onChange={(e) => setParam(i, { value: e.target.value })}
-                placeholder="Value"
-                aria-label="Param value"
-                spellCheck={false}
-                className={`${cellInput} ${param.enabled === false ? 'text-faint' : ''}`}
+              <ParamValueControl
+                param={param}
+                sortOptions={sortOptions}
+                onChange={(value) => setParam(i, { value })}
               />
             }
             trail={
@@ -426,7 +495,12 @@ function QueryPanel({
           name={
             <input
               value=""
-              onChange={(e) => addParam({ key: e.target.value })}
+              onChange={(e) =>
+                addParam({
+                  key: e.target.value,
+                  value: normalizeParamValue(e.target.value, '', sortOptions),
+                })
+              }
               list={`${domId}-params`}
               placeholder="Key"
               aria-label="New param key"

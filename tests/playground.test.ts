@@ -25,7 +25,11 @@ import { tmpdir } from "node:os";
 import { groupEndpoints, type Endpoint } from "../sites/dashboard/src/lib/endpoints.ts";
 import {
   CHAOS_HEADERS,
+  DIRECTIONS,
+  SORT_KEYWORDS,
   idProblem,
+  normalizeParamValue,
+  paramValueKind,
   requestHeaders,
   requestPath,
   requestQuery,
@@ -77,6 +81,13 @@ beforeAll(async () => {
   await seedTenant(core, TENANT, {
     users: [{ id: "u1", name: "Ada" }],
     posts: [{ id: "p1", title: "Hello", usersId: "u1" }],
+  });
+  // Timestamps that disagree on order, so a keyword mapped to the wrong field shows.
+  await seedTenant(core, "sortable", {
+    notes: [
+      { id: "n1", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-03-01T00:00:00.000Z" },
+      { id: "n2", createdAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-15T00:00:00.000Z" },
+    ],
   });
 }, 30_000);
 
@@ -202,6 +213,38 @@ describe("headers", () => {
       authorization: "Bearer t",
       "x-stubbase-delay": "100",
     });
+  });
+});
+
+describe("query param value controls", () => {
+  test("the key decides how its value is edited", () => {
+    for (const key of ["_page", "_limit", "_offset", " _limit "]) expect(paramValueKind(key)).toBe("count");
+    expect(paramValueKind("_direction")).toBe("direction");
+    expect(paramValueKind("_sort")).toBe("sort");
+    for (const key of ["title", "_expand", "price[gte]", ""]) expect(paramValueKind(key)).toBe("text");
+  });
+
+  test("renaming a row fits its value to the new key", () => {
+    const sortOptions = ["created", "updated", "title"];
+    expect(normalizeParamValue("_limit", "a1b2", sortOptions)).toBe("12");
+    expect(normalizeParamValue("_direction", "", sortOptions)).toBe("asc");
+    expect(normalizeParamValue("_direction", "desc", sortOptions)).toBe("desc");
+    expect(normalizeParamValue("_sort", "nope", sortOptions)).toBe("created");
+    expect(normalizeParamValue("_sort", "title", sortOptions)).toBe("title");
+    expect(normalizeParamValue("title", "a1b2", sortOptions)).toBe("a1b2");
+  });
+
+  test("every sort keyword and direction on offer is one the real core honours", async () => {
+    const order = async (sort: string, direction: string) => {
+      const res = await fetch(`${core.base}/sortable/notes?_sort=${sort}&_direction=${direction}`);
+      return (await res.json()).map((r: { id: string }) => r.id);
+    };
+    const expected: Record<string, string[]> = { created: ["n1", "n2"], updated: ["n2", "n1"] };
+    for (const keyword of SORT_KEYWORDS) {
+      expect(DIRECTIONS).toEqual(["asc", "desc"]);
+      expect(await order(keyword, "asc")).toEqual(expected[keyword]);
+      expect(await order(keyword, "desc")).toEqual([...expected[keyword]].reverse());
+    }
   });
 });
 

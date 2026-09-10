@@ -176,3 +176,44 @@ export function initialInputs(
 /** Identifies one endpoint's playground state — path, not resource: auth holds two POSTs. */
 export const playgroundKey = (tenantId: string, endpoint: Pick<Endpoint, 'method' | 'path'>) =>
   `${tenantId} ${endpoint.method} ${endpoint.path}`
+
+/** The values `_direction` accepts. */
+export const DIRECTIONS = ['asc', 'desc'] as const
+
+/** `_sort` keywords the core maps onto its server-set timestamps. */
+export const SORT_KEYWORDS = ['created', 'updated'] as const
+
+const COUNT_PARAMS = new Set(['_page', '_limit', '_offset'])
+
+/** How a query param's value is edited: digits, a pick list, or free text. */
+export type ParamValueKind = 'count' | 'direction' | 'sort' | 'text'
+
+export function paramValueKind(key: string): ParamValueKind {
+  const name = key.trim()
+  if (COUNT_PARAMS.has(name)) return 'count'
+  if (name === '_direction') return 'direction'
+  if (name === '_sort') return 'sort'
+  return 'text'
+}
+
+/**
+ * Fit a value to what its key accepts — called when a key changes, so a row
+ * renamed to `_limit` sheds its letters and one renamed to `_direction` lands
+ * on a real choice instead of an empty pick list.
+ */
+export function normalizeParamValue(
+  key: string,
+  value: string,
+  sortOptions: readonly string[],
+): string {
+  switch (paramValueKind(key)) {
+    case 'count':
+      return value.replace(/\D/g, '')
+    case 'direction':
+      return (DIRECTIONS as readonly string[]).includes(value) ? value : DIRECTIONS[0]
+    case 'sort':
+      return sortOptions.includes(value) ? value : (sortOptions[0] ?? '')
+    default:
+      return value
+  }
+}
