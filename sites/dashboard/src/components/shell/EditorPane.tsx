@@ -1,9 +1,10 @@
 import { Suspense, lazy } from 'react'
 import { toast } from 'sonner'
-import { Check, RefreshCw, Rocket, X, Zap } from 'lucide-react'
+import { Check, RefreshCw, X } from 'lucide-react'
 import { CORE_PUBLIC_URL } from '@/lib/api'
 import type { Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
+import { sampleRecordBody } from '@/lib/playground'
 import { useCurrentProject } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
@@ -15,6 +16,7 @@ import { AiChat, AiComposer } from './AiChat'
 import { LiveLogViewer } from './LiveLogViewer'
 import { DiagnosticsPanel } from './DiagnosticsPanel'
 import { DeveloperKeysPanel } from './DeveloperKeysPanel'
+import { Playground } from './Playground'
 import { StarterExamples } from './StarterExamples'
 import { StagedChanges } from './StagedChanges'
 
@@ -40,16 +42,6 @@ function parseErrorMessage(text: string, err: unknown): string {
   // and appends its own "(line X column Y)" — drop all of it, we say it better.
   const reason = message.replace(/\s*(?:in|after) JSON at position[\s\S]*$/, '')
   return `${reason} — line ${line}, column ${column}`
-}
-
-/** Sample record body derived from the resource's first record (minus id). */
-function sampleBody(data: unknown[] | undefined): string {
-  const first = data?.[0]
-  if (first && typeof first === 'object' && !Array.isArray(first)) {
-    const { id: _id, ...rest } = first as Record<string, unknown>
-    if (Object.keys(rest).length > 0) return stringify(rest)
-  }
-  return stringify({ field: 'value' })
 }
 
 // ── Edit / Save / Cancel (shared by file view and GET response tab) ─
@@ -185,11 +177,26 @@ function LogTabButton({ view, label }: { view: LogView; label: string }) {
   return <PaneTab active={logView === view} label={label} onClick={() => setLogView(view)} />
 }
 
+const QUERY_PARAM_DOCS = [
+  ['_page', '1', 'page number, 1-based (default 10 per page)'],
+  ['_limit', '20', 'rows per page'],
+  ['_offset', '0', 'raw index alternative to _page'],
+  ['_sort', 'price', 'field(s) to sort by, comma-separated'],
+  ['_order', 'desc', 'asc (default) or desc'],
+  ['_expand', 'users', 'nest the record referenced by <name>Id'],
+  ['<field>', 'value', 'exact-match filter on any record field'],
+]
+
 function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
   // No resource file behind an auth route — nothing to read, so don't ask.
   const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
   const hasBody = endpoint.method === 'POST' || endpoint.method === 'PUT'
   const url = `${CORE_PUBLIC_URL}/${tenantId}${endpoint.path}`
+  // A single-record read still expands relations; filtering, sorting and
+  // paging only mean something on a list.
+  const queryParams = endpoint.needsId
+    ? QUERY_PARAM_DOCS.filter(([name]) => name === '_expand')
+    : QUERY_PARAM_DOCS
 
   return (
     <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
@@ -218,15 +225,7 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
             Query params
           </div>
           <div className="space-y-1">
-            {[
-              ['_page', '1', 'page number, 1-based (default 10 per page)'],
-              ['_limit', '20', 'rows per page'],
-              ['_offset', '0', 'raw index alternative to _page'],
-              ['_sort', 'price', 'field(s) to sort by, comma-separated'],
-              ['_order', 'desc', 'asc (default) or desc'],
-              ['_expand', 'users', 'nest the record referenced by <name>Id'],
-              ['<field>', 'value', 'exact-match filter on any record field'],
-            ].map(([name, value, note]) => (
+            {queryParams.map(([name, value, note]) => (
               <div key={name} className="flex gap-2 font-mono text-xs">
                 <span className="text-subtle">{name}:</span>
                 <span className={name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'}>
@@ -235,9 +234,11 @@ function RequestView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: str
                 <span className="text-faint">— {note}</span>
               </div>
             ))}
-            <div className="pt-1 font-mono text-xs text-faint">
-              Total row count is returned in the X-Total-Count header.
-            </div>
+            {!endpoint.needsId && (
+              <div className="pt-1 font-mono text-xs text-faint">
+                Total row count is returned in the X-Total-Count header.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -282,92 +283,7 @@ function SampleResponseView({ endpoint }: { endpoint: Endpoint }) {
  * documented shape with it.
  */
 function requestBody(endpoint: Endpoint, data: unknown[] | undefined): string {
-  return endpoint.sample?.request ? stringify(endpoint.sample.request) : sampleBody(data)
-}
-
-function curlFor(endpoint: Endpoint, tenantId: string, data: unknown[] | undefined): string {
-  const url = `${CORE_PUBLIC_URL}/${tenantId}${endpoint.path.replace('{id}', '<id>')}`
-  if (endpoint.method === 'POST' || endpoint.method === 'PUT') {
-    const body = requestBody(endpoint, data).replace(/\n\s*/g, ' ')
-    return `curl -X ${endpoint.method} ${url} \\\n  -H 'content-type: application/json' \\\n  -d '${body}'`
-  }
-  return `curl -X ${endpoint.method} ${url}`
-}
-
-function LiveView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
-  const liveKey = `${tenantId}/${endpoint.resource}`
-  const live = useWorkspaceStore((s) => s.live[liveKey]) ?? { status: 'idle' as const }
-  const runLive = useWorkspaceStore((s) => s.runLive)
-  const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
-
-  if (endpoint.method !== 'GET') {
-    return (
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        <p className="font-mono text-xs text-subtle">
-          {endpoint.kind === 'auth'
-            ? 'Auth requests create real users and issue real tokens — fire them from your app, tests, or curl:'
-            : 'Mutating requests run against your live data — fire them from your app, tests, or curl:'}
-        </p>
-        <div className="overflow-x-auto rounded-md border border-border bg-code-bg p-3">
-          <pre className="font-mono text-xs leading-relaxed whitespace-pre text-body">
-            {curlFor(endpoint, tenantId, data)}
-          </pre>
-        </div>
-      </div>
-    )
-  }
-
-  const result = live.status === 'done' ? live.result : undefined
-
-  return (
-    <div className="min-h-0 flex-1 overflow-auto p-4">
-      {live.status === 'idle' && (
-        <div className="flex h-full flex-col items-center justify-center gap-3">
-          <Zap className="h-8 w-8 text-ghost" />
-          <span className="font-mono text-xs text-faint">No requests fired yet.</span>
-          <button
-            onClick={() => runLive(tenantId, endpoint.resource)}
-            className="flex cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
-          >
-            <Rocket className="h-3.5 w-3.5" />
-            Run request
-          </button>
-        </div>
-      )}
-      {live.status === 'loading' && (
-        <div className="flex h-full flex-col items-center justify-center gap-3">
-          <Zap className="h-8 w-8 animate-pulse text-primary-accent" />
-          <span className="font-mono text-xs text-subtle">Sending request&hellip;</span>
-        </div>
-      )}
-      {result && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span
-              className={
-                result.ok
-                  ? 'rounded border border-primary-soft-border bg-primary-soft px-2 py-0.5 font-mono text-xs text-primary-ink'
-                  : 'rounded border border-danger-soft-border bg-danger-soft px-2 py-0.5 font-mono text-xs text-danger-ink'
-              }
-            >
-              {result.status || 'ERR'}
-            </span>
-            <span className="font-mono text-xs text-subtle">{result.latencyMs}ms</span>
-            <span className="flex-1" />
-            <button
-              onClick={() => runLive(tenantId, endpoint.resource)}
-              className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent"
-            >
-              Run again
-            </button>
-          </div>
-          <div className="rounded-md border border-border bg-code-bg p-3">
-            <JsonHighlight raw={result.body} />
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  return endpoint.sample?.request ? stringify(endpoint.sample.request) : sampleRecordBody(data)
 }
 
 // ── Pane ──────────────────────────────────────────────────────────
@@ -501,7 +417,13 @@ export function EditorPane() {
             </>
           )}
           {endpoint && tenantId && activeTab === 'live' && (
-            <LiveView endpoint={endpoint} tenantId={tenantId} />
+            // Keyed by route so switching endpoints remounts the body editor
+            // with that endpoint's own document and undo history.
+            <Playground
+              key={`${endpoint.method} ${endpoint.path}`}
+              endpoint={endpoint}
+              tenantId={tenantId}
+            />
           )}
         </>
       )}

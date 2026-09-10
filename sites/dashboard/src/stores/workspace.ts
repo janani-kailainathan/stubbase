@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { runGet, type ChatTurn, type RunResult } from '@/lib/api'
+import type { ChatTurn, RunResult } from '@/lib/api'
+import type { PlaygroundInputs } from '@/lib/playground'
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
@@ -40,8 +41,9 @@ export type ChatEntry =
   // which can always re-check the real state with get_diagnostics.
   | { id: string; kind: 'notice'; text: string; tone: 'done' | 'cancelled' }
 
-export interface LiveState {
-  status: 'idle' | 'loading' | 'done'
+/** One endpoint's last playground request. The previous result stays up while the next one is sending. */
+export interface PlaygroundRun {
+  status: 'loading' | 'done'
   result?: RunResult
 }
 
@@ -59,8 +61,23 @@ interface WorkspaceState {
   paneMode: PaneMode
   dataExpanded: boolean
   newProjectOpen: boolean
-  /** Live-run results keyed by `${tenantId}/${resource}`. */
-  live: Record<string, LiveState>
+  /**
+   * Playground edits, keyed by `playgroundKey` (tenant + method + path — the
+   * auth group holds two POSTs, so resource alone would share them). Absent
+   * until the user changes something; until then the playground derives its
+   * values from the deployed records.
+   */
+  playgroundInputs: Record<string, PlaygroundInputs>
+  /** Playground responses, keyed the same way. */
+  playgroundRuns: Record<string, PlaygroundRun>
+  /**
+   * The tenant token the playground sends, per project. Memory only, never
+   * localStorage: it is a real credential for the project's API, and `reset`
+   * drops it on logout so it cannot outlive the account that obtained it.
+   */
+  testTokens: Record<string, string>
+  /** The log entry the playground's "Open in logs" jumped to. */
+  focusLog: string | null
   /** AI chat history keyed by tenantId, so switching projects keeps context. */
   chat: Record<string, ChatEntry[]>
   /**
@@ -105,7 +122,12 @@ interface WorkspaceState {
   /** Replace the transcript with the conversation the server just returned. */
   setChatTurns: (tenantId: string, turns: ChatTurn[]) => void
   setChatInput: (text: string) => void
-  runLive: (tenantId: string, resource: string) => Promise<void>
+  setPlaygroundInputs: (key: string, inputs: PlaygroundInputs) => void
+  setTestToken: (tenantId: string, token: string) => void
+  /** Record a playground request under `key` while `send` runs, and resolve with its result. */
+  runPlayground: (key: string, send: () => Promise<RunResult>) => Promise<RunResult>
+  /** Switch to the Logs pane with this request's entry highlighted. */
+  openLog: (correlationId: string) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -117,13 +139,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   paneMode: 'editor',
   dataExpanded: true,
   newProjectOpen: false,
-  live: {},
+  playgroundInputs: {},
+  playgroundRuns: {},
+  testTokens: {},
+  focusLog: null,
   chat: {},
   chatInput: '',
   stagedDismissed: false,
 
   // Dismissing is scoped to one visit of one project, so leaving clears it.
-  leaveProject: () => set({ selection: null, editing: false, stagedDismissed: false }),
+  leaveProject: () =>
+    set({ selection: null, editing: false, stagedDismissed: false, focusLog: null }),
 
   dismissStaged: () => set({ stagedDismissed: true }),
 
@@ -135,7 +161,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       editing: false,
       draft: '',
       paneMode: 'editor',
-      live: {},
+      // Request bodies, responses and tenant tokens are another user's data.
+      playgroundInputs: {},
+      playgroundRuns: {},
+      testTokens: {},
+      focusLog: null,
       chat: {}, // prompts and generated data must not leak between users
       chatInput: '',
       stagedDismissed: false,
@@ -181,12 +211,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setChatInput: (text) => set({ chatInput: text }),
 
-  runLive: async (tenantId, resource) => {
-    const key = `${tenantId}/${resource}`
-    set((s) => ({ live: { ...s.live, [key]: { status: 'loading' } } }))
-    const result = await runGet(tenantId, resource).catch(
-      (e): RunResult => ({ ok: false, status: 0, latencyMs: 0, body: String(e) }),
-    )
-    set((s) => ({ live: { ...s.live, [key]: { status: 'done', result } } }))
+  setPlaygroundInputs: (key, inputs) =>
+    set((s) => ({ playgroundInputs: { ...s.playgroundInputs, [key]: inputs } })),
+
+  setTestToken: (tenantId, token) =>
+    set((s) => ({ testTokens: { ...s.testTokens, [tenantId]: token } })),
+
+  runPlayground: async (key, send) => {
+    set((s) => ({
+      playgroundRuns: {
+        ...s.playgroundRuns,
+        [key]: { status: 'loading', result: s.playgroundRuns[key]?.result },
+      },
+    }))
+    const result = await send()
+    set((s) => ({ playgroundRuns: { ...s.playgroundRuns, [key]: { status: 'done', result } } }))
+    return result
   },
+
+  openLog: (correlationId) =>
+    set({ paneMode: 'logs', logView: 'lifecycle', focusLog: correlationId }),
 }))

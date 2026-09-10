@@ -30,6 +30,7 @@ export interface Endpoint {
 export function endpointsFor(resources: string[]): Endpoint[] {
   return resources.flatMap((resource): Endpoint[] => [
     { resource, method: 'GET', path: `/${resource}`, needsId: false, kind: 'crud' },
+    { resource, method: 'GET', path: `/${resource}/{id}`, needsId: true, kind: 'crud' },
     { resource, method: 'POST', path: `/${resource}`, needsId: false, kind: 'crud' },
     { resource, method: 'PUT', path: `/${resource}/{id}`, needsId: true, kind: 'crud' },
     { resource, method: 'DELETE', path: `/${resource}/{id}`, needsId: true, kind: 'crud' },

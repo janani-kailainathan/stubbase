@@ -213,10 +213,20 @@ export const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 /**
  * Editor read path: goes through the authed files proxy, which prefers the
  * draft (draft_<name>.json) over the deployed file — the editor always shows
- * staged state. The Live tab (`runGet`) still hits the public CRUD plane.
+ * staged state. The Live tab's playground (`runRequest`) hits the public plane.
  */
 export const fetchResource = (tenantId: string, resource: string) =>
   request<unknown[]>(`${APP_API_URL}/projects/${tenantId}/files/${resource}`, {
+    headers: appHeaders(),
+  })
+
+/**
+ * The *deployed* file alone — no draft, no fallback — so a resource that was
+ * saved but never deployed answers 404. The playground's question: does the
+ * public API route this resource yet, and with which records?
+ */
+export const fetchLiveResource = (tenantId: string, resource: string) =>
+  request<unknown[]>(`${APP_API_URL}/projects/${tenantId}/files/${resource}?source=live`, {
     headers: appHeaders(),
   })
 
@@ -371,21 +381,56 @@ export const chatWithCoPilot = (tenantId: string, messages: ChatTurn[]) =>
     body: JSON.stringify({ messages }),
   })
 
-// ── Live runner ───────────────────────────────────────────────────
+// ── Playground runner ─────────────────────────────────────────────
 
 export interface RunResult {
   ok: boolean
+  /** 0 when no HTTP response came back at all — offline, DNS, or refused by the browser. */
   status: number
   latencyMs: number
   body: string
+  /** X-Correlation-Id: this request's entry in the project's live log. */
+  correlationId: string | null
+  /** X-Total-Count, which a list route sends with the pre-pagination total. */
+  totalCount: string | null
 }
 
-/** Fire a real GET at a tenant resource and time it. */
-export async function runGet(tenantId: string, resource: string): Promise<RunResult> {
+/**
+ * Send one real request to a project's public API — the plane its own clients
+ * call, so it is metered, logged and answered exactly as theirs would be.
+ * `path` already carries the tenant and any query string; lib/playground.ts
+ * builds it from the endpoint the rail offered. Never throws: a request that
+ * got no answer is a result the playground shows, not an exception.
+ */
+export async function runRequest(
+  path: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+): Promise<RunResult> {
   const t0 = performance.now()
-  const res = await fetch(`${CORE_API_URL}/${tenantId}/${resource}`)
-  const body = await res.text()
-  return { ok: res.ok, status: res.status, latencyMs: Math.round(performance.now() - t0), body }
+  const elapsed = () => Math.round(performance.now() - t0)
+  try {
+    // no-store: every Send is a request the API actually answers, never one the
+    // browser replays from its cache.
+    const res = await fetch(`${CORE_API_URL}${path}`, { ...init, cache: 'no-store' })
+    const body = await res.text()
+    return {
+      ok: res.ok,
+      status: res.status,
+      latencyMs: elapsed(),
+      body,
+      correlationId: res.headers.get('x-correlation-id'),
+      totalCount: res.headers.get('x-total-count'),
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: elapsed(),
+      body: e instanceof Error ? e.message : String(e),
+      correlationId: null,
+      totalCount: null,
+    }
+  }
 }
 
 // ── Live logs (SSE) ───────────────────────────────────────────────

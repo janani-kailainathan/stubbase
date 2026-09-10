@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteResourceFile, fetchResource, saveResourceFile } from '@/lib/api'
+import {
+  ApiError,
+  deleteResourceFile,
+  fetchLiveResource,
+  fetchResource,
+  saveResourceFile,
+} from '@/lib/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 export function useResource(tenantId: string | undefined, resource: string | undefined) {
@@ -10,6 +16,33 @@ export function useResource(tenantId: string | undefined, resource: string | und
     // Without this the default staleTime of 0 refetches on every remount, so
     // simply clicking between the Request/Response/Live tabs re-hit the API
     // each time. Writes invalidate this key explicitly, so nothing goes stale.
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * What the public API is serving for a resource right now: its deployed
+ * records, or `null` when it serves nothing — a resource that has been saved
+ * but never deployed. The playground needs exactly that distinction, because
+ * the rail lists a new resource the moment it is saved while the API only
+ * routes it after a deploy.
+ *
+ * Keyed under the editor's copy so every write that invalidates
+ * `['resource', tenantId, resource]` refreshes this too; a deploy invalidates
+ * the whole `['resource', tenantId]` prefix.
+ */
+export function useLiveResource(tenantId: string | undefined, resource: string | undefined) {
+  return useQuery({
+    queryKey: ['resource', tenantId, resource, 'live'],
+    queryFn: async (): Promise<unknown[] | null> => {
+      try {
+        return await fetchLiveResource(tenantId!, resource!)
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId && resource),
     staleTime: 30_000,
   })
 }

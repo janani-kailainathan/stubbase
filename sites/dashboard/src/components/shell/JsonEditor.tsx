@@ -133,9 +133,12 @@ const lightTheme = EditorView.theme(themeRules, { dark: false })
 export function JsonEditor({
   value,
   onChange,
+  autoFocus = true,
 }: {
   value: string
   onChange: (value: string) => void
+  /** The file editor takes focus on Edit; the playground's body field must not steal it. */
+  autoFocus?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -190,7 +193,7 @@ export function JsonEditor({
       }),
     })
     view.current = instance
-    instance.focus()
+    if (autoFocus) instance.focus()
     return () => {
       instance.destroy()
       view.current = null

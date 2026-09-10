@@ -227,6 +227,9 @@ const modules: Module[] = [
       // Checks the starter examples this SPA ships against a real core, so a
       // card cannot advertise a query its seed data does not answer.
       testGoal("tests/starters.test.ts"),
+      // Checks that the API playground can only call the route the rail shows,
+      // with only headers the core's CORS preflight lets a browser send.
+      testGoal("tests/playground.test.ts"),
     ],
   },
 ];
