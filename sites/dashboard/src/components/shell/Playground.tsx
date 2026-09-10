@@ -83,7 +83,7 @@ const MIN_SPLIT = 20
 const MAX_SPLIT = 80
 const clampSplit = (value: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value))
 
-type RequestTab = 'params' | 'auth' | 'headers' | 'body'
+type RequestTab = 'path' | 'query' | 'auth' | 'headers' | 'body'
 type ResponseTab = 'body' | 'headers'
 
 /** A borderless input that fills its table cell — the cell draws the grid. */
@@ -181,7 +181,7 @@ function KeyValueTable({
   children: React.ReactNode
 }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border">
+    <div className="overflow-hidden rounded border border-border">
       <table aria-label={label} className="w-full table-fixed border-collapse">
         <colgroup>
           {edges && <col className="w-9" />}
@@ -272,18 +272,61 @@ function fieldNames(records: unknown[] | null | undefined): string[] {
 
 // ── Request tabs ──────────────────────────────────────────────────
 
-function ParamsPanel({
-  endpoint,
+/** Only offered on routes with an `{id}` segment. */
+function PathPanel({
   inputs,
   update,
   records,
   idError,
 }: {
-  endpoint: Endpoint
   inputs: PlaygroundInputs
   update: (patch: Partial<PlaygroundInputs>) => void
   records: unknown[] | null | undefined
   idError: string | null
+}) {
+  const domId = useId()
+  return (
+    <div>
+      <KeyValueTable label="Path variables">
+        <KeyValueRow
+          name={<CellText>id</CellText>}
+          value={
+            <>
+              <input
+                value={inputs.id}
+                onChange={(e) => update({ id: e.target.value })}
+                list={`${domId}-ids`}
+                placeholder="record id"
+                aria-label="id"
+                aria-invalid={idError !== null && inputs.id !== ''}
+                spellCheck={false}
+                className={cellInput}
+              />
+              <datalist id={`${domId}-ids`}>
+                {recordIds(records).map((id) => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+            </>
+          }
+        />
+      </KeyValueTable>
+      {idError && <p className="mt-1.5 font-mono text-[11px] text-danger-ink">{idError}</p>}
+    </div>
+  )
+}
+
+/** Only offered on reads — see `acceptsQuery`. */
+function QueryPanel({
+  endpoint,
+  inputs,
+  update,
+  records,
+}: {
+  endpoint: Endpoint
+  inputs: PlaygroundInputs
+  update: (patch: Partial<PlaygroundInputs>) => void
+  records: unknown[] | null | undefined
 }) {
   const domId = useId()
   const setParam = (index: number, patch: Partial<QueryParam>) =>
@@ -297,123 +340,84 @@ function ParamsPanel({
     ? ['_expand']
     : [...LIST_PARAMS, ...fieldNames(records).filter((f) => !LIST_PARAMS.includes(f))]
 
-  if (!endpoint.needsId && !acceptsQuery(endpoint))
-    return <PanelNote>This route takes no path variables or query params.</PanelNote>
-
   return (
-    <div className="space-y-5">
-      {endpoint.needsId && (
-        <section>
-          <PanelHeading>Path Variables</PanelHeading>
-          <KeyValueTable label="Path variables">
-            <KeyValueRow
-              name={<CellText>id</CellText>}
-              value={
-                <>
-                  <input
-                    value={inputs.id}
-                    onChange={(e) => update({ id: e.target.value })}
-                    list={`${domId}-ids`}
-                    placeholder="record id"
-                    aria-label="id"
-                    aria-invalid={idError !== null && inputs.id !== ''}
-                    spellCheck={false}
-                    className={cellInput}
-                  />
-                  <datalist id={`${domId}-ids`}>
-                    {recordIds(records).map((id) => (
-                      <option key={id} value={id} />
-                    ))}
-                  </datalist>
-                </>
-              }
-            />
-          </KeyValueTable>
-          {idError && <p className="mt-1.5 font-mono text-[11px] text-danger-ink">{idError}</p>}
-        </section>
-      )}
-
-      {acceptsQuery(endpoint) && (
-        <section>
-          <PanelHeading>Query Params</PanelHeading>
-          <KeyValueTable label="Query params">
-            {inputs.query.map((param, i) => (
-              <KeyValueRow
-                key={i}
-                lead={
-                  <input
-                    type="checkbox"
-                    checked={param.enabled !== false}
-                    onChange={(e) => setParam(i, { enabled: e.target.checked })}
-                    aria-label={`Send ${param.key || 'this param'}`}
-                    className="h-3.5 w-3.5 cursor-pointer accent-primary"
-                  />
-                }
-                name={
-                  <input
-                    value={param.key}
-                    onChange={(e) => setParam(i, { key: e.target.value })}
-                    list={`${domId}-params`}
-                    placeholder="Key"
-                    aria-label="Param key"
-                    spellCheck={false}
-                    className={`${cellInput} ${param.enabled === false ? 'text-faint' : ''}`}
-                  />
-                }
-                value={
-                  <input
-                    value={param.value}
-                    onChange={(e) => setParam(i, { value: e.target.value })}
-                    placeholder="Value"
-                    aria-label="Param value"
-                    spellCheck={false}
-                    className={`${cellInput} ${param.enabled === false ? 'text-faint' : ''}`}
-                  />
-                }
-                trail={
-                  <button
-                    type="button"
-                    onClick={() => update({ query: inputs.query.filter((_, j) => j !== i) })}
-                    aria-label={`Remove ${param.key || 'param'}`}
-                    className="inline-flex cursor-pointer text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-emphasis focus-visible:opacity-100"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                }
+    <div>
+      <KeyValueTable label="Query params">
+        {inputs.query.map((param, i) => (
+          <KeyValueRow
+            key={i}
+            lead={
+              <input
+                type="checkbox"
+                checked={param.enabled !== false}
+                onChange={(e) => setParam(i, { enabled: e.target.checked })}
+                aria-label={`Send ${param.key || 'this param'}`}
+                className="h-3.5 w-3.5 cursor-pointer accent-primary"
               />
-            ))}
-            <KeyValueRow
-              key={inputs.query.length}
-              name={
-                <input
-                  value=""
-                  onChange={(e) => addParam({ key: e.target.value })}
-                  list={`${domId}-params`}
-                  placeholder="Key"
-                  aria-label="New param key"
-                  spellCheck={false}
-                  className={cellInput}
-                />
-              }
-              value={
-                <input
-                  value=""
-                  onChange={(e) => addParam({ value: e.target.value })}
-                  placeholder="Value"
-                  aria-label="New param value"
-                  spellCheck={false}
-                  className={cellInput}
-                />
-              }
+            }
+            name={
+              <input
+                value={param.key}
+                onChange={(e) => setParam(i, { key: e.target.value })}
+                list={`${domId}-params`}
+                placeholder="Key"
+                aria-label="Param key"
+                spellCheck={false}
+                className={`${cellInput} ${param.enabled === false ? 'text-faint' : ''}`}
+              />
+            }
+            value={
+              <input
+                value={param.value}
+                onChange={(e) => setParam(i, { value: e.target.value })}
+                placeholder="Value"
+                aria-label="Param value"
+                spellCheck={false}
+                className={`${cellInput} ${param.enabled === false ? 'text-faint' : ''}`}
+              />
+            }
+            trail={
+              <button
+                type="button"
+                onClick={() => update({ query: inputs.query.filter((_, j) => j !== i) })}
+                aria-label={`Remove ${param.key || 'param'}`}
+                className="inline-flex cursor-pointer text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-emphasis focus-visible:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            }
+          />
+        ))}
+        <KeyValueRow
+          key={inputs.query.length}
+          name={
+            <input
+              value=""
+              onChange={(e) => addParam({ key: e.target.value })}
+              list={`${domId}-params`}
+              placeholder="Key"
+              aria-label="New param key"
+              spellCheck={false}
+              className={cellInput}
             />
-          </KeyValueTable>
-          <datalist id={`${domId}-params`}>
-            {suggestions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-        </section>
-      )}
+          }
+          value={
+            <input
+              value=""
+              onChange={(e) => addParam({ value: e.target.value })}
+              placeholder="Value"
+              aria-label="New param value"
+              spellCheck={false}
+              className={cellInput}
+            />
+          }
+        />
+      </KeyValueTable>
+      <datalist id={`${domId}-params`}>
+        {suggestions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
     </div>
   )
 }
@@ -432,7 +436,7 @@ function AuthPanel({
     <div className="grid gap-5 @2xl:grid-cols-[13rem_minmax(0,1fr)]">
       <div>
         <PanelHeading>Auth Type</PanelHeading>
-        <div className="flex h-8 items-center rounded-md border border-border bg-panel px-2.5 font-mono text-xs text-emphasis">
+        <div className="flex h-8 items-center rounded border border-border bg-panel px-2.5 font-mono text-xs text-emphasis">
           {auth ? 'Bearer Token' : 'No Auth'}
         </div>
       </div>
@@ -449,7 +453,7 @@ function AuthPanel({
               placeholder="token from /auth/login"
               spellCheck={false}
               autoComplete="off"
-              className="h-8 font-mono text-xs md:text-xs"
+              className="h-8 rounded font-mono text-xs md:text-xs"
             />
           </>
         ) : (
@@ -560,7 +564,9 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   const isCrud = endpoint.kind === 'crud'
   const withBody = hasBody(endpoint)
 
-  const [tab, setTab] = useState<RequestTab>(withBody ? 'body' : 'params')
+  const [tab, setTab] = useState<RequestTab>(
+    withBody ? 'body' : endpoint.needsId ? 'path' : 'query',
+  )
   const [responseTab, setResponseTab] = useState<ResponseTab>('body')
 
   const live = useLiveResource(tenantId, isCrud ? endpoint.resource : undefined)
@@ -656,9 +662,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     setSplit(clampSplit(split + (e.key === 'ArrowDown' ? 5 : -5)))
   }
 
-  const hasParams =
-    (endpoint.needsId && inputs.id !== '') ||
-    inputs.query.some((p) => p.enabled !== false && p.key.trim() !== '')
+  const hasQuery = inputs.query.some((p) => p.enabled !== false && p.key.trim() !== '')
   const headerCount = Object.keys(headers).length
   const dot = <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
   // A tab with nothing to set is not offered. A route without a body has no
@@ -666,7 +670,27 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   // auth nor QA_MODE in the deployed config — has no Headers tab.
   const needsHeaders = withBody || auth || qaMode
   const requestTabs: TabDef<RequestTab>[] = [
-    { id: 'params', label: 'Params', badge: hasParams ? dot : undefined },
+    ...(endpoint.needsId
+      ? [
+          {
+            id: 'path' as const,
+            label: 'Path Variables',
+            // Red while the id cannot be sent, so a disabled Send has a
+            // visible reason from whichever tab is open.
+            badge: idError ? (
+              <>
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-danger-solid" />
+                <span className="sr-only">(needs attention)</span>
+              </>
+            ) : (
+              dot
+            ),
+          },
+        ]
+      : []),
+    ...(acceptsQuery(endpoint)
+      ? [{ id: 'query' as const, label: 'Query Params', badge: hasQuery ? dot : undefined }]
+      : []),
     { id: 'auth', label: 'Authorization' },
     ...(needsHeaders
       ? [
@@ -711,7 +735,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
       >
         <div className="shrink-0 px-4 pt-3">
           <div className="flex items-stretch gap-2">
-            <div className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-border bg-panel">
+            <div className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded border border-border bg-panel">
               <span
                 className={`flex w-20 shrink-0 items-center border-r border-border px-3 font-mono text-xs font-semibold ${METHOD_INK[endpoint.method]}`}
               >
@@ -752,7 +776,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
               onClick={() => void send()}
               disabled={blocked}
               title={`Send (${SEND_HINT})`}
-              className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary px-5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded bg-primary px-5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Send className="h-3.5 w-3.5" />
               {loading ? 'Sending…' : 'Send'}
@@ -772,7 +796,7 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
 
         {activeTab === 'body' && withBody ? (
           <div role="tabpanel" className="flex min-h-0 flex-1 flex-col px-4 py-3">
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-border">
               <div className="flex h-8 shrink-0 items-center border-b border-border bg-panel px-2.5 font-mono text-[11px] text-subtle">
                 raw · JSON
               </div>
@@ -793,14 +817,11 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
           </div>
         ) : (
           <div role="tabpanel" className="min-h-0 flex-1 overflow-auto px-4 py-3">
-            {activeTab === 'params' && (
-              <ParamsPanel
-                endpoint={endpoint}
-                inputs={inputs}
-                update={update}
-                records={records}
-                idError={idError}
-              />
+            {activeTab === 'path' && (
+              <PathPanel inputs={inputs} update={update} records={records} idError={idError} />
+            )}
+            {activeTab === 'query' && (
+              <QueryPanel endpoint={endpoint} inputs={inputs} update={update} records={records} />
             )}
             {activeTab === 'auth' && (
               <AuthPanel auth={auth} token={token} onToken={(t) => setTestToken(tenantId, t)} />

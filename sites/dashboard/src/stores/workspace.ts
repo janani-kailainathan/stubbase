@@ -55,6 +55,11 @@ interface WorkspaceState {
   selection: Selection
   editing: boolean
   draft: string
+  /**
+   * The endpoint pane's Request / Response / Live tab. A preference, not part
+   * of a selection: picking another endpoint keeps it, so someone working in
+   * Live stays in Live while they walk the rail. Files and .env never read it.
+   */
   activeTab: EditorTab
   /** Lives here beside activeTab so the Logs pane header can own its tabs. */
   logView: LogView
@@ -143,7 +148,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selection: null,
   editing: false,
   draft: '',
-  activeTab: 'response',
+  activeTab: 'request',
   logView: 'lifecycle',
   paneMode: 'editor',
   dataExpanded: true,
@@ -183,10 +188,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
 
   select: (selection) =>
+    // activeTab is deliberately left alone — see its declaration.
     set({
       selection,
       editing: false,
-      activeTab: selection?.kind === 'api' ? 'request' : 'response',
       paneMode: 'editor', // picking a file means you want to look at it
     }),
 
