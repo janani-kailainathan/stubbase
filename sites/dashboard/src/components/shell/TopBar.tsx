@@ -17,7 +17,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { deployProject, LANDING_URL } from '@/lib/api'
+import { deployProject, LANDING_URL, type ApiUser } from '@/lib/api'
 import { useProjectStatus, useSetProjectStatus } from '@/hooks/config'
 import {
   DropdownMenu,
@@ -514,6 +514,48 @@ function StatusBadge({ tenantId }: { tenantId: string }) {
   )
 }
 
+/**
+ * The account menu: who is signed in, on which plan, and the way out. Log out
+ * lives in here rather than as a bare icon beside the theme toggle — a one-click
+ * exit sitting next to a control people click often is too easy to hit, and the
+ * menu is where anything else about the account will go.
+ */
+function ProfileMenu({ user, onSignOut }: { user: ApiUser | null; onSignOut: () => void }) {
+  const displayName = user?.name?.trim() || user?.email.split('@')[0] || 'Account'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          title={user ? user.email : 'Account'}
+          aria-label="Account menu"
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-card font-mono text-[11px] font-semibold text-heading uppercase transition-colors select-none hover:border-border-stronger"
+        >
+          {displayName[0]}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60 border-border bg-card p-1.5">
+        {user && (
+          <>
+            <div className="px-2 py-1.5">
+              <p className="truncate text-sm font-medium text-heading">{displayName}</p>
+              <p className="truncate font-mono text-[11px] text-subtle">{user.email}</p>
+              <p className="mt-1 font-mono text-[10px] text-faint">{user.planName} plan</p>
+            </div>
+            <DropdownMenuSeparator className="my-1 bg-muted" />
+          </>
+        )}
+        <DropdownMenuItem
+          onSelect={onSignOut}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-heading"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          <span className="font-mono text-xs">Log out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function TopBar() {
   const { data: projects, isLoading } = useProjects()
   const current = useCurrentProject()
@@ -672,13 +714,7 @@ export function TopBar() {
       <ModeToggle />
       <DeployControls tenantId={current?.tenantId} />
       <ThemeToggle />
-      <button
-        title={`Log out${user ? ` (${user.email})` : ''}`}
-        onClick={signOut}
-        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
-      >
-        <LogOut className="h-3.5 w-3.5" />
-      </button>
+      <ProfileMenu user={user} onSignOut={signOut} />
     </div>
   )
 }
