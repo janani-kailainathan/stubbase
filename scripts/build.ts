@@ -230,6 +230,9 @@ const modules: Module[] = [
       // Checks that the API playground can only call the route the rail shows,
       // with only headers the core's CORS preflight lets a browser send.
       testGoal("tests/playground.test.ts"),
+      // Checks that the Logs pane's sessionStorage copy never holds a project
+      // token from a real core's auth responses, and that Clear and logout stick.
+      testGoal("tests/log-storage.test.ts"),
     ],
   },
 ];

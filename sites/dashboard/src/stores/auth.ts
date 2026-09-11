@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import * as api from '@/lib/api'
 import { setAuthToken, setUnauthorizedHandler, type ApiUser } from '@/lib/api'
+import { forgetAllTabLogs } from '@/lib/log-storage'
 import { queryClient } from '@/lib/query'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -53,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
         set({ token: null, user: null })
         useWorkspaceStore.getState().reset() // next user must not inherit selection
         queryClient.clear() // …nor the previous user's cached server data
+        forgetAllTabLogs() // …nor the request logs this tab kept for them
       },
     }),
     {

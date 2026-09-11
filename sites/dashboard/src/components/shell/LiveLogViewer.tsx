@@ -212,7 +212,7 @@ export function LiveLogViewer({ tenantId }: { tenantId: string | undefined }) {
         <span className="font-mono text-[10px] text-faint">{entries.length}/50</span>
         <button
           onClick={clear}
-          title="Clear the view (the server-side ring is untouched)"
+          title="Clear this tab's log (the server keeps its own copy)"
           className="cursor-pointer text-faint hover:text-emphasis"
         >
           <Trash2 className="h-3.5 w-3.5" />
