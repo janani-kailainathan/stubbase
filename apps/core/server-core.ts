@@ -30,7 +30,7 @@
  * statusGuard → authGuard → chaosGuard → validationGuard →
  * beforeWebhookGuard → coreOperation → afterWebhookGuard.
  */
-import { readdir, mkdir, rm } from "node:fs/promises";
+import { readdir, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
@@ -238,8 +238,18 @@ const usage = new Map<string, UsageBucket>(); // `${tenantId} ${YYYY-MM-DD}`
 const usageEnabled = USAGE_SINK_URL !== "";
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Responses the platform sends in the owner's stead: a stopped project's 503, a
+ * spent allowance's 429. They are logged like any response but not metered —
+ * the project served nothing, and counting them would bill for service refused
+ * and push `used` past the limit it is already being held to. Marked where they
+ * are built rather than recognised by status, because a QA project can ask for a
+ * 503 or 429 with x-stubbase-status, and those it really did serve.
+ */
+const refusals = new WeakSet<Response>();
+
 function meter(tenantId: string, res: Response): Response {
-  if (!usageEnabled) return res;
+  if (!usageEnabled || refusals.has(res)) return res;
   const bytes = Number(res.headers.get("content-length") ?? 0) || 0;
   const key = `${tenantId} ${utcDay()}`;
   const bucket = usage.get(key);
@@ -539,6 +549,16 @@ async function getTenant(tenantId: string): Promise<TenantState | null> {
   const state = activeTenants.get(tenantId) ?? (await loadTenant(tenantId));
   if (state) touch(tenantId, state);
   return state;
+}
+
+/** Whether a tenant exists, without loading it: already in RAM, or a directory on disk. */
+async function tenantExists(tenantId: string): Promise<boolean> {
+  if (activeTenants.has(tenantId)) return true;
+  try {
+    return (await stat(tenantDir(tenantId))).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 // Write-through, serialized per tenant so concurrent mutations can't interleave a file
@@ -2012,7 +2032,9 @@ type Middleware = (ctx: Ctx) => Promise<MwResult> | MwResult;
 function statusBlocked(state: TenantState): Response | null {
   const s = state.config.projectStatus;
   if (s === "active") return null;
-  return json({ error: "service unavailable", projectStatus: s }, 503);
+  const res = json({ error: "service unavailable", projectStatus: s }, 503);
+  refusals.add(res); // logged, not metered — see `refusals`
+  return res;
 }
 
 const statusGuard: Middleware = (ctx) => statusBlocked(ctx.state) ?? undefined;
@@ -2030,7 +2052,7 @@ const statusGuard: Middleware = (ctx) => statusBlocked(ctx.state) ?? undefined;
 function quotaBlocked(tenantId: string): Response | null {
   const q = quotas.get(tenantId);
   if (!q || q.used < q.limit) return null;
-  return json(
+  const res = json(
     {
       error: "monthly request quota exceeded",
       limit: q.limit,
@@ -2039,6 +2061,8 @@ function quotaBlocked(tenantId: string): Response | null {
     },
     429,
   );
+  refusals.add(res); // logged, not metered — see `refusals`
+  return res;
 }
 
 const quotaGuard: Middleware = (ctx) => quotaBlocked(ctx.tenantId) ?? undefined;
@@ -2415,6 +2439,13 @@ const server = Bun.serve({
     if (!NAME_RE.test(tenantId)) return cors(err(400, "invalid tenant id"));
 
     if (second === "_admin") return handleAdmin(req, tenantId, rest); // no CORS, not metered: internal
+
+    // A tenant that does not exist is answered before metering and logging.
+    // Both key on the id in the URL, so metering it would let any caller mint a
+    // usage row, a quota entry and a log ring for an id nobody owns — and the two
+    // in RAM would never be freed, since only a tenant that loaded is evicted.
+    // After the _admin dispatch on purpose: an admin write is how a tenant is born.
+    if (!(await tenantExists(tenantId))) return cors(err(404, "tenant not found"));
 
     // Everything below is public-plane traffic, so it is metered for usage and
     // recorded in the tenant's live log ring.

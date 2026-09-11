@@ -1010,6 +1010,74 @@ describe("usage metering", () => {
       sink.stop(true);
     }
   }, 30_000);
+
+  test("a project that doesn't exist is answered 404 before anything is metered or logged", async () => {
+    // Metering and logging both key on the id in the URL. Counting a made-up id
+    // would mint a usage row, a quota entry and a log ring for nobody — and the
+    // two in RAM are never freed, because only a tenant that loaded is evicted.
+    const rows: { tenantId: string }[] = [];
+    const sink = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { rows?: { tenantId: string }[] };
+        rows.push(...(body.rows ?? []));
+        return Response.json({ ok: true });
+      },
+    });
+
+    try {
+      const metered = await boot("usage-ghosts", {
+        USAGE_SINK_URL: `http://127.0.0.1:${sink.port}/_internal/usage`,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "real", { posts: [{ id: "1" }] });
+
+      // Every public surface, including paths whose route checks used to answer first.
+      const probes: [string, RequestInit?][] = [
+        ["/ghost-crud/posts"],
+        ["/ghost-protected/_secret"],
+        ["/ghost-badname/a.b"],
+        ["/ghost-deep/posts/1/extra"],
+        ["/ghost-openapi/openapi.json"],
+        [
+          "/ghost-auth/auth/login",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ email: "a@b.co", password: "password123" }),
+          },
+        ],
+      ];
+      for (const [path, init] of probes) {
+        const res = await fetch(`${metered.base}${path}`, init);
+        expect(res.status).toBe(404);
+        expect((await res.json()).error).toBe("tenant not found");
+        expect(res.headers.get("x-correlation-id")).toBeNull(); // never reached the log
+        expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      }
+
+      await fetch(`${metered.base}/real/posts`);
+      await fetch(`${metered.base}/real/_admin/flush`, { method: "POST", headers: adminAuth });
+      await waitFor(() => rows.length > 0);
+      expect(rows.map((r) => r.tenantId)).toEqual(["real"]);
+
+      const log = await fetch(`${metered.base}/ghost-crud/_admin/logs`, { headers: adminAuth }).then((r) =>
+        r.json(),
+      );
+      expect(log.entries).toEqual([]);
+
+      // The admin plane still brings a tenant into being, and from then on it is served.
+      const created = await fetch(`${metered.base}/brand-new/_admin/files/posts`, {
+        method: "POST",
+        headers: { ...adminAuth, "content-type": "application/json" },
+        body: JSON.stringify([{ id: "1" }]),
+      });
+      expect(created.status).toBe(201);
+      expect((await fetch(`${metered.base}/brand-new/posts`)).status).toBe(200);
+    } finally {
+      sink.stop(true);
+    }
+  }, 30_000);
 });
 
 // ── Request quota ──────────────────────────────────────────────────
@@ -1045,6 +1113,8 @@ describe("request quota", () => {
     return {
       server,
       url: `http://127.0.0.1:${server.port}/_internal/usage`,
+      /** Requests the core has reported, by tenant. */
+      used,
       get flushes() {
         return flushes;
       },
@@ -1191,6 +1261,94 @@ describe("request quota", () => {
       expect((await fetch(`${metered.base}/j/posts`)).status).toBe(200);
     } finally {
       server.stop(true);
+    }
+  }, 30_000);
+
+  test("a spent allowance's 429s are logged but not counted", async () => {
+    const sink = quotaSink(2);
+    try {
+      const metered = await boot("quota-refusals", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "spent", { posts: [{ id: "1" }] });
+      await seed(metered, "side", { posts: [{ id: "1" }] });
+
+      for (let i = 0; i < 2; i++) expect((await fetch(`${metered.base}/spent/posts`)).status).toBe(200);
+      let before = sink.flushes;
+      await flush(metered, "spent");
+      await waitFor(() => sink.flushes > before);
+
+      for (let i = 0; i < 5; i++) expect((await fetch(`${metered.base}/spent/posts`)).status).toBe(429);
+      expect((await fetch(`${metered.base}/spent/openapi.json`)).status).toBe(429);
+
+      // Refusals alone would leave nothing to ship, so give the flush real traffic.
+      await fetch(`${metered.base}/side/posts`);
+      before = sink.flushes;
+      await flush(metered, "side");
+      await waitFor(() => sink.flushes > before);
+
+      // Two served, six refused: `used` stays at the limit rather than climbing past it.
+      expect(sink.used.get("spent")).toBe(2);
+      expect(sink.used.get("side")).toBe(1);
+
+      // Still in the owner's log — a refusal is exactly what they need to see.
+      const log = await fetch(`${metered.base}/spent/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+      expect(log.entries.filter((e: { status: number }) => e.status === 429)).toHaveLength(6);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a stopped project's 503s are logged but not counted", async () => {
+    const sink = quotaSink(1_000);
+    try {
+      const metered = await boot("stopped-refusals", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "off", { posts: [{ id: "1" }], config: { PROJECT_STATUS: "stopped" } });
+      await seed(metered, "side", { posts: [{ id: "1" }] });
+
+      for (let i = 0; i < 3; i++) expect((await fetch(`${metered.base}/off/posts`)).status).toBe(503);
+      expect((await fetch(`${metered.base}/off/openapi.json`)).status).toBe(503);
+
+      await fetch(`${metered.base}/side/posts`);
+      const before = sink.flushes;
+      await flush(metered, "side");
+      await waitFor(() => sink.flushes > before);
+
+      expect(sink.used.has("off")).toBe(false);
+      expect(sink.used.get("side")).toBe(1);
+
+      const log = await fetch(`${metered.base}/off/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+      expect(log.entries.filter((e: { status: number }) => e.status === 503)).toHaveLength(4);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a 503 or 429 a QA project asked for is real traffic, and still counted", async () => {
+    // What is exempt is the platform refusing, not a status code: x-stubbase-status
+    // makes the project itself answer 503 or 429, and it did serve those.
+    const sink = quotaSink(1_000);
+    try {
+      const metered = await boot("chaos-counted", {
+        USAGE_SINK_URL: sink.url,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seed(metered, "qa", { posts: [{ id: "1" }], config: { QA_MODE: "true" } });
+
+      const unavailable = await fetch(`${metered.base}/qa/posts`, { headers: { "x-stubbase-status": "503" } });
+      const throttled = await fetch(`${metered.base}/qa/posts`, { headers: { "x-stubbase-status": "429" } });
+      expect([unavailable.status, throttled.status]).toEqual([503, 429]);
+
+      const before = sink.flushes;
+      await flush(metered, "qa");
+      await waitFor(() => sink.flushes > before);
+      expect(sink.used.get("qa")).toBe(2);
+    } finally {
+      sink.server.stop(true);
     }
   }, 30_000);
 });
