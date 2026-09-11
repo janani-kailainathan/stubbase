@@ -149,7 +149,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   editing: false,
   draft: '',
   activeTab: 'docs',
-  logView: 'lifecycle',
+  // Pretty is the only Logs view offered for now (LOG_TABS in EditorPane), so it
+  // must also be where the pane opens — a hidden view could not be left.
+  logView: 'pretty',
   paneMode: 'editor',
   dataExpanded: true,
   newProjectOpen: false,
@@ -246,7 +248,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   },
 
   openLog: (correlationId) =>
-    set({ paneMode: 'logs', logView: 'lifecycle', focusLog: correlationId }),
+    set({ paneMode: 'logs', logView: 'pretty', focusLog: correlationId }),
 
   setPlaygroundSplit: (split) => set({ playgroundSplit: split }),
 

@@ -174,6 +174,17 @@ function TabButton({ tab, label }: { tab: EditorTab; label: string }) {
   return <PaneTab active={activeTab === tab} label={label} onClick={() => setTab(tab)} />
 }
 
+/**
+ * The Logs views offered as tabs. Raw and Lifecycle are hidden for now, not
+ * removed — LiveLogViewer still renders both — so restoring one is uncommenting
+ * its line. The store's default `logView` must be a view listed here.
+ */
+const LOG_TABS: { view: LogView; label: string }[] = [
+  // { view: 'raw', label: 'Raw' },
+  { view: 'pretty', label: 'Pretty' },
+  // { view: 'lifecycle', label: 'Lifecycle' },
+]
+
 /** The Logs pane's sub-tabs — same widget, same header slot as TabButton. */
 function LogTabButton({ view, label }: { view: LogView; label: string }) {
   const logView = useWorkspaceStore((s) => s.logView)
@@ -350,11 +361,12 @@ export function EditorPane() {
             )}
           </div>
         )}
-        {logsMode && (
+        {/* One view is not a choice, so a lone tab gets no strip at all. */}
+        {logsMode && LOG_TABS.length > 1 && (
           <PaneTabs>
-            <LogTabButton view="raw" label="Raw" />
-            <LogTabButton view="pretty" label="Pretty" />
-            <LogTabButton view="lifecycle" label="Lifecycle" />
+            {LOG_TABS.map(({ view, label }) => (
+              <LogTabButton key={view} view={view} label={label} />
+            ))}
           </PaneTabs>
         )}
       </div>
