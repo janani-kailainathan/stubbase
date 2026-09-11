@@ -47,25 +47,19 @@ const statusColor = (status: number) =>
       : 'text-primary-ink'
 
 /** One request: a one-line summary that expands to the active view on click. */
-function LogRow({ entry, view, focused }: { entry: LogEntry; view: LogView; focused: boolean }) {
+function LogRow({ entry, view }: { entry: LogEntry; view: LogView }) {
   const time = entry.ts.slice(11, 23)
   // Collapsed by default: a printed entry runs to dozens of lines, so a log of
-  // expanded ones is mostly a single request. The entry "Open in logs" asked
-  // for starts open instead — it was asked for precisely to be read. `null`
-  // means "not toggled here yet", so that default applies until a click.
-  const [toggled, setToggled] = useState<boolean | null>(null)
-  const open = toggled ?? focused
+  // expanded ones is mostly a single request.
+  const [open, setOpen] = useState(false)
 
   return (
-    <div
-      data-correlation-id={entry.correlationId}
-      className={`border-b border-border-soft ${focused ? 'bg-primary-soft' : ''}`}
-    >
+    <div data-correlation-id={entry.correlationId} className="border-b border-border-soft">
       <button
         type="button"
-        onClick={() => setToggled(!open)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left ${focused ? '' : 'hover:bg-card'}`}
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left hover:bg-card"
       >
         <ChevronDown
           className={`h-3 w-3 shrink-0 text-faint transition-transform ${open ? '' : '-rotate-90'}`}
@@ -153,33 +147,16 @@ export function LiveLogViewer({ tenantId }: { tenantId: string | undefined }) {
   // The Raw/Pretty/Lifecycle tabs are rendered by the pane header, exactly like
   // the editor's Docs/Live, so the selection lives in the store.
   const view = useWorkspaceStore((s) => s.logView)
-  // The entry the playground's "Open in logs" asked for.
-  const focusLog = useWorkspaceStore((s) => s.focusLog)
   const scroller = useRef<HTMLDivElement>(null)
   // Only auto-scroll while the user is already at the bottom — yanking the
   // viewport away mid-read is worse than missing the newest line.
   const [pinned, setPinned] = useState(true)
-  // Scroll to a focused entry once, when it first arrives: the stream replays
-  // the core's ring on connect, so it usually lands a moment after mount, and
-  // re-scrolling on every later entry would fight the user's own scrolling.
-  const scrolledTo = useRef<string | null>(null)
 
   useEffect(() => {
     if (!pinned) return
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
   }, [entries, view, pinned])
-
-  useEffect(() => {
-    if (!focusLog || scrolledTo.current === focusLog) return
-    const row = scroller.current?.querySelector(
-      `[data-correlation-id="${CSS.escape(focusLog)}"]`,
-    )
-    if (!row) return
-    scrolledTo.current = focusLog
-    setPinned(false)
-    row.scrollIntoView({ block: 'center' })
-  }, [entries, focusLog])
 
   const onScroll = () => {
     const el = scroller.current
@@ -227,14 +204,7 @@ export function LiveLogViewer({ tenantId }: { tenantId: string | undefined }) {
             </p>
           </div>
         ) : (
-          entries.map((entry) => (
-            <LogRow
-              key={entry.correlationId}
-              entry={entry}
-              view={view}
-              focused={entry.correlationId === focusLog}
-            />
-          ))
+          entries.map((entry) => <LogRow key={entry.correlationId} entry={entry} view={view} />)
         )}
       </div>
     </div>

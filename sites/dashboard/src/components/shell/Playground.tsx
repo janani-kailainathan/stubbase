@@ -1,6 +1,6 @@
 import { Suspense, lazy, useId, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Lock, ScrollText, Send, X } from 'lucide-react'
+import { ChevronDown, Lock, Send, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { CORE_PUBLIC_URL, runRequest } from '@/lib/api'
 import { authEnabled, type Endpoint } from '@/lib/endpoints'
@@ -578,7 +578,6 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   const setPlaygroundInputs = useWorkspaceStore((s) => s.setPlaygroundInputs)
   const setTestToken = useWorkspaceStore((s) => s.setTestToken)
   const runPlayground = useWorkspaceStore((s) => s.runPlayground)
-  const openLog = useWorkspaceStore((s) => s.openLog)
   const setSplit = useWorkspaceStore((s) => s.setPlaygroundSplit)
   const setCollapsed = useWorkspaceStore((s) => s.setPlaygroundCollapsed)
 
@@ -852,17 +851,6 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
               <span className="text-subtle">{result.latencyMs} ms</span>
               {result.status !== 0 && (
                 <span className="text-subtle">{formatBytes(new Blob([result.body]).size)}</span>
-              )}
-              {result.correlationId && (
-                <button
-                  type="button"
-                  onClick={() => openLog(result.correlationId!)}
-                  title={`Correlation id ${result.correlationId}`}
-                  className="flex cursor-pointer items-center gap-1 text-subtle transition-colors hover:text-primary-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  <ScrollText className="h-3.5 w-3.5" />
-                  Open in logs
-                </button>
               )}
             </div>
           )}

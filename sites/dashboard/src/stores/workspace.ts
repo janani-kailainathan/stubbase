@@ -82,8 +82,6 @@ interface WorkspaceState {
    * drops it on logout so it cannot outlive the account that obtained it.
    */
   testTokens: Record<string, string>
-  /** The log entry the playground's "Open in logs" jumped to. */
-  focusLog: string | null
   /**
    * The playground's layout — request pane height as a percentage, and whether
    * the response pane is folded away. A preference, not per-endpoint state, so
@@ -139,8 +137,6 @@ interface WorkspaceState {
   setTestToken: (tenantId: string, token: string) => void
   /** Record a playground request under `key` while `send` runs, and resolve with its result. */
   runPlayground: (key: string, send: () => Promise<RunResult>) => Promise<RunResult>
-  /** Switch to the Logs pane with this request's entry highlighted. */
-  openLog: (correlationId: string) => void
   setPlaygroundSplit: (split: number) => void
   setPlaygroundCollapsed: (collapsed: boolean) => void
 }
@@ -159,7 +155,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   playgroundInputs: {},
   playgroundRuns: {},
   testTokens: {},
-  focusLog: null,
   playgroundSplit: 55,
   playgroundCollapsed: false,
   chat: {},
@@ -168,7 +163,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   // Dismissing is scoped to one visit of one project, so leaving clears it.
   leaveProject: () =>
-    set({ selection: null, editing: false, stagedDismissed: false, focusLog: null }),
+    set({ selection: null, editing: false, stagedDismissed: false }),
 
   dismissStaged: () => set({ stagedDismissed: true }),
 
@@ -184,7 +179,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       playgroundInputs: {},
       playgroundRuns: {},
       testTokens: {},
-      focusLog: null,
       chat: {}, // prompts and generated data must not leak between users
       chatInput: '',
       stagedDismissed: false,
@@ -247,9 +241,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((s) => ({ playgroundRuns: { ...s.playgroundRuns, [key]: { status: 'done', result } } }))
     return result
   },
-
-  openLog: (correlationId) =>
-    set({ paneMode: 'logs', logView: 'pretty', focusLog: correlationId }),
 
   setPlaygroundSplit: (split) => set({ playgroundSplit: split }),
 
