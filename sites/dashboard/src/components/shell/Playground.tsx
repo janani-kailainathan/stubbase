@@ -26,6 +26,7 @@ import {
 } from '@/lib/playground'
 import { useLiveTenantConfig } from '@/hooks/config'
 import { useLiveResource } from '@/hooks/resources'
+import { useCountSentRequest } from '@/hooks/usage'
 import { isMac } from '@/hooks/save-shortcut'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { CellText, KeyValueRow, KeyValueTable, PanelHeading, RequestUrlBar } from './request-blocks'
@@ -555,6 +556,7 @@ function ResponseEmpty({ sending }: { sending: boolean }) {
  */
 export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
   const queryClient = useQueryClient()
+  const countSent = useCountSentRequest()
   const root = useRef<HTMLDivElement>(null)
   const key = playgroundKey(tenantId, endpoint)
   const isCrud = endpoint.kind === 'crud'
@@ -608,6 +610,8 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
         body: withBody ? inputs.body : undefined,
       }),
     )
+    // Onto the Usage panel now, rather than after the core flushes and the panel polls.
+    countSent(tenantId, result)
     const issued = tokenFrom(endpoint, result.status, result.body)
     if (issued) setTestToken(tenantId, issued)
     // A write through the public API changes the deployed file, which is also

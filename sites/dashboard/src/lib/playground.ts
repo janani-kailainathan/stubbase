@@ -51,6 +51,31 @@ export const acceptsQuery = (endpoint: Endpoint) =>
   endpoint.kind === 'crud' && endpoint.method === 'GET'
 
 /**
+ * Whether the core counted this response toward the project's usage — what
+ * the Usage panel may add the moment a Send returns (hooks/usage.ts).
+ *
+ * Mirrors the core's metering. Every answer counts, errors included, except no
+ * answer at all and the two refusals the platform sends in the owner's stead:
+ * a stopped project's 503 and a spent allowance's 429, which the core logs but
+ * does not meter. They are recognised by the JSON those refusals carry rather
+ * than by status, because a QA project can return a 503 or 429 on request
+ * (x-stubbase-status, or simulated flakiness) — and that traffic is counted.
+ * tests/playground.test.ts holds this against a real core's responses.
+ */
+export function countsAsUsage(result: { status: number; body: string }): boolean {
+  if (result.status === 0) return false
+  if (result.status !== 503 && result.status !== 429) return true
+  try {
+    const body = JSON.parse(result.body) as Record<string, unknown> | null
+    if (result.status === 503 && typeof body?.projectStatus === 'string') return false
+    if (result.status === 429 && body?.error === 'monthly request quota exceeded') return false
+  } catch {
+    // Not the platform's JSON: a simulated status, which the project did serve.
+  }
+  return true
+}
+
+/**
  * Why this id cannot be sent, or null when it can.
  *
  * Percent-encoding keeps a typed `/` inside the one path segment, but it cannot

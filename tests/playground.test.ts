@@ -27,6 +27,7 @@ import {
   CHAOS_HEADERS,
   DIRECTIONS,
   SORT_KEYWORDS,
+  countsAsUsage,
   idProblem,
   normalizeParamValue,
   paramValueKind,
@@ -35,7 +36,9 @@ import {
   requestQuery,
   tokenFrom,
 } from "../sites/dashboard/src/lib/playground.ts";
-import { seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
+import type { UsageResponse } from "../sites/dashboard/src/lib/api.ts";
+import { FLOOR_TTL_MS, applyFloor, raiseFloor } from "../sites/dashboard/src/lib/usage-floor.ts";
+import { adminAuth, seedTenant, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
 
 const TENANT = "playground";
 
@@ -258,5 +261,141 @@ describe("token autofill", () => {
     expect(tokenFrom(login, 401, JSON.stringify({ token: "jwt" }))).toBeNull();
     expect(tokenFrom(login, 200, "not json")).toBeNull();
     expect(tokenFrom(find("POST", "/users"), 201, ok)).toBeNull();
+  });
+});
+
+/**
+ * A Send is added to the Usage panel the moment it returns. What it may add has
+ * to match what the core actually meters, and what it shows must not drop back
+ * when a poll lands before the core's flush — lib/usage-floor.ts.
+ */
+describe("the usage panel's instant count", () => {
+  test("counts what the core meters, judged by a real core's responses", async () => {
+    await seedTenant(core, "counted", { posts: [{ id: "p1" }] });
+    await seedTenant(core, "stopped-proj", { posts: [{ id: "p1" }], config: { PROJECT_STATUS: "stopped" } });
+    await seedTenant(core, "qa-proj", { posts: [{ id: "p1" }], config: { QA_MODE: "true" } });
+    const hit = async (path: string, headers: Record<string, string> = {}) => {
+      const res = await fetch(`${core.base}${path}`, { headers });
+      return { status: res.status, body: await res.text() };
+    };
+
+    const served = await hit("/counted/posts");
+    expect(served.status).toBe(200);
+    expect(countsAsUsage(served)).toBe(true);
+
+    // An error the project answered is traffic like any other.
+    const missing = await hit("/counted/posts/nope");
+    expect(missing.status).toBe(404);
+    expect(countsAsUsage(missing)).toBe(true);
+
+    // The platform refusing on the owner's behalf is not.
+    const stopped = await hit("/stopped-proj/posts");
+    expect(stopped.status).toBe(503);
+    expect(countsAsUsage(stopped)).toBe(false);
+
+    // A status a QA project was asked to return is served traffic, whatever it is.
+    for (const status of [503, 429]) {
+      const simulated = await hit("/qa-proj/posts", { "x-stubbase-status": String(status) });
+      expect(simulated.status).toBe(status);
+      expect(countsAsUsage(simulated)).toBe(true);
+    }
+    expect(countsAsUsage({ status: 503, body: JSON.stringify({ error: "Simulated Flakiness" }) })).toBe(true);
+
+    // No response at all never reached the core.
+    expect(countsAsUsage({ status: 0, body: "Failed to fetch" })).toBe(false);
+  }, 30_000);
+
+  test("a spent allowance's 429 from a real core is not counted", async () => {
+    let flushes = 0;
+    const sink = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { rows?: { tenantId: string }[] };
+        flushes += 1;
+        return Response.json({
+          ok: true,
+          quotas: (body.rows ?? []).map((r) => ({ tenantId: r.tenantId, limit: 1, used: 1 })),
+        });
+      },
+    });
+    let metered: Service | undefined;
+    try {
+      metered = await startCore(ROOT, "core-quota", {
+        USAGE_SINK_URL: `http://127.0.0.1:${sink.port}/_internal/usage`,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seedTenant(metered, "capped", { posts: [{ id: "p1" }] });
+      await fetch(`${metered.base}/capped/posts`);
+      await fetch(`${metered.base}/capped/_admin/flush`, { method: "POST", headers: adminAuth });
+      await waitFor(() => flushes > 0);
+
+      const res = await fetch(`${metered.base}/capped/posts`);
+      const refused = { status: res.status, body: await res.text() };
+      expect(refused.status).toBe(429);
+      expect(countsAsUsage(refused)).toBe(false);
+    } finally {
+      sink.stop(true);
+      if (metered) await stopServices([metered]);
+    }
+  }, 30_000);
+
+  const NOW = Date.parse("2026-09-12T10:00:00Z");
+  const usage = (over: Partial<UsageResponse> = {}): UsageResponse => ({
+    tenantId: "t",
+    month: { requests: 10, bytes: 1_000 },
+    daily: [{ date: "2026-09-12", request_count: 4, bandwidth_bytes: 400 }],
+    limit: 50_000,
+    account: { requests: 30 },
+    ...over,
+  });
+
+  test("a Send shows at once: a request, its bytes, today's bar and the account's total", () => {
+    const shown = applyFloor(usage(), raiseFloor(usage(), 1_920, NOW), NOW);
+    expect(shown.month).toEqual({ requests: 11, bytes: 2_920 });
+    expect(shown.account).toEqual({ requests: 31 });
+    expect(shown.daily[0]).toEqual({ date: "2026-09-12", request_count: 5, bandwidth_bytes: 2_320 });
+  });
+
+  test("a poll that lands before the core's flush cannot take the Send back", () => {
+    const floor = raiseFloor(usage(), 1_920, NOW);
+    // Thirty seconds on, the server still reports the figures from before the Send.
+    const polled = applyFloor(usage(), floor, NOW + 30_000);
+    expect(polled.month).toEqual({ requests: 11, bytes: 2_920 });
+    expect(polled.account.requests).toBe(31);
+  });
+
+  test("once the server has counted it, the server's figures win — other traffic included", () => {
+    const floor = raiseFloor(usage(), 1_920, NOW);
+    const caughtUp = usage({
+      month: { requests: 15, bytes: 9_000 },
+      account: { requests: 40 },
+      daily: [{ date: "2026-09-12", request_count: 9, bandwidth_bytes: 8_400 }],
+    });
+    expect(applyFloor(caughtUp, floor, NOW + 90_000)).toEqual(caughtUp);
+  });
+
+  test("Sends stack, each raised from what is already on screen", () => {
+    let shown = usage();
+    for (let i = 0; i < 3; i++) shown = applyFloor(usage(), raiseFloor(shown, 100, NOW), NOW);
+    expect(shown.month).toEqual({ requests: 13, bytes: 1_300 });
+    expect(shown.account.requests).toBe(33);
+  });
+
+  test("a floor lapses, so a Send the core did not count can only overstate briefly", () => {
+    const floor = raiseFloor(usage(), 1_920, NOW);
+    expect(applyFloor(usage(), floor, NOW + FLOOR_TTL_MS)).toEqual(usage());
+  });
+
+  test("a floor from last month never props up this month's figures", () => {
+    const floor = raiseFloor(usage({ daily: [] }), 100, Date.parse("2026-09-30T23:59:30Z"));
+    const fresh = usage({ month: { requests: 0, bytes: 0 }, account: { requests: 0 }, daily: [] });
+    expect(applyFloor(fresh, floor, Date.parse("2026-10-01T00:00:30Z"))).toEqual(fresh);
+  });
+
+  test("the first Send of a day adds that day to the daily figures, newest first", () => {
+    const yesterday = { date: "2026-09-11", request_count: 7, bandwidth_bytes: 70 };
+    const before = usage({ daily: [yesterday] });
+    const shown = applyFloor(before, raiseFloor(before, 50, NOW), NOW);
+    expect(shown.daily).toEqual([{ date: "2026-09-12", request_count: 1, bandwidth_bytes: 50 }, yesterday]);
   });
 });
