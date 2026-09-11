@@ -59,6 +59,7 @@ interface WorkspaceState {
    * The endpoint pane's Docs / Live tab. A preference, not part
    * of a selection: picking another endpoint keeps it, so someone working in
    * Live stays in Live while they walk the rail. Files and .env never read it.
+   * Starts on Live: clicking an endpoint is usually wanting to call it.
    */
   activeTab: EditorTab
   /** Lives here beside activeTab so the Logs pane header can own its tabs. */
@@ -148,7 +149,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selection: null,
   editing: false,
   draft: '',
-  activeTab: 'docs',
+  activeTab: 'live',
   // Pretty is the only Logs view offered for now (LOG_TABS in EditorPane), so it
   // must also be where the pane opens — a hidden view could not be left.
   logView: 'pretty',
