@@ -323,10 +323,12 @@ function ModeToggle() {
     { mode: 'editor', label: 'Editor' },
     { mode: 'ai', label: 'AI chat' },
     { mode: 'logs', label: 'Logs', needsLive: true },
-    { mode: 'diagnostics', label: 'Diagnostics', needsLive: true },
+    // Hidden for now, not removed: the pane still renders, so restoring the
+    // button is uncommenting this line.
+    // { mode: 'diagnostics', label: 'Diagnostics', needsLive: true },
     // Not needsLive: you manage keys and set up an agent regardless of whether
-    // the API is currently serving traffic.
-    { mode: 'keys', label: 'API keys' },
+    // the API is currently serving traffic. Labelled for what the keys are for.
+    { mode: 'keys', label: 'MCP' },
   ]
 
   return (
