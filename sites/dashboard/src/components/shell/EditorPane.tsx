@@ -12,6 +12,7 @@ import { useResource, useSaveResource } from '@/hooks/resources'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
 import { useWorkspaceStore, type EditorTab, type LogView, type Method } from '@/stores/workspace'
 import { PaneTab, PaneTabs } from './pane-tabs'
+import { CellText, KeyValueRow, KeyValueTable, PanelHeading, RequestUrlBar } from './request-blocks'
 import { EnvActions, EnvView } from './EnvEditor'
 import { AiChat, AiComposer } from './AiChat'
 import { LiveLogViewer } from './LiveLogViewer'
@@ -209,77 +210,132 @@ const QUERY_PARAM_DOCS: { name: string; values: string[]; note: string }[] = [
   { name: '<field>[gte]', values: ['100'], note: 'also gt / lt / lte — numbers, and dates in time order' },
 ]
 
-/** The Docs tab: what a request to this endpoint looks like — URL, headers, params, body. */
+/** An id from the resource's own records, so the Path Variables example is a real one. */
+function sampleId(data: unknown[] | undefined): string {
+  const record = data?.find(
+    (r): r is { id: unknown } => typeof r === 'object' && r !== null && 'id' in r,
+  )
+  return record ? String(record.id) : '1'
+}
+
+/**
+ * The Docs tab: what a request to this endpoint looks like — URL, path
+ * variables, query params, headers and body — built from the same widgets as
+ * Live (request-blocks), so the two tabs read as one pane. Sections run in the
+ * order Live's tabs do, and a route gets only the sections Live would offer it.
+ * Every table carries the Description column, so the columns line up down the
+ * page.
+ */
 function DocsView({ endpoint, tenantId }: { endpoint: Endpoint; tenantId: string }) {
   // No resource file behind an auth route — nothing to read, so don't ask.
   const { data } = useResource(tenantId, endpoint.kind === 'crud' ? endpoint.resource : undefined)
   const hasBody = endpoint.method === 'POST' || endpoint.method === 'PUT'
   const url = `${CORE_PUBLIC_URL}/${tenantId}${endpoint.path}`
+  const [pathBefore, pathAfter] = endpoint.needsId
+    ? endpoint.path.split('{id}')
+    : [endpoint.path, '']
   // A single-record read still expands relations; filtering, sorting and
   // paging only mean something on a list.
   const queryParams = endpoint.needsId
     ? QUERY_PARAM_DOCS.filter((param) => param.name === '_expand')
     : QUERY_PARAM_DOCS
+  const note = (text: string) => (
+    <CellText wrap tone="text-muted-foreground">
+      {text}
+    </CellText>
+  )
 
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
-      <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded border border-border bg-code-bg px-1.5 py-0.5 font-mono text-[10px] text-primary-accent">
-          {endpoint.method}
-        </span>
-        <span className="truncate font-mono text-sm text-emphasis">{url}</span>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 px-4 pt-3">
+        <RequestUrlBar method={endpoint.method} url={url}>
+          <span className="text-body">
+            {CORE_PUBLIC_URL}/{tenantId}
+          </span>
+          {pathBefore}
+          {endpoint.needsId && <span className="text-faint">{'{id}'}</span>}
+          {pathAfter}
+        </RequestUrlBar>
       </div>
-      <div>
-        <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">
-          Headers
-        </div>
-        {hasBody ? (
-          <div className="flex gap-2 font-mono text-xs">
-            <span className="text-subtle">Content-Type:</span>
-            <span className="text-syntax-str">application/json</span>
-          </div>
-        ) : (
-          <span className="font-mono text-xs text-faint">None required</span>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto px-4 py-4">
+        {endpoint.needsId && (
+          <section>
+            <PanelHeading>Path Variables</PanelHeading>
+            <KeyValueTable label="Path Variables" edges={false} description>
+              <KeyValueRow
+                edges={false}
+                name={<CellText>id</CellText>}
+                value={<CellText tone="text-syntax-num">{sampleId(data)}</CellText>}
+                description={note('the id of the record to act on')}
+              />
+            </KeyValueTable>
+          </section>
         )}
-      </div>
-      {endpoint.method === 'GET' && endpoint.kind === 'crud' && (
-        <div>
-          <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">
-            Query params
-          </div>
-          <div className="space-y-1">
-            {queryParams.map(({ name, values, note }) => (
-              <div key={name} className="flex gap-2 font-mono text-xs">
-                <span className="text-subtle">{name}:</span>
-                <span>
-                  {values.map((value, i) => (
-                    <Fragment key={value}>
-                      {i > 0 && <span className="text-faint"> / </span>}
-                      <span className={name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'}>
-                        {value}
-                      </span>
-                    </Fragment>
-                  ))}
-                </span>
-                <span className="text-faint">— {note}</span>
-              </div>
-            ))}
+
+        {endpoint.method === 'GET' && endpoint.kind === 'crud' && (
+          <section>
+            <PanelHeading>Query Params</PanelHeading>
+            <KeyValueTable label="Query Params" edges={false} description>
+              {queryParams.map((param) => (
+                <KeyValueRow
+                  key={param.name}
+                  edges={false}
+                  name={<CellText title={param.name}>{param.name}</CellText>}
+                  value={
+                    <CellText>
+                      {param.values.map((value, i) => (
+                        <Fragment key={value}>
+                          {i > 0 && <span className="text-faint"> / </span>}
+                          <span
+                            className={
+                              param.name.startsWith('_') ? 'text-syntax-num' : 'text-syntax-str'
+                            }
+                          >
+                            {value}
+                          </span>
+                        </Fragment>
+                      ))}
+                    </CellText>
+                  }
+                  description={note(param.note)}
+                />
+              ))}
+            </KeyValueTable>
             {!endpoint.needsId && (
-              <div className="pt-1 font-mono text-xs text-faint">
+              <p className="mt-2 font-mono text-xs text-faint">
                 Total row count is returned in the X-Total-Count header.
-              </div>
+              </p>
             )}
-          </div>
-        </div>
-      )}
-      <div>
-        <div className="mb-2 text-xs font-semibold tracking-wide text-subtle uppercase">Body</div>
-        {hasBody ? (
-          <div className="rounded-md border border-border bg-code-bg p-3">
-            <JsonHighlight raw={requestBody(endpoint, data)} />
-          </div>
-        ) : (
-          <span className="font-mono text-xs text-faint">No body</span>
+          </section>
+        )}
+
+        {hasBody && (
+          <section>
+            <PanelHeading>Headers</PanelHeading>
+            <KeyValueTable label="Headers" edges={false} description>
+              <KeyValueRow
+                edges={false}
+                name={<CellText>content-type</CellText>}
+                value={<CellText tone="text-syntax-str">application/json</CellText>}
+                description={note('required — the body is JSON')}
+              />
+            </KeyValueTable>
+          </section>
+        )}
+
+        {hasBody && (
+          <section>
+            <PanelHeading>Body</PanelHeading>
+            <div className="overflow-hidden rounded border border-border">
+              <div className="flex h-8 items-center border-b border-border bg-panel px-2.5 font-mono text-[11px] text-subtle">
+                raw · JSON
+              </div>
+              <div className="bg-code-bg p-3">
+                <JsonHighlight raw={requestBody(endpoint, data)} />
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </div>

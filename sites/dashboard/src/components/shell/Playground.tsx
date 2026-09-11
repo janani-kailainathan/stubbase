@@ -1,7 +1,6 @@
 import { Suspense, lazy, useId, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { ChevronDown, Copy, Lock, ScrollText, Send, X } from 'lucide-react'
+import { ChevronDown, Lock, ScrollText, Send, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { CORE_PUBLIC_URL, runRequest } from '@/lib/api'
 import { authEnabled, type Endpoint } from '@/lib/endpoints'
@@ -28,7 +27,8 @@ import {
 import { useLiveTenantConfig } from '@/hooks/config'
 import { useLiveResource } from '@/hooks/resources'
 import { isMac } from '@/hooks/save-shortcut'
-import { useWorkspaceStore, type Method } from '@/stores/workspace'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { CellText, KeyValueRow, KeyValueTable, PanelHeading, RequestUrlBar } from './request-blocks'
 
 /** CodeMirror is ~150kB gz — the same lazy chunk EditorPane loads for file editing. */
 const JsonEditor = lazy(() => import('./JsonEditor'))
@@ -37,14 +37,6 @@ const JsonEditor = lazy(() => import('./JsonEditor'))
 const LIST_PARAMS = ['_page', '_limit', '_offset', '_sort', '_direction', '_expand']
 
 const SEND_HINT = isMac ? '⌘↵' : 'Ctrl+Enter'
-
-/** Method colour, matching the APIs rail's badges so a route reads the same in both places. */
-const METHOD_INK: Record<Method, string> = {
-  GET: 'text-primary-ink',
-  POST: 'text-info-ink',
-  PUT: 'text-warning-emphasis',
-  DELETE: 'text-danger-ink',
-}
 
 /** Reason phrases for the statuses the core (and its QA headers) actually produce. */
 const STATUS_TEXT: Record<number, string> = {
@@ -161,98 +153,8 @@ function TabStrip<T extends string>({
   )
 }
 
-function PanelHeading({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-2 text-xs font-semibold text-body">{children}</h3>
-}
-
 function PanelNote({ children }: { children: React.ReactNode }) {
   return <p className="py-8 text-center font-mono text-xs text-muted-foreground">{children}</p>
-}
-
-/**
- * Key / Value grid with a narrow state column on the left (checkbox or lock)
- * and a narrow action column on the right, like every API client's params and
- * headers tables.
- */
-function KeyValueTable({
-  label,
-  edges = true,
-  children,
-}: {
-  label: string
-  /** The state and action columns. A read-only table has neither, so it drops them. */
-  edges?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div className="overflow-hidden rounded border border-border">
-      <table aria-label={label} className="w-full table-fixed border-collapse">
-        <colgroup>
-          {edges && <col className="w-9" />}
-          <col className="w-[36%]" />
-          <col />
-          {edges && <col className="w-9" />}
-        </colgroup>
-        <thead>
-          <tr className="border-b border-border bg-panel text-left">
-            {edges && (
-              <th scope="col">
-                <span className="sr-only">State</span>
-              </th>
-            )}
-            <th
-              scope="col"
-              className={`px-2.5 py-2 text-xs font-semibold text-subtle ${edges ? 'border-l border-border' : ''}`}
-            >
-              Key
-            </th>
-            <th scope="col" className="border-l border-border px-2.5 py-2 text-xs font-semibold text-subtle">
-              Value
-            </th>
-            {edges && (
-              <th scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
-  )
-}
-
-function KeyValueRow({
-  lead,
-  name,
-  value,
-  trail,
-  edges = true,
-}: {
-  lead?: React.ReactNode
-  name: React.ReactNode
-  value: React.ReactNode
-  trail?: React.ReactNode
-  /** Must match the table's `edges`. */
-  edges?: boolean
-}) {
-  return (
-    <tr className="group border-b border-border last:border-b-0">
-      {edges && <td className="text-center align-middle">{lead}</td>}
-      <td className={`p-0 align-middle ${edges ? 'border-l border-border' : ''}`}>{name}</td>
-      <td className="border-l border-border p-0 align-middle">{value}</td>
-      {edges && <td className="text-center align-middle">{trail}</td>}
-    </tr>
-  )
-}
-
-/** A cell that shows a value rather than editing it. */
-function CellText({ children, tone = 'text-body', title }: { children: React.ReactNode; tone?: string; title?: string }) {
-  return (
-    <div title={title} className={`flex h-8 items-center truncate px-2.5 font-mono text-xs ${tone}`}>
-      <span className="truncate">{children}</span>
-    </div>
-  )
 }
 
 /** The lock on a row this request sets itself, which the user cannot change here. */
@@ -727,12 +629,6 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     void send()
   }
 
-  const copyUrl = () =>
-    navigator.clipboard.writeText(url).then(
-      () => toast.success('URL copied'),
-      () => toast.error('Could not copy the URL'),
-    )
-
   const onResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
     const box = root.current?.getBoundingClientRect()
     if (!box) return
@@ -830,42 +726,20 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
       >
         <div className="shrink-0 px-4 pt-3">
           <div className="flex items-stretch gap-2">
-            <div className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded border border-border bg-panel">
-              <span
-                className={`flex w-20 shrink-0 items-center border-r border-border px-3 font-mono text-xs font-semibold ${METHOD_INK[endpoint.method]}`}
-              >
-                {endpoint.method}
+            <RequestUrlBar method={endpoint.method} url={url}>
+              <span className="text-body">
+                {CORE_PUBLIC_URL}/{tenantId}
               </span>
-              <div
-                title={url}
-                aria-label="Request URL"
-                className="flex min-w-0 flex-1 items-center truncate px-3 font-mono text-[13px] text-emphasis select-text"
-              >
-                <span className="truncate">
-                  <span className="text-body">
-                    {CORE_PUBLIC_URL}/{tenantId}
-                  </span>
-                  {pathBefore}
-                  {endpoint.needsId &&
-                    (inputs.id === '' ? (
-                      <span className="text-faint">{'{id}'}</span>
-                    ) : (
-                      <span className="text-syntax-num">{encodeURIComponent(inputs.id)}</span>
-                    ))}
-                  {pathAfter}
-                  {query && <span className="text-subtle">{query}</span>}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={copyUrl}
-                aria-label="Copy URL"
-                title="Copy URL"
-                className="flex w-9 shrink-0 cursor-pointer items-center justify-center text-subtle transition-colors hover:text-emphasis focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-            </div>
+              {pathBefore}
+              {endpoint.needsId &&
+                (inputs.id === '' ? (
+                  <span className="text-faint">{'{id}'}</span>
+                ) : (
+                  <span className="text-syntax-num">{encodeURIComponent(inputs.id)}</span>
+                ))}
+              {pathAfter}
+              {query && <span className="text-subtle">{query}</span>}
+            </RequestUrlBar>
             <button
               type="button"
               onClick={() => void send()}
