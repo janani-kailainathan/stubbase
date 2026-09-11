@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { AlignLeft, ChevronDown, Database, FilePlus, Folder, FolderPlus } from 'lucide-react'
+import { AlignLeft, ChevronDown, Database, FilePlus, Folder } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
 import { useCurrentProject } from '@/hooks/projects'
@@ -95,18 +95,6 @@ export function FilesSidebar() {
         <Folder className="h-3.5 w-3.5 text-primary-accent" />
         <span className="flex-1 text-xs font-semibold tracking-wide text-subtle uppercase">
           Files
-        </span>
-        {/* Not implemented: tenant storage is flat JSON files, with no folders
-            to create. The title sits on the wrapper because a disabled button
-            swallows pointer events, so its own tooltip would never show. */}
-        <span title="Folders aren't supported — resources are flat JSON files">
-          <button
-            disabled
-            aria-label="New folder (unavailable)"
-            className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded-md text-faintest"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </button>
         </span>
         <button
           title="New resource"
