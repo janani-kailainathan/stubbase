@@ -17,12 +17,18 @@ function formatBytes(n: number): string {
   return `${n} B`
 }
 
-/** Last DAYS calendar days, oldest first, with gaps filled as zero. */
+/**
+ * The last DAYS complete UTC days — ending yesterday — oldest first, with gaps
+ * filled as zero. Today is left out on purpose: it is still being counted, so
+ * its bar would sit low beside whole days, move the peak as the day goes, and
+ * trail the tiles above by a flush. The tiles carry today; the chart shows
+ * days that are over.
+ */
 function toSeries(daily: UsageDay[]): { date: string; requests: number; bytes: number }[] {
   const byDate = new Map(daily.map((d) => [d.date, d]))
   const out: { date: string; requests: number; bytes: number }[] = []
   const today = new Date()
-  for (let i = DAYS - 1; i >= 0; i--) {
+  for (let i = DAYS; i >= 1; i--) {
     const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i))
     const key = d.toISOString().slice(0, 10)
     const row = byDate.get(key)
@@ -43,9 +49,9 @@ function StatTile({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Requests per day. One series, so one hue and no legend — the heading names
- * it. Values live in the hover tooltip rather than on every bar; only the
- * range ends are labeled.
+ * Requests per complete day, ending yesterday (see toSeries). One series, so
+ * one hue and no legend — the heading names it. Values live in the hover
+ * tooltip rather than on every bar; only the range ends are labeled.
  */
 function RequestsChart({ series }: { series: { date: string; requests: number }[] }) {
   const peak = Math.max(...series.map((d) => d.requests), 1)
@@ -72,7 +78,6 @@ function RequestsChart({ series }: { series: { date: string; requests: number }[
       </div>
       <div className="mt-1 flex justify-between font-mono text-[10px] text-faint">
         <span>{shortDay(series[0].date)}</span>
-        <span>peak {formatCount(peak)}/day</span>
         <span>{shortDay(series[series.length - 1].date)}</span>
       </div>
     </div>
@@ -124,6 +129,9 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
   const { data, isLoading, error } = useUsage(tenantId)
   const series = toSeries(data?.daily ?? [])
   const hasTraffic = series.some((d) => d.requests > 0)
+  // Traffic that so far is only today's has no complete day to draw yet.
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const trafficToday = (data?.daily ?? []).some((d) => d.date === todayKey && d.request_count > 0)
 
   return (
     <div className="shrink-0 border-t border-border px-4 py-3">
@@ -151,7 +159,9 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
             <RequestsChart series={series} />
           ) : (
             <p className="font-mono text-[10px] text-faint">
-              No traffic yet — call your API to see it here.
+              {trafficToday
+                ? "Today's traffic joins the chart tomorrow."
+                : 'No traffic yet — call your API to see it here.'}
             </p>
           )}
         </div>
