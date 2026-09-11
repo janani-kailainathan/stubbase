@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ArrowDown, CheckCircle2, Radio, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowDown, CheckCircle2, ChevronDown, Radio, Trash2 } from 'lucide-react'
 import { useLiveLogs } from '@/hooks/logs'
 import { useWorkspaceStore, type LogView } from '@/stores/workspace'
 import type { LogEntry } from '@/lib/api'
@@ -33,7 +33,7 @@ function PrettyEntry({ entry }: { entry: LogEntry }) {
     [entry],
   )
   return (
-    <div className="mt-1.5 rounded-md border border-border bg-code-bg p-2.5 text-muted-foreground">
+    <div className="rounded-md border border-border bg-code-bg p-2.5 text-muted-foreground">
       <JsonTree data={data} size="sm" controls={false} />
     </div>
   )
@@ -46,16 +46,30 @@ const statusColor = (status: number) =>
       ? 'text-warning-ink'
       : 'text-primary-ink'
 
-/** One request, rendered per the active view. */
+/** One request: a one-line summary that expands to the active view on click. */
 function LogRow({ entry, view, focused }: { entry: LogEntry; view: LogView; focused: boolean }) {
   const time = entry.ts.slice(11, 23)
+  // Collapsed by default: a printed entry runs to dozens of lines, so a log of
+  // expanded ones is mostly a single request. The entry "Open in logs" asked
+  // for starts open instead — it was asked for precisely to be read. `null`
+  // means "not toggled here yet", so that default applies until a click.
+  const [toggled, setToggled] = useState<boolean | null>(null)
+  const open = toggled ?? focused
 
   return (
     <div
       data-correlation-id={entry.correlationId}
-      className={`border-b border-border-soft px-3 py-2 ${focused ? 'bg-primary-soft' : ''}`}
+      className={`border-b border-border-soft ${focused ? 'bg-primary-soft' : ''}`}
     >
-      <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setToggled(!open)}
+        aria-expanded={open}
+        className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left ${focused ? '' : 'hover:bg-card'}`}
+      >
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 text-faint transition-transform ${open ? '' : '-rotate-90'}`}
+        />
         <span className="shrink-0 font-mono text-[10px] text-faint">{time}</span>
         <span className="shrink-0 rounded border border-border bg-code-bg px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
           {entry.method}
@@ -75,54 +89,58 @@ function LogRow({ entry, view, focused }: { entry: LogEntry; view: LogView; focu
         <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">
           {entry.durationMs}ms
         </span>
-      </div>
+      </button>
 
-      {/* Long entries wrap rather than scroll: a per-row overflow container
-          would clip the payload and give every row its own scrollbar, which
-          makes the log unreadable exactly when it matters most. */}
-      {view === 'raw' && (
-        <pre className="mt-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-subtle">
-          {JSON.stringify(entry)}
-        </pre>
-      )}
+      {open && (
+        <div className="px-3 pb-2">
+          {/* Long entries wrap rather than scroll: a per-row overflow container
+              would clip the payload and give every row its own scrollbar, which
+              makes the log unreadable exactly when it matters most. */}
+          {view === 'raw' && (
+            <pre className="font-mono text-[11px] break-words whitespace-pre-wrap text-subtle">
+              {JSON.stringify(entry)}
+            </pre>
+          )}
 
-      {view === 'pretty' && <PrettyEntry entry={entry} />}
+          {view === 'pretty' && <PrettyEntry entry={entry} />}
 
-      {view === 'lifecycle' && (
-        <div className="mt-2 flex flex-col gap-0">
-          {entry.lifecycle.map((step, i) => (
-            <div key={`${step.stage}-${i}`} className="flex items-start gap-2">
-              <div className="flex flex-col items-center">
-                {step.ok ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
-                ) : (
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-danger-solid" />
-                )}
-                {i < entry.lifecycle.length - 1 && (
-                  <div className="my-0.5 h-3 w-px bg-muted" aria-hidden />
-                )}
-              </div>
-              <div className="pb-1">
-                <span
-                  className={`font-mono text-[11px] ${step.ok ? 'text-muted-foreground' : 'text-danger-ink'}`}
-                >
-                  {step.stage}
-                </span>
-                <span className="ml-2 font-mono text-[10px] text-faint">{step.ms}ms</span>
-                {step.note && (
-                  <span
-                    className={`ml-2 font-mono text-[10px] ${
-                      step.ok ? 'text-faint' : 'text-danger-ink/80'
-                    }`}
-                  >
-                    {step.note}
-                  </span>
-                )}
-              </div>
+          {view === 'lifecycle' && (
+            <div className="mt-0.5 flex flex-col gap-0">
+              {entry.lifecycle.map((step, i) => (
+                <div key={`${step.stage}-${i}`} className="flex items-start gap-2">
+                  <div className="flex flex-col items-center">
+                    {step.ok ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
+                    ) : (
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-danger-solid" />
+                    )}
+                    {i < entry.lifecycle.length - 1 && (
+                      <div className="my-0.5 h-3 w-px bg-muted" aria-hidden />
+                    )}
+                  </div>
+                  <div className="pb-1">
+                    <span
+                      className={`font-mono text-[11px] ${step.ok ? 'text-muted-foreground' : 'text-danger-ink'}`}
+                    >
+                      {step.stage}
+                    </span>
+                    <span className="ml-2 font-mono text-[10px] text-faint">{step.ms}ms</span>
+                    {step.note && (
+                      <span
+                        className={`ml-2 font-mono text-[10px] ${
+                          step.ok ? 'text-faint' : 'text-danger-ink/80'
+                        }`}
+                      >
+                        {step.note}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {entry.lifecycle.length === 0 && (
+                <p className="font-mono text-[11px] text-faint">No pipeline stages recorded.</p>
+              )}
             </div>
-          ))}
-          {entry.lifecycle.length === 0 && (
-            <p className="font-mono text-[11px] text-faint">No pipeline stages recorded.</p>
           )}
         </div>
       )}
