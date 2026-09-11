@@ -1,8 +1,43 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, ArrowDown, CheckCircle2, Radio, Trash2 } from 'lucide-react'
 import { useLiveLogs } from '@/hooks/logs'
 import { useWorkspaceStore, type LogView } from '@/stores/workspace'
 import type { LogEntry } from '@/lib/api'
+import { JsonTree } from '@/lib/json-tree'
+
+/**
+ * A body that is a JSON object or array becomes the value it encodes, so it
+ * folds like the rest of the entry instead of sitting there as one escaped
+ * string. A body cut short at the core's LOG_BODY_CHARS no longer parses, and
+ * stays the string it arrived as — as does a bare scalar, which gains nothing.
+ */
+function parseBody(body: string | null): unknown {
+  if (body === null) return null
+  try {
+    const value: unknown = JSON.parse(body)
+    return typeof value === 'object' && value !== null ? value : body
+  } catch {
+    return body
+  }
+}
+
+/** The Pretty view: the whole entry as a foldable tree, bodies included. */
+function PrettyEntry({ entry }: { entry: LogEntry }) {
+  // Every new entry re-renders every row; don't re-parse 50 bodies each time.
+  const data = useMemo(
+    () => ({
+      ...entry,
+      requestBody: parseBody(entry.requestBody),
+      responseBody: parseBody(entry.responseBody),
+    }),
+    [entry],
+  )
+  return (
+    <div className="mt-1.5 rounded-md border border-border bg-code-bg p-2.5 text-muted-foreground">
+      <JsonTree data={data} size="sm" controls={false} />
+    </div>
+  )
+}
 
 const statusColor = (status: number) =>
   status >= 500
@@ -51,11 +86,7 @@ function LogRow({ entry, view, focused }: { entry: LogEntry; view: LogView; focu
         </pre>
       )}
 
-      {view === 'pretty' && (
-        <pre className="mt-1.5 rounded-md border border-border bg-code-bg p-2.5 font-mono text-[11px] break-words whitespace-pre-wrap text-muted-foreground">
-          {JSON.stringify(entry, null, 2)}
-        </pre>
-      )}
+      {view === 'pretty' && <PrettyEntry entry={entry} />}
 
       {view === 'lifecycle' && (
         <div className="mt-2 flex flex-col gap-0">

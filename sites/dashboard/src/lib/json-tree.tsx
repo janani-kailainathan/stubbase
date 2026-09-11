@@ -122,7 +122,17 @@ function topLevelContainers(root: unknown): string[] {
  * line per record — so opening a record shows the whole of it rather than a
  * second layer of folds.
  */
-export function JsonTree({ data }: { data: unknown }) {
+export function JsonTree({
+  data,
+  size = 'md',
+  controls = true,
+}: {
+  data: unknown
+  /** `sm` sets the 11px of a log row; `md` the editor's 13px. */
+  size?: 'md' | 'sm'
+  /** Expand/collapse-all. Off where many trees stack, or every one carries its own toolbar. */
+  controls?: boolean
+}) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
 
   const toggle = useCallback(
@@ -140,8 +150,8 @@ export function JsonTree({ data }: { data: unknown }) {
   const topLevel = useMemo(() => topLevelContainers(data), [data])
 
   return (
-    <div className="font-mono text-[13px] leading-relaxed">
-      {topLevel.length > 0 && (
+    <div className={`font-mono leading-relaxed ${size === 'sm' ? 'text-[11px]' : 'text-[13px]'}`}>
+      {controls && topLevel.length > 0 && (
         <div className="sticky top-0 z-10 float-right flex gap-0.5 rounded border border-border bg-card p-0.5">
           <button
             onClick={() => setCollapsed(new Set())}
