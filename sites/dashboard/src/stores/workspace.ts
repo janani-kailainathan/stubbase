@@ -89,6 +89,13 @@ interface WorkspaceState {
    */
   playgroundSplit: number
   playgroundCollapsed: boolean
+  /**
+   * Whether the Files rail and the APIs rail are folded to a strip. Layout
+   * preferences like the playground's: they hold across files, routes and
+   * projects, and `reset` keeps them.
+   */
+  filesCollapsed: boolean
+  apisCollapsed: boolean
   /** AI chat history keyed by tenantId, so switching projects keeps context. */
   chat: Record<string, ChatEntry[]>
   /**
@@ -139,6 +146,8 @@ interface WorkspaceState {
   runPlayground: (key: string, send: () => Promise<RunResult>) => Promise<RunResult>
   setPlaygroundSplit: (split: number) => void
   setPlaygroundCollapsed: (collapsed: boolean) => void
+  setFilesCollapsed: (collapsed: boolean) => void
+  setApisCollapsed: (collapsed: boolean) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -157,6 +166,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   testTokens: {},
   playgroundSplit: 55,
   playgroundCollapsed: false,
+  filesCollapsed: false,
+  apisCollapsed: false,
   chat: {},
   chatInput: '',
   stagedDismissed: false,
@@ -245,4 +256,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setPlaygroundSplit: (split) => set({ playgroundSplit: split }),
 
   setPlaygroundCollapsed: (collapsed) => set({ playgroundCollapsed: collapsed }),
+
+  setFilesCollapsed: (collapsed) => set({ filesCollapsed: collapsed }),
+
+  setApisCollapsed: (collapsed) => set({ apisCollapsed: collapsed }),
 }))

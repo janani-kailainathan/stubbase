@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { AlignLeft, ChevronDown, Database, FilePlus, Folder } from 'lucide-react'
+import {
+  AlignLeft,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  FilePlus,
+  Folder,
+} from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
 import { useCurrentProject } from '@/hooks/projects'
@@ -85,9 +93,30 @@ export function FilesSidebar() {
   const dataExpanded = useWorkspaceStore((s) => s.dataExpanded)
   const select = useWorkspaceStore((s) => s.select)
   const toggleData = useWorkspaceStore((s) => s.toggleData)
+  const collapsed = useWorkspaceStore((s) => s.filesCollapsed)
+  const setCollapsed = useWorkspaceStore((s) => s.setFilesCollapsed)
   const [newOpen, setNewOpen] = useState(false)
 
   const resources = project?.resources ?? []
+
+  // Folded to a strip, like the playground's response pane: the editor takes
+  // the width, and the way back stays exactly where the rail was.
+  if (collapsed) {
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center gap-2 border-r border-border pt-4">
+        <button
+          title="Expand files"
+          aria-label="Expand files"
+          aria-expanded={false}
+          onClick={() => setCollapsed(false)}
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <Folder aria-hidden className="h-3.5 w-3.5 text-primary-accent" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 w-72 shrink-0 flex-col border-r border-border">
@@ -103,6 +132,16 @@ export function FilesSidebar() {
           className="flex h-6 w-6 items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading disabled:opacity-40"
         >
           <FilePlus className="h-3.5 w-3.5" />
+        </button>
+        {/* On the edge facing the editor, the side the rail folds toward. */}
+        <button
+          title="Collapse files"
+          aria-label="Collapse files"
+          aria-expanded
+          onClick={() => setCollapsed(true)}
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
         </button>
       </div>
       {project && (

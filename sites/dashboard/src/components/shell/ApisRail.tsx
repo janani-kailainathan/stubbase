@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Route } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Route } from 'lucide-react'
 import { useEndpointGroups } from '@/hooks/endpoints'
 import { useCurrentProject } from '@/hooks/projects'
 import type { Endpoint } from '@/lib/endpoints'
@@ -61,6 +61,9 @@ export function ApisRail() {
   const grouped = useEndpointGroups()
   // Collapsed groups, by resource name — everything starts expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // The whole rail folded to a strip — a layout preference, so it lives in the store.
+  const railCollapsed = useWorkspaceStore((s) => s.apisCollapsed)
+  const setRailCollapsed = useWorkspaceStore((s) => s.setApisCollapsed)
 
   const toggle = (resource: string) =>
     setCollapsed((prev) => {
@@ -70,13 +73,41 @@ export function ApisRail() {
       return next
     })
 
+  // Folded to a strip, mirroring the Files rail on the other side.
+  if (railCollapsed) {
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center gap-2 border-l border-border pt-4">
+        <button
+          title="Expand APIs"
+          aria-label="Expand APIs"
+          aria-expanded={false}
+          onClick={() => setRailCollapsed(false)}
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <Route aria-hidden className="h-3.5 w-3.5 text-primary-accent" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-border">
-      <div className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-2">
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-4 pb-2">
         {/* Route, not Database: this rail lists REST endpoints. The database
             icon belongs to the Files tree, which is where the data lives. */}
         <Route className="h-3.5 w-3.5 text-primary-accent" />
-        <span className="text-xs font-semibold tracking-wide text-subtle uppercase">APIs</span>
+        <span className="flex-1 text-xs font-semibold tracking-wide text-subtle uppercase">APIs</span>
+        {/* At the header's end, where the Files rail keeps its controls too. */}
+        <button
+          title="Collapse APIs"
+          aria-label="Collapse APIs"
+          aria-expanded
+          onClick={() => setRailCollapsed(true)}
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3">
