@@ -19,10 +19,10 @@
  *   bun test tests/dashboard-api           (this file and the auth suite)
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { ADMIN_SECRET, startApp, startCore, stopServices, type Service } from "./helpers.ts";
 import {
   ALLOWED_ORIGIN,
@@ -1280,6 +1280,174 @@ describe("plans and entitlements", () => {
     const body = await res.json();
     // One number per tenant — the core is never told what a plan is.
     expect(body.quotas).toEqual([{ tenantId, limit: 50_000, used: 12 }]);
+  }, 30_000);
+
+  /** Report usage the way the core does; returns the quotas it is answered with, by tenant. */
+  async function reportUsage(rows: { tenantId: string; requests: number }[], on: Service = app) {
+    const date = new Date().toISOString().slice(0, 10);
+    const res = await fetch(`${on.base}/_internal/usage`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
+      body: JSON.stringify({ rows: rows.map((r) => ({ ...r, date, bytes: r.requests })) }),
+    });
+    expect(res.status).toBe(200);
+    const { quotas } = (await res.json()) as {
+      quotas: { tenantId: string; limit: number; used: number }[];
+    };
+    return new Map(quotas.map((q) => [q.tenantId, q]));
+  }
+
+  test("an account's projects share one monthly allowance", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const a = await createProject(owner.token, "PoolA", { posts: [] });
+    const b = await createProject(owner.token, "PoolB", { posts: [] });
+
+    const quotas = await reportUsage([
+      { tenantId: a.tenantId, requests: 30 },
+      { tenantId: b.tenantId, requests: 12 },
+    ]);
+    // Not 30 and 12 against 50,000 each: 42 against the one allowance.
+    expect(quotas.get(a.tenantId)).toEqual({ tenantId: a.tenantId, limit: 50_000, used: 42 });
+    expect(quotas.get(b.tenantId)).toEqual({ tenantId: b.tenantId, limit: 50_000, used: 42 });
+  }, 30_000);
+
+  test("one project's report quotes the account's idle projects too, so they stop together", async () => {
+    const owner = await signup(); // Free: 5,000
+    const busy = await createProject(owner.token, "Busy", { posts: [] });
+    const idle = await createProject(owner.token, "Idle", { posts: [] });
+
+    const quotas = await reportUsage([{ tenantId: busy.tenantId, requests: 5_000 }]);
+    // The idle project sent nothing this minute, but the pool it draws on is spent.
+    expect(quotas.get(idle.tenantId)).toEqual({ tenantId: idle.tenantId, limit: 5_000, used: 5_000 });
+  }, 30_000);
+
+  test("another account's traffic never joins the pool", async () => {
+    const owner = await signup();
+    const stranger = await signup();
+    const mine = await createProject(owner.token, "Mine", { posts: [] });
+    const theirs = await createProject(stranger.token, "Theirs", { posts: [] });
+    const theirOther = await createProject(stranger.token, "TheirOther", { posts: [] });
+
+    const quotas = await reportUsage([
+      { tenantId: mine.tenantId, requests: 7 },
+      { tenantId: theirs.tenantId, requests: 3 },
+    ]);
+    expect(quotas.get(mine.tenantId)?.used).toBe(7);
+    expect(quotas.get(theirs.tenantId)?.used).toBe(3);
+    expect(quotas.get(theirOther.tenantId)?.used).toBe(3);
+  }, 30_000);
+
+  test("a deleted project's traffic still counts, so deleting and recreating buys nothing", async () => {
+    const owner = await signup(); // Free: 5,000
+    const kept = await createProject(owner.token, "Kept", { posts: [] });
+    const doomed = await createProject(owner.token, "Doomed", { posts: [] });
+    await reportUsage([{ tenantId: doomed.tenantId, requests: 4_000 }]);
+
+    // Projects are created stopped, so it can be deleted straight away.
+    const deleted = await fetch(`${app.base}/projects/${doomed.tenantId}`, {
+      method: "DELETE",
+      headers: as(owner.token),
+    });
+    expect(deleted.status).toBe(200);
+
+    const fresh = await createProject(owner.token, "Fresh", { posts: [] });
+    const quotas = await reportUsage([{ tenantId: fresh.tenantId, requests: 1 }]);
+    expect(quotas.get(fresh.tenantId)?.used).toBe(4_001);
+    expect(quotas.get(kept.tenantId)?.used).toBe(4_001);
+    expect(quotas.has(doomed.tenantId)).toBe(false);
+  }, 30_000);
+
+  test("platform tenant traffic is never charged to the account that owns its row", async () => {
+    // `public` normally belongs to no account, but nothing stops an operator
+    // giving it a project row. Its visitors must still not spend that
+    // account's allowance, or the marketing site could 429 a customer's API.
+    const owner = await signup();
+    const mine = await createProject(owner.token, "BesideDemo", { posts: [] });
+    const rw = new Database(join(app.dir, "app.sqlite"));
+    try {
+      rw.exec("PRAGMA busy_timeout = 5000;");
+      rw.query("INSERT INTO projects (tenant_id, user_id, name) VALUES ('public', ?, 'Demo')").run(owner.id);
+    } finally {
+      rw.close();
+    }
+    try {
+      const quotas = await reportUsage([
+        { tenantId: "public", requests: 9_000 },
+        { tenantId: mine.tenantId, requests: 1 },
+      ]);
+      expect(quotas.get(mine.tenantId)?.used).toBe(1);
+      expect(quotas.has("public")).toBe(false);
+    } finally {
+      const cleanup = new Database(join(app.dir, "app.sqlite"));
+      try {
+        cleanup.exec("PRAGMA busy_timeout = 5000;");
+        cleanup.query("DELETE FROM projects WHERE tenant_id = 'public'").run();
+      } finally {
+        cleanup.close();
+      }
+    }
+  }, 30_000);
+
+  test("the usage view gives this project's own traffic and the account's pooled total", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro_ai");
+    const a = await createProject(owner.token, "ViewA", { posts: [] });
+    const b = await createProject(owner.token, "ViewB", { posts: [] });
+    await reportUsage([
+      { tenantId: a.tenantId, requests: 20 },
+      { tenantId: b.tenantId, requests: 5 },
+    ]);
+
+    const usage = await fetch(`${app.base}/projects/${a.tenantId}/usage`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(usage.month.requests).toBe(20);
+    expect(usage.account).toEqual({ requests: 25 });
+    expect(usage.limit).toBe(250_000);
+  }, 30_000);
+
+  test("a database from before pooling is backfilled when the service starts on it", async () => {
+    // The shape api_usage had before rows remembered their account.
+    const dir = join(ROOT, "legacy-usage");
+    await mkdir(dir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const legacy = new Database(join(dir, "app.sqlite"));
+    try {
+      legacy.exec(`
+        CREATE TABLE users (
+          id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE,
+          plan TEXT NOT NULL DEFAULT 'free', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+        CREATE TABLE projects (
+          tenant_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL,
+          resources TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+        CREATE TABLE api_usage (
+          tenant_id TEXT NOT NULL, date TEXT NOT NULL,
+          request_count INTEGER NOT NULL DEFAULT 0, bandwidth_bytes INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (tenant_id, date));
+      `);
+      legacy.query("INSERT INTO users (id, email, plan) VALUES (1, 'legacy@test.co', 'pro')").run();
+      for (const tenantId of ["legacy-a", "legacy-b", "public"])
+        legacy.query("INSERT INTO projects (tenant_id, user_id, name) VALUES (?, 1, ?)").run(tenantId, tenantId);
+      for (const [tenantId, n] of [["legacy-a", 7], ["legacy-b", 5], ["public", 1_000]] as const)
+        legacy
+          .query("INSERT INTO api_usage (tenant_id, date, request_count, bandwidth_bytes) VALUES (?, ?, ?, 0)")
+          .run(tenantId, date, n);
+    } finally {
+      legacy.close();
+    }
+
+    const upgraded = await startApp(ROOT, "legacy-usage", {
+      CORE_API_URL: core.base,
+      ALLOWED_ORIGINS: ALLOWED_ORIGIN,
+    });
+    running.push(upgraded);
+
+    const quotas = await reportUsage([{ tenantId: "legacy-a", requests: 1 }], upgraded);
+    // 7 + 5 from before the upgrade, 1 after; the platform tenant's 1,000 stays out.
+    expect(quotas.get("legacy-a")).toEqual({ tenantId: "legacy-a", limit: 50_000, used: 13 });
+    expect(quotas.get("legacy-b")).toEqual({ tenantId: "legacy-b", limit: 50_000, used: 13 });
+    expect(quotas.has("public")).toBe(false);
   }, 30_000);
 
   test("a tenant with no project row is quoted the smallest plan, not unlimited", async () => {

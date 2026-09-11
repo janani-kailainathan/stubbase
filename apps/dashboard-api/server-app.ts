@@ -141,6 +141,7 @@ db.exec(`
     date            TEXT NOT NULL,  -- YYYY-MM-DD
     request_count   INTEGER NOT NULL DEFAULT 0,
     bandwidth_bytes INTEGER NOT NULL DEFAULT 0,
+    user_id         INTEGER,        -- account charged when counted; NULL for platform tenants
     PRIMARY KEY (tenant_id, date)
   );
   -- Long-lived developer keys: what an external MCP client (Claude Desktop,
@@ -174,6 +175,25 @@ const projectCols = (db.query("PRAGMA table_info(projects)").all() as { name: st
 );
 if (!projectCols.includes("dirty"))
   db.exec("ALTER TABLE projects ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0");
+// Which account a usage row was charged to. The monthly allowance is one pool
+// per account (see quotaFor), and a row has to remember its account itself:
+// joining through `projects` would forget every project deleted this month,
+// and deleting and recreating a project would reset the count. Existing rows
+// are backfilled once from today's owners — a project already gone by then has
+// no owner left to find — and platform tenants are never charged to anyone.
+const usageCols = (db.query("PRAGMA table_info(api_usage)").all() as { name: string }[]).map(
+  (c) => c.name,
+);
+if (!usageCols.includes("user_id")) {
+  db.exec("ALTER TABLE api_usage ADD COLUMN user_id INTEGER");
+  db.exec(
+    `UPDATE api_usage SET user_id =
+       (SELECT user_id FROM projects WHERE projects.tenant_id = api_usage.tenant_id)`,
+  );
+  const uncharge = db.query("UPDATE api_usage SET user_id = NULL WHERE tenant_id = ?");
+  for (const tenantId of PLATFORM_TENANTS) uncharge.run(tenantId);
+}
+db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, date)");
 
 // ── Plans and entitlements ────────────────────────────────────────
 //
@@ -1739,17 +1759,44 @@ function isCoreAuthorized(req: Request): boolean {
   return timingSafeEqual(a, b);
 }
 
+// A day's row keeps the account it was first charged to.
 const upsertUsage = db.query(
-  `INSERT INTO api_usage (tenant_id, date, request_count, bandwidth_bytes)
-   VALUES (?, ?, ?, ?)
+  `INSERT INTO api_usage (tenant_id, date, request_count, bandwidth_bytes, user_id)
+   VALUES (?, ?, ?, ?, ?)
    ON CONFLICT(tenant_id, date) DO UPDATE SET
      request_count   = request_count   + excluded.request_count,
-     bandwidth_bytes = bandwidth_bytes + excluded.bandwidth_bytes`,
+     bandwidth_bytes = bandwidth_bytes + excluded.bandwidth_bytes,
+     user_id         = COALESCE(api_usage.user_id, excluded.user_id)`,
 );
+
+/**
+ * The account a tenant's usage is charged to: its owner, or nobody — for a
+ * platform tenant, whose traffic belongs to no customer's allowance, and for a
+ * tenant whose project row is already gone.
+ */
+function usageAccount(tenantId: string): number | null {
+  if (PLATFORM_TENANTS.has(tenantId)) return null;
+  const row = db.query("SELECT user_id FROM projects WHERE tenant_id = ?").get(tenantId) as {
+    user_id: number;
+  } | null;
+  return row?.user_id ?? null;
+}
+
+/** An account's requests this calendar month, across every project it has been charged for. */
+function accountMonthRequests(userId: number): number {
+  const row = db
+    .query(
+      `SELECT COALESCE(SUM(request_count), 0) AS n FROM api_usage
+       WHERE user_id = ? AND date >= date('now', 'start of month')`,
+    )
+    .get(userId) as { n: number };
+  return row.n;
+}
 
 const applyUsage = db.transaction(
   (rows: { tenantId: string; date: string; requests: number; bytes: number }[]) => {
-    for (const r of rows) upsertUsage.run(r.tenantId, r.date, r.requests, r.bytes);
+    for (const r of rows)
+      upsertUsage.run(r.tenantId, r.date, r.requests, r.bytes, usageAccount(r.tenantId));
   },
 );
 
@@ -1781,42 +1828,62 @@ async function ingestUsage(req: Request): Promise<Response> {
   // Platform tenants are simply left out of the reply: the core has no entry
   // for them and its fail-open path serves them, so exemption needs no
   // sentinel value and no special case on the core side.
-  const seen = [...new Set(rows.map((r) => r.tenantId))].filter(
-    (id) => !PLATFORM_TENANTS.has(id),
-  );
+  //
+  // Every project of an account that reported is quoted, not only the ones in
+  // this batch. The allowance is one pool per account, so when one project
+  // spends it, the account's idle projects have to hear so on this same trip —
+  // otherwise each would keep serving on a stale count until its own next flush.
+  const quoted = new Set(rows.map((r) => r.tenantId));
+  const accounts = new Set<number>();
+  for (const tenantId of quoted) {
+    const account = usageAccount(tenantId);
+    if (account !== null) accounts.add(account);
+  }
+  for (const account of accounts)
+    for (const { tenant_id } of db
+      .query("SELECT tenant_id FROM projects WHERE user_id = ?")
+      .all(account) as { tenant_id: string }[])
+      quoted.add(tenant_id);
   return json({
     ok: true,
     applied: rows.length,
     skipped: raw.length - rows.length,
-    quotas: seen.map(quotaFor),
+    quotas: [...quoted].filter((id) => !PLATFORM_TENANTS.has(id)).map(quotaFor),
   });
 }
 
 /**
- * This tenant's monthly request allowance and what it has spent, as of now.
+ * A tenant's monthly request allowance and what has been spent against it.
+ *
+ * Both belong to the owning account, not the project. The plan is the
+ * account's, and so is the spend: one pool across every project it has been
+ * charged for this month, deleted ones included — otherwise each new project
+ * would be a fresh allowance, and deleting and recreating one would reset the
+ * count. Every project of an account is therefore quoted the same `used`, and
+ * they all stop together.
  *
  * A tenant whose project row has gone (deleted mid-flight) reports the Free
- * allowance rather than nothing: the core still has counters for it, and the
- * honest answer for an unknown tenant is the smallest plan, never unlimited.
+ * allowance against its own spend rather than nothing: the core still has
+ * counters for it, and the honest answer for an unknown tenant is the smallest
+ * plan, never unlimited.
  */
 function quotaFor(tenantId: string): { tenantId: string; limit: number; used: number } {
   const owner = db
     .query(
-      `SELECT u.plan AS plan FROM projects p JOIN users u ON u.id = p.user_id
+      `SELECT u.id AS id, u.plan AS plan FROM projects p JOIN users u ON u.id = p.user_id
        WHERE p.tenant_id = ?`,
     )
-    .get(tenantId) as { plan: string } | null;
-  const used = db
+    .get(tenantId) as { id: number; plan: string } | null;
+  if (owner)
+    return { tenantId, limit: planOf(owner).monthlyRequests, used: accountMonthRequests(owner.id) };
+
+  const orphan = db
     .query(
       `SELECT COALESCE(SUM(request_count), 0) AS n FROM api_usage
        WHERE tenant_id = ? AND date >= date('now', 'start of month')`,
     )
     .get(tenantId) as { n: number };
-  return {
-    tenantId,
-    limit: planOf(owner ?? { plan: DEFAULT_PLAN }).monthlyRequests,
-    used: used.n,
-  };
+  return { tenantId, limit: planOf({ plan: DEFAULT_PLAN }).monthlyRequests, used: orphan.n };
 }
 
 /** Per-project usage: daily rows (newest first) plus a current-month total. */
@@ -1836,7 +1903,14 @@ function projectUsage(user: User, tenantId: string): Response {
        FROM api_usage WHERE tenant_id = ? AND date >= date('now', 'start of month')`,
     )
     .get(tenantId) as { requests: number; bytes: number };
-  return json({ tenantId, month, daily, limit: planOf(user).monthlyRequests });
+  // `month` is this project's own traffic; `account` is what `limit` applies to.
+  return json({
+    tenantId,
+    month,
+    daily,
+    limit: planOf(user).monthlyRequests,
+    account: { requests: accountMonthRequests(user.id) },
+  });
 }
 
 // ── Live logs (SSE proxy) ─────────────────────────────────────────

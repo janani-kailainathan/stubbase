@@ -311,6 +311,12 @@ export interface UsageResponse {
   daily: UsageDay[]
   /** The plan's monthly request allowance — what the core throttles against. */
   limit: number
+  /**
+   * This month's requests across every project the account has been charged
+   * for, deleted ones included. The allowance is one pool per account, so this —
+   * not `month` — is what `limit` is measured against.
+   */
+  account: { requests: number }
 }
 
 export const fetchUsage = (tenantId: string) =>

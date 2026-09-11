@@ -253,7 +253,15 @@ one number per tenant (`quotas: [{ tenantId, limit, used }]`), and the core
 serves until `used >= limit`, then answers `429` on the whole public plane —
 CRUD, auth, notify and openapi together, with `_admin` still reachable so the
 owner can see why. Between flushes the count advances locally, so overshoot is
-bounded by `USAGE_FLUSH_MS`.
+bounded by `USAGE_FLUSH_MS` per project.
+
+**The allowance is one pool per account, not per project.** `limit` is the
+owner's plan and `used` is the account's month-to-date total across all its
+projects — including projects deleted this month, since each usage row records
+the account it was charged to — so creating more projects never raises how many
+requests an account can make. A flush reply quotes every project of each account
+that reported, so an account's idle projects stop as soon as a busy one spends
+the pool.
 
 A tenant the core has never been quoted a limit for is **served** (fresh boot,
 sink unreachable, first request of the month). Metering failing must not take

@@ -86,6 +86,10 @@ function RequestsChart({ series }: { series: { date: string; requests: number }[
  * 429 on the whole public plane, and someone whose API just stopped needs to
  * find the reason here rather than in a status code. Colour turns at 80% and
  * again at the cap, so the warning arrives before the outage does.
+ *
+ * The allowance is the account's, shared by every project, so `used` is the
+ * account's total and says so — the tiles above it are this project's own, and
+ * a bar that silently mixed the two would read as a bug the moment they differ.
  */
 function QuotaBar({ used, limit }: { used: number; limit: number }) {
   const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0
@@ -102,14 +106,14 @@ function QuotaBar({ used, limit }: { used: number; limit: number }) {
       {/* Both labels stay short so the row never wraps in the sidebar; the
           consequence gets its own line, and only when there is one. */}
       <div className={`mt-1 flex justify-between gap-2 font-mono text-[10px] ${ink}`}>
-        <span className="truncate">
-          {formatCount(used)} of {formatCount(limit)}
+        <span className="truncate" title="Your plan's allowance is shared by all your projects">
+          {formatCount(used)} of {formatCount(limit)} · all projects
         </span>
         <span className="shrink-0">{spent ? 'over' : `${Math.round(pct)}%`}</span>
       </div>
       {spent && (
         <p className="mt-0.5 font-mono text-[10px] text-danger-ink">
-          Quota spent — the API is answering 429.
+          Quota spent — every project's API is answering 429.
         </p>
       )}
     </div>
@@ -140,7 +144,9 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
             <StatTile label="Requests" value={formatCount(data.month.requests)} />
             <StatTile label="Bandwidth" value={formatBytes(data.month.bytes)} />
           </div>
-          {data.limit > 0 && <QuotaBar used={data.month.requests} limit={data.limit} />}
+          {data.limit > 0 && (
+            <QuotaBar used={data.account?.requests ?? data.month.requests} limit={data.limit} />
+          )}
           {hasTraffic ? (
             <RequestsChart series={series} />
           ) : (
