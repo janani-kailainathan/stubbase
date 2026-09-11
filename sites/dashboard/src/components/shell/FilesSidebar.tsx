@@ -127,7 +127,7 @@ export function FilesSidebar() {
       )}
       <div className="min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3">
         <div
-          className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-card"
+          className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-card"
           onClick={toggleData}
         >
           <ChevronDown
@@ -144,8 +144,8 @@ export function FilesSidebar() {
                 key={resource}
                 className={
                   isSelected
-                    ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
-                    : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
+                    ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                    : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
                 }
                 onClick={() => select({ kind: 'resource', resource })}
               >
@@ -161,8 +161,8 @@ export function FilesSidebar() {
           <div
             className={
               selection?.kind === 'env'
-                ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft px-2 py-1.5'
-                : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent px-2 py-1.5 hover:bg-card'
+                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft px-2 py-1.5'
+                : 'flex cursor-pointer items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:bg-card'
             }
             onClick={() => select({ kind: 'env' })}
           >

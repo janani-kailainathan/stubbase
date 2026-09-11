@@ -40,8 +40,8 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
       }
       className={
         isSelected
-          ? 'flex cursor-pointer items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-7'
-          : 'flex cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 pl-7 hover:bg-card'
+          ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-7'
+          : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-7 hover:bg-card'
       }
     >
       <span
@@ -86,7 +86,7 @@ export function ApisRail() {
             <div key={resource}>
               <div
                 onClick={() => toggle(resource)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 hover:bg-card"
+                className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-card"
               >
                 <ChevronDown
                   className={`h-3.5 w-3.5 shrink-0 text-subtle transition-transform ${isOpen ? '' : '-rotate-90'}`}
