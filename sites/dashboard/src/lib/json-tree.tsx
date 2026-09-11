@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 
 type Line = {
@@ -43,6 +43,8 @@ function scalar(value: unknown): ReactNode {
 }
 
 const overflows = (el: HTMLElement) => el.scrollWidth > el.clientWidth
+/** An open value that runs past one line — the only open one there is anything to clip. */
+const wraps = (el: HTMLElement) => el.clientHeight > parseFloat(getComputedStyle(el).lineHeight) * 1.5
 
 /**
  * A string value, clipped with an ellipsis to the width its line has left; a
@@ -50,7 +52,8 @@ const overflows = (el: HTMLElement) => el.scrollWidth > el.clientWidth
  * again. Clipped by CSS rather than cut at a character count, so how much shows
  * follows the pane's width — and the full text stays in the DOM, so selecting
  * and copying a clipped value copies all of it. Only a value that is actually
- * clipped responds to a click; whether it is gets measured on hover and on the
+ * clipped — or, once open, runs past one line — responds to a click, so a short
+ * value "Expand all" opened offers nothing. That is measured on hover and on the
  * click itself, since a resize can change the answer at any time.
  */
 function StringValue({
@@ -65,20 +68,19 @@ function StringValue({
   open: boolean
   onToggle: () => void
 }) {
-  const [clipped, setClipped] = useState(false)
+  const [actionable, setActionable] = useState(false)
+  const canToggle = (el: HTMLElement) => (open ? wraps(el) : overflows(el))
   return (
     <span
-      onPointerEnter={(e) => setClipped(!open && overflows(e.currentTarget))}
+      onPointerEnter={(e) => setActionable(canToggle(e.currentTarget))}
       onClick={(e) => {
         // A drag that selects text ends in a click too; that is not a request to toggle.
         if (window.getSelection()?.toString()) return
-        if (open || overflows(e.currentTarget)) onToggle()
+        if (canToggle(e.currentTarget)) onToggle()
       }}
-      title={open ? 'Show less' : clipped ? 'Show full text' : undefined}
-      className={`min-w-0 ${
-        open
-          ? 'cursor-pointer break-words whitespace-pre-wrap'
-          : `overflow-hidden text-ellipsis whitespace-pre ${clipped ? 'cursor-pointer' : ''}`
+      title={actionable ? (open ? 'Show less' : 'Show full text') : undefined}
+      className={`min-w-0 ${actionable ? 'cursor-pointer' : ''} ${
+        open ? 'break-words whitespace-pre-wrap' : 'overflow-hidden text-ellipsis whitespace-pre'
       }`}
     >
       <span className="text-syntax-str">{text}</span>
@@ -208,30 +210,53 @@ function nestedContainers(root: unknown): string[] {
   return paths
 }
 
+/** Paths of every string value, at any depth — what "Expand all" opens to full text. */
+function stringPaths(root: unknown): string[] {
+  const paths: string[] = []
+  const walk = (value: unknown, path: string) => {
+    if (typeof value === 'string') paths.push(path)
+    else if (isContainer(value))
+      entriesOf(value).forEach(([key, child], i) => walk(child, childPath(path, key, i)))
+  }
+  walk(root, '')
+  return paths
+}
+
 /**
  * Read-only JSON with foldable objects and arrays: a chevron gutter like the
  * editor's fold gutter, a `…` placeholder that expands on click, and
  * expand/collapse-all. Colours are the same --syntax-* tokens as JsonHighlight
  * and the CodeMirror editor, so switching modes doesn't recolour the document.
  *
- * Everything starts expanded. The toolbar offers three depths, most open first:
- * "Expand all"; "Expand first level", which opens each record to its own
- * fields and folds every object and array inside it; and "Collapse all", which
- * folds to the top level only — one line per record — so opening a record from
- * there shows the whole of it rather than a second layer of folds.
+ * The toolbar offers three depths, most open first: "Expand all", which also
+ * opens every long text value; "Expand first level", which opens each record
+ * to its own fields and folds every object and array inside it; and "Collapse
+ * all", which folds to the top level only — one line per record — so opening a
+ * record from there shows the whole of it rather than a second layer of folds.
+ * The two less open depths clip long text again.
+ *
+ * `initialDepth` is where the tree starts. At `first-level`, a container that
+ * first appears later — a refetch after a save adding a nested object — gets
+ * that default too, while containers already on screen keep whatever the user
+ * did with them.
  */
 export function JsonTree({
   data,
   size = 'md',
   controls = true,
+  initialDepth = 'all',
 }: {
   data: unknown
   /** `sm` sets the 11px of a log row; `md` the editor's 13px. */
   size?: 'md' | 'sm'
   /** Expand/collapse-all. Off where many trees stack, or every one carries its own toolbar. */
   controls?: boolean
+  /** How far the tree is folded open when it first renders. Long text always starts clipped. */
+  initialDepth?: 'all' | 'first-level'
 }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(initialDepth === 'first-level' ? nestedContainers(data) : []),
+  )
 
   const toggle = useCallback(
     (path: string) =>
@@ -262,13 +287,31 @@ export function JsonTree({
   )
   const topLevel = useMemo(() => topLevelContainers(data), [data])
   const nested = useMemo(() => nestedContainers(data), [data])
+  const strings = useMemo(() => stringPaths(data), [data])
+
+  // Containers the first-level default has already been applied to. Only ones
+  // that appear after that get folded here — refolding the rest would undo
+  // whatever the user opened every time the data refetched.
+  const defaulted = useRef<Set<string> | null>(null)
+  defaulted.current ??= new Set(initialDepth === 'first-level' ? nested : [])
+  useEffect(() => {
+    if (initialDepth !== 'first-level') return
+    const seen = defaulted.current!
+    const fresh = nested.filter((path) => !seen.has(path))
+    if (fresh.length === 0) return
+    for (const path of fresh) seen.add(path)
+    setCollapsed((prev) => new Set([...prev, ...fresh]))
+  }, [nested, initialDepth])
 
   return (
     <div className={`font-mono leading-relaxed ${size === 'sm' ? 'text-[11px]' : 'text-[13px]'}`}>
       {controls && topLevel.length > 0 && (
         <div className="sticky top-0 z-10 float-right flex gap-0.5 rounded border border-border bg-card p-0.5">
           <button
-            onClick={() => setCollapsed(new Set())}
+            onClick={() => {
+              setCollapsed(new Set())
+              setOpenText(new Set(strings))
+            }}
             title="Expand all"
             aria-label="Expand all"
             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-background hover:text-heading"
@@ -276,7 +319,10 @@ export function JsonTree({
             <ChevronsUpDown className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => setCollapsed(new Set(nested))}
+            onClick={() => {
+              setCollapsed(new Set(nested))
+              setOpenText(new Set())
+            }}
             title="Expand first level"
             aria-label="Expand first level"
             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-background hover:text-heading"
@@ -284,7 +330,10 @@ export function JsonTree({
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => setCollapsed(new Set(topLevel))}
+            onClick={() => {
+              setCollapsed(new Set(topLevel))
+              setOpenText(new Set())
+            }}
             title="Collapse all"
             aria-label="Collapse all"
             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-background hover:text-heading"

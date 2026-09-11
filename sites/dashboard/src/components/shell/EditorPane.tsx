@@ -162,7 +162,7 @@ function ResourceView({ tenantId, resource }: { tenantId: string; resource: stri
       {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
       {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
       {/* Keyed by resource so folds don't carry over to a different file. */}
-      {data !== undefined && <JsonTree key={resource} data={data} />}
+      {data !== undefined && <JsonTree key={resource} data={data} initialDepth="first-level" />}
     </div>
   )
 }
