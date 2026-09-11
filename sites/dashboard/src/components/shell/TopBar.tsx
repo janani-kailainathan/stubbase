@@ -343,10 +343,10 @@ function ModeToggle() {
             title={disabled ? `Available once the API is live (currently ${status})` : undefined}
             className={
               disabled
-                ? 'cursor-not-allowed rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-faintest'
+                ? 'cursor-not-allowed rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-faintest'
                 : paneMode === mode
-                  ? 'cursor-pointer rounded-md border border-primary-soft-border bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
-                  : 'cursor-pointer rounded-md border border-transparent px-2.5 py-1.5 font-mono text-xs text-subtle hover:text-emphasis'
+                  ? 'cursor-pointer rounded border border-primary-soft-border bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
+                  : 'cursor-pointer rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-subtle hover:text-emphasis'
             }
           >
             {label}
