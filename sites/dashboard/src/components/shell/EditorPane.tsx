@@ -4,6 +4,7 @@ import { Check, RefreshCw, X } from 'lucide-react'
 import { CORE_PUBLIC_URL } from '@/lib/api'
 import type { Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
+import { JsonTree } from '@/lib/json-tree'
 import { sampleRecordBody } from '@/lib/playground'
 import { useCurrentProject } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
@@ -55,11 +56,13 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
   const save = useSaveResource(tenantId, resource)
 
   const onSave = () => {
+    // An emptied editor means "no records", not a syntax error to fix first.
+    const text = draft.trim() === '' ? '[]' : draft
     let parsed: unknown
     try {
-      parsed = JSON.parse(draft)
+      parsed = JSON.parse(text)
     } catch (err) {
-      toast.error(parseErrorMessage(draft, err))
+      toast.error(parseErrorMessage(text, err))
       return
     }
     if (!Array.isArray(parsed)) {
@@ -157,7 +160,8 @@ function ResourceView({ tenantId, resource }: { tenantId: string; resource: stri
     <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
       {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
       {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
-      {data !== undefined && <JsonHighlight raw={stringify(data)} />}
+      {/* Keyed by resource so folds don't carry over to a different file. */}
+      {data !== undefined && <JsonTree key={resource} data={data} />}
     </div>
   )
 }
