@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
-  ChevronDown,
   ChevronRight,
   Loader2,
   LogOut,
@@ -390,16 +389,34 @@ function useMinDuration(active: boolean, ms = 450): boolean {
  *
  * Deploy is the primary action and stays clickable in every state: it promotes
  * staged drafts, and doing that while the API is already live is the common
- * case, so it cannot be swapped out for a Stop button. The start/stop toggle
- * therefore hangs off the same button as a menu rather than sitting beside it
- * — one control, both actions, and the destructive one is a deliberate second
- * click instead of a thing you hit by accident next to Deploy.
+ * case, so it cannot be swapped out for a Stop button. Start/stop is the
+ * button's second segment instead — a stop icon while live, a play icon while
+ * stopped. It used to be a chevron opening a one-item menu, which kept Stop
+ * from being hit by accident but also kept anyone from finding it.
+ *
+ * Sitting right beside Deploy, Stop now asks first: it answers every public
+ * endpoint with 503 and breaks whatever calls the API, and Cancel takes focus
+ * so a stray Enter cannot confirm it. Starting only restores service, so it
+ * happens on the click — as does Deploy on a stopped project.
  */
 function DeployControls({ tenantId }: { tenantId: string | undefined }) {
   const status = useProjectStatus(tenantId)
   const setStatus = useSetProjectStatus(tenantId)
   const stopped = status !== 'active'
   const queryClient = useQueryClient()
+  const current = useCurrentProject()
+  const [confirmingStop, setConfirmingStop] = useState(false)
+
+  const changeStatus = useMutation({
+    mutationFn: (next: 'active' | 'stopped') => setStatus.mutateAsync(next),
+    onSuccess: (_, next) => {
+      setConfirmingStop(false)
+      toast.success(
+        next === 'active' ? 'API started — endpoints are serving again.' : 'API stopped — requests now answer 503.',
+      )
+    },
+    onError: (e: Error) => toast.error(`Could not change status: ${e.message}`),
+  })
 
   const deploy = useMutation({
     mutationFn: async () => {
@@ -428,18 +445,9 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
     onError: (e) => toast.error(`Deploy failed: ${e.message}`),
   })
 
-  const toggleStatus = useMutation({
-    mutationFn: () => setStatus.mutateAsync(stopped ? 'active' : 'stopped'),
-    onSuccess: () =>
-      toast.success(
-        stopped ? 'API started — endpoints are serving again.' : 'API stopped — requests now answer 503.',
-      ),
-    onError: (e: Error) => toast.error(`Could not change status: ${e.message}`),
-  })
-
   // Held briefly so fast round-trips still register as a state, not a flicker.
   const deploying = useMinDuration(deploy.isPending)
-  const busy = deploying || deploy.isPending || toggleStatus.isPending
+  const busy = deploying || deploy.isPending || changeStatus.isPending
 
   return (
     <div className="flex items-stretch">
@@ -467,34 +475,58 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
             lie on the very first screen a new account sees. */}
         <span className="w-[8ch] text-center">{stopped || !tenantId ? 'Deploy' : 'Redeploy'}</span>
       </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            title="More actions"
-            disabled={!tenantId || busy}
-            className="flex cursor-pointer items-center rounded-r-md border-l border-black/20 bg-primary px-1.5 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44 border-border bg-card p-1.5">
-          <DropdownMenuItem
-            onSelect={() => toggleStatus.mutate()}
-            className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs ${
-              stopped ? 'text-primary-ink' : 'text-danger-emphasis'
-            }`}
-          >
-            {stopped ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-            {toggleStatus.isPending
-              ? stopped
-                ? 'Starting…'
-                : 'Stopping…'
-              : stopped
-                ? 'Start API'
-                : 'Stop API'}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* The second segment: start/stop, one click from Deploy. Red on hover
+          while live, so what a click here does is plain before it happens. */}
+      <button
+        title={stopped ? 'Start API' : 'Stop API'}
+        aria-label={stopped ? 'Start API' : 'Stop API'}
+        onClick={() => (stopped ? changeStatus.mutate('active') : setConfirmingStop(true))}
+        disabled={!tenantId || busy}
+        className={`flex cursor-pointer items-center rounded-r-md border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors disabled:opacity-60 ${
+          stopped ? 'hover:bg-primary-hover' : 'hover:bg-danger-fill'
+        }`}
+      >
+        {changeStatus.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : stopped ? (
+          <Play className="h-3.5 w-3.5" />
+        ) : (
+          <Square className="h-3.5 w-3.5" />
+        )}
+      </button>
+
+      <Dialog
+        open={confirmingStop}
+        onOpenChange={(open) => !changeStatus.isPending && setConfirmingStop(open)}
+      >
+        <DialogContent className="w-96 border-border bg-card p-4" showCloseButton={false}>
+          <DialogTitle className="text-sm font-semibold text-foreground">
+            Stop {current?.name ?? 'this project'}'s API?
+          </DialogTitle>
+          <p className="font-mono text-xs leading-relaxed text-muted-foreground">
+            Every public endpoint of <span className="text-emphasis">/{tenantId}</span> will answer{' '}
+            <span className="text-emphasis">503</span> until you start it again, so apps calling it
+            will fail. Your data, drafts and settings stay as they are.
+          </p>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              autoFocus
+              className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
+              onClick={() => setConfirmingStop(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="flex items-center gap-1.5 rounded-md bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
+              disabled={changeStatus.isPending}
+              onClick={() => changeStatus.mutate('stopped')}
+            >
+              <Square className="h-3 w-3" />
+              {changeStatus.isPending ? 'Stopping…' : 'Stop API'}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
