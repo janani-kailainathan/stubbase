@@ -95,6 +95,12 @@ export interface AuthHost<T extends AuthTenant> {
   /** Whether the tenant has an email provider to send through. */
   emailConfigured(tenant: T): boolean;
   sendEmail(tenant: T, message: EmailMessage): Promise<EmailResult>;
+  /** The role a new account gets: the rules' defaultRole, or "user" without rules. */
+  defaultRole(tenant: T): string;
+  /** Whether a role may list accounts (read) or change their roles (update). */
+  mayManageUsers(tenant: T, role: string, action: "read" | "update"): boolean;
+  /** Whether a role name is one this project can give an account. */
+  roleExists(tenant: T, role: string): boolean;
 }
 
 /** The claims of a tenant JWT. */

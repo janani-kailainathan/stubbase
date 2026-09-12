@@ -9,6 +9,7 @@ import {
   FilePlus,
   Folder,
   Lock,
+  ShieldCheck,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
@@ -240,6 +241,19 @@ export function FilesSidebar() {
           >
             <AlignLeft className="h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="font-mono text-xs text-body">.env</span>
+          </div>
+        )}
+        {project && (
+          <div
+            className={
+              selection?.kind === 'rbac'
+                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft px-2 py-1.5'
+                : 'flex cursor-pointer items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:bg-card'
+            }
+            onClick={() => select({ kind: 'rbac' })}
+          >
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <span className="font-mono text-xs text-body">rbac.json</span>
           </div>
         )}
       </div>

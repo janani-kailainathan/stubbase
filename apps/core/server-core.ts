@@ -17,6 +17,8 @@
  *   GET|POST|DELETE  /<tenant>/_admin/files/<resource>   (Bearer ADMIN_SECRET)
  *   GET              /<tenant>/_admin/system[/<file>]    (Bearer ADMIN_SECRET, read-only)
  *   GET|POST         /<tenant>/_admin/status             (Bearer ADMIN_SECRET)
+ *   POST             /<tenant>/_admin/users/<id>/role    (Bearer ADMIN_SECRET)
+ *   GET|PUT          /<tenant>/auth/users[/<id>/role]    (a role with _users rights)
  *   POST             /<tenant>/_admin/flush | deploy     (Bearer ADMIN_SECRET)
  *   GET              /<tenant>/_admin/sse-logs           (Bearer ADMIN_SECRET, SSE)
  *   GET              /<tenant>/_admin/logs               (Bearer ADMIN_SECRET, snapshot)
@@ -36,8 +38,8 @@
  * Per-tenant behavior is configured by an optional system/config.json (flat
  * object of env-style keys, compiled from the dashboard's simulated .env
  * editor). CRUD requests flow through a middleware PIPELINE:
- * statusGuard → authGuard → chaosGuard → validationGuard →
- * beforeWebhookGuard → coreOperation → afterWebhookGuard.
+ * statusGuard → quotaGuard → authGuard → rbacGuard → chaosGuard →
+ * validationGuard → beforeWebhookGuard → coreOperation → afterWebhookGuard.
  *
  * Features live in ./features/<name>/ and never import this file — it starts
  * the server as it loads. Each is handed a host object instead, carrying the
@@ -64,6 +66,15 @@ import {
   type EmailResult,
   type Identity,
 } from "./features/auth/index.ts";
+import {
+  canManageUsers,
+  decide,
+  parseRbac,
+  roleExists,
+  type Action,
+  type RbacRules,
+  type Scope,
+} from "./features/rbac/index.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const TENANTS_DIR = process.env.TENANTS_DIR ?? "./tenants";
@@ -99,13 +110,21 @@ if (!ADMIN_SECRET) {
   process.exit(1);
 }
 
-// The tenant config is an object, not a record array — as is its staged draft.
-const isConfigFile = (resource: string) => resource === "config" || resource === "draft_config";
+// Settings files are objects the core parses, not record arrays, and live in
+// system/ with their staged drafts: config (the .env) and rbac (roles and
+// permissions).
+const SETTINGS_FILES = new Set(["config", "rbac"]);
+const isSettingsFile = (name: string) =>
+  SETTINGS_FILES.has(name.startsWith("draft_") ? name.slice("draft_".length) : name);
 
 // Files the public plane must never mount as a CRUD resource: tenant settings
 // (current and legacy names) and anything staged but undeployed.
 const isPrivateFile = (name: string) =>
-  name === "config" || name === "stubbase" || name === "env" || name.startsWith("draft_");
+  name === "config" ||
+  name === "rbac" ||
+  name === "stubbase" ||
+  name === "env" ||
+  name.startsWith("draft_");
 
 // Router blacklist — names that can never address a public resource. Underscore
 // and dot prefixes are reserved for internal planes (_admin, _notify) and
@@ -208,12 +227,30 @@ interface TenantState {
   config: TenantConfig; // system/config.json
   status: ProjectStatus; // system/status.json — set by Start/Stop, never staged or deployed
   identity: Identity; // system/users.json + system/reset-password.json — never a resource
+  rbac: RbacRules | null; // system/rbac.json — roles and permissions; null when the project has none
   timer: ReturnType<typeof setTimeout>;
   lastSeen: number;
   writeChain: Promise<unknown>; // serializes disk writes per tenant
 }
 
 const activeTenants = new Map<string, TenantState>();
+
+/** The roles and permissions in force: a rules file only governs a project with auth switched on. */
+const rulesOf = (state: TenantState) => (state.config.auth.enabled ? state.rbac : null);
+
+/**
+ * Rules that fail validation deny everything rather than fall back to open
+ * access: a file meant to restrict must never read as no restriction. Writes are
+ * validated (`_admin/files`), so this is a file broken on disk.
+ */
+function loadRbac(tenantId: string, raw: unknown): RbacRules {
+  const { rules, problems } = parseRbac(raw);
+  if (problems.length === 0) return rules;
+  console.warn(
+    `[core] ${tenantId}/system/rbac.json is invalid, so every request it governs is refused: ${problems.join("; ")}`,
+  );
+  return { defaultRole: "", roles: new Map() };
+}
 
 // ── Tenant layout ─────────────────────────────────────────────────
 // data/ holds what the public plane serves: one <resource>.json per resource,
@@ -233,12 +270,13 @@ const systemFile = (t: string, name: string) => join(systemDir(t), `${name}.json
 
 /**
  * Where `_admin/files/<name>` reads and writes. That plane addresses files by
- * name, so the name picks the folder: config and its draft are settings,
- * everything else is a resource. A feature's own files are unreachable from it
- * on purpose — `users` there means data/users.json, an ordinary resource.
+ * name, so the name picks the folder: config, rbac and their drafts are
+ * settings, everything else is a resource. A feature's own files are
+ * unreachable from it on purpose — `users` there means data/users.json, an
+ * ordinary resource.
  */
 const adminFile = (t: string, name: string) =>
-  isConfigFile(name) ? systemFile(t, name) : resourceFile(t, name);
+  isSettingsFile(name) ? systemFile(t, name) : resourceFile(t, name);
 
 const isDirectory = (path: string) =>
   stat(path).then(
@@ -527,13 +565,14 @@ async function loadTenant(tenantId: string): Promise<TenantState | null> {
   const system = await readFolder(
     tenantId,
     "system",
-    (n) => n === "config" || n === "status" || isSystemFileName(n),
+    (n) => n === "config" || n === "rbac" || n === "status" || isSystemFileName(n),
   );
   const state: TenantState = {
     db,
     config: system.has("config") ? parseConfig(system.get("config")) : DEFAULT_CONFIG,
     identity: readIdentity(system.get("users"), system.get("reset-password")),
     status: parseStatus(system.get("status")),
+    rbac: system.has("rbac") ? loadRbac(tenantId, system.get("rbac")) : null,
     timer: setTimeout(() => evict(tenantId), IDLE_TTL_MS),
     lastSeen: Date.now(),
     writeChain: Promise.resolve(),
@@ -630,6 +669,17 @@ const auth = createAuth<TenantState>({
   requestOrigin,
   emailConfigured: (state) => state.config.resendKey !== "",
   sendEmail: (state, message) => sendEmail(state.config, message),
+  defaultRole: (state) => rulesOf(state)?.defaultRole || "user",
+  mayManageUsers: (state, role, action) => {
+    const rules = rulesOf(state);
+    return rules !== null && canManageUsers(rules, role, action);
+  },
+  // Without rules the only roles anything understands are the ownership rules'
+  // two: "user", and "admin", which bypasses them.
+  roleExists: (state, role) => {
+    const rules = rulesOf(state);
+    return rules ? roleExists(rules, role) : role === "user" || role === "admin";
+  },
 });
 
 // ── In-memory SQLite projection ───────────────────────────────────
@@ -1628,14 +1678,14 @@ async function handleAdmin(
     if (!(await isDirectory(tenantDir(tenantId)))) return err(404, "tenant not found");
     const promoted: string[] = [];
     // Resources stage in data/ and settings in system/, each promoted within its
-    // own folder. system/ stages config and nothing else: a feature's files are
-    // written by that feature alone, never through a draft.
+    // own folder. system/ stages config and rbac and nothing else: a feature's
+    // files are written by that feature alone, never through a draft.
     for (const folder of ["data", "system"] as const) {
       const dir = join(tenantDir(tenantId), folder);
       for (const f of await readdir(dir).catch(() => [] as string[])) {
         if (!f.startsWith("draft_") || !f.endsWith(".json")) continue;
         const target = f.slice("draft_".length, -".json".length);
-        if (!NAME_RE.test(target) || (folder === "system") !== isConfigFile(target)) continue;
+        if (!NAME_RE.test(target) || (folder === "system") !== isSettingsFile(target)) continue;
         const draftPath = join(dir, f);
         await Bun.write(join(dir, `${target}.json`), Bun.file(draftPath));
         // Only after the copy has landed: a failed write must leave the draft
@@ -1667,6 +1717,16 @@ async function handleAdmin(
     await Bun.write(file, JSON.stringify({ status }, null, 2));
     evict(tenantId); // CRITICAL: flush cache so the new status applies on the next request
     return json({ ok: true, tenant: tenantId, status });
+  }
+
+  // POST /<tenant>/_admin/users/<id>/role — the dashboard setting an account's
+  // role, which is how a project's first admin is made. Same rule as the public
+  // route: the role must be one the project defines.
+  if (segments[0] === "users" && segments.length === 3 && segments[2] === "role") {
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const body = await readJsonBody(req);
+    if (body instanceof Response) return body;
+    return auth.assignRole(tenantId, segments[1], (body as { role?: unknown } | null)?.role);
   }
 
   // GET /<tenant>/_admin/system         — which feature-owned system files exist
@@ -1712,11 +1772,19 @@ async function handleAdmin(
   if (req.method === "POST") {
     const body = await readJsonBody(req);
     if (body instanceof Response) return body;
-    // `config` holds the tenant's env-style settings object; everything else is a record array
-    const initial = body ?? (isConfigFile(resource) ? {} : []);
-    if (isConfigFile(resource)) {
+    // Settings (config, rbac) are objects; everything else is a record array
+    const settings = isSettingsFile(resource);
+    const initial = body ?? (settings ? {} : []);
+    if (settings) {
       if (initial === null || typeof initial !== "object" || Array.isArray(initial))
-        return err(400, "config must be a JSON object");
+        return err(400, `${resource.replace(/^draft_/, "")} must be a JSON object`);
+      // Rules are checked where they are written, so a mistake is refused with
+      // its reasons instead of going live as a file that denies everything.
+      if (resource === "rbac" || resource === "draft_rbac") {
+        const { problems } = parseRbac(initial);
+        if (problems.length > 0)
+          return json({ error: `invalid rbac.json: ${problems.join("; ")}`, problems }, 400);
+      }
     } else if (!Array.isArray(initial)) {
       return err(400, "initial data must be a JSON array");
     }
@@ -1878,6 +1946,7 @@ interface Ctx {
   state: TenantState;
   body?: unknown; // parsed once in handleCrud — webhooks and coreOperation both need it
   user?: Claims;
+  scope?: Scope; // set by rbacGuard: whose records coreOperation may touch ("own" or "all")
   result?: unknown; // record produced by coreOperation, for after-hooks
   response?: Response;
   log?: LogDraft; // lifecycle scratchpad; stages may push notes onto log.lifecycle
@@ -1932,11 +2001,37 @@ const quotaGuard: Middleware = (ctx) => quotaBlocked(ctx.tenantId) ?? undefined;
 const authGuard: Middleware = (ctx) => {
   const cfg = ctx.state.config.auth;
   if (!cfg.enabled) return;
-  if (ctx.req.method === "GET" && cfg.publicRoutes.has(ctx.resource)) return;
-  // Signature, expiry, and whether a password change has since revoked it.
+  const hasToken = (ctx.req.headers.get("authorization") ?? "").startsWith("Bearer ");
+  // With rules, a visitor is judged by the guest role (rbacGuard) and
+  // AUTH_PUBLIC_ROUTES no longer applies; without, it opens anonymous reads.
+  if (!hasToken && ctx.state.rbac) return;
+  if (!ctx.state.rbac && ctx.req.method === "GET" && cfg.publicRoutes.has(ctx.resource)) return;
+  // Signature, expiry, and whether a password change has since revoked it. A
+  // token that fails is refused outright, never downgraded to a guest.
   const claims = auth.authenticate(ctx.tenantId, ctx.state, ctx.req);
   if (!claims) return err(401, "valid bearer token required");
-  ctx.user = claims; // claims.role === "admin" lets later middleware bypass ownership checks
+  ctx.user = claims;
+};
+
+// Roles and permissions (system/rbac.json, see features/rbac). Settles whether
+// this request may happen at all, and hands coreOperation the scope that
+// decides whose records it may touch. After authGuard, so the role comes from a
+// verified token; before chaosGuard, so a simulated response can never stand in
+// for a refusal. A no-op without rules, leaving today's ownership rules.
+const METHOD_ACTION: Record<string, Action> = {
+  GET: "read",
+  POST: "create",
+  PUT: "update",
+  DELETE: "delete",
+};
+
+const rbacGuard: Middleware = (ctx) => {
+  const rules = rulesOf(ctx.state);
+  const action = METHOD_ACTION[ctx.req.method];
+  if (!rules || !action) return;
+  const decision = decide(rules, ctx.user?.role, ctx.resource, action);
+  if (!decision.allowed) return err(decision.status, decision.error);
+  ctx.scope = decision.scope;
 };
 
 // QA Chaos Engine: simulate latency, forced statuses, flakiness and empty
@@ -2042,16 +2137,37 @@ const coreOperation: Middleware = async (ctx) => {
   const rows = state.db[resource];
   if (!rows) return err(404, "resource not found");
 
-  // Ownership (RBAC): a record with a userId belongs to that user. Admins
-  // bypass; records without userId (uploaded datasets) stay open to any
-  // authenticated user. Every resource is treated alike — a data/users.json
-  // included, since the identity table is not a resource.
-  const isAdmin = ctx.user?.role === "admin";
+  // Whose records this request may touch. With rules, rbacGuard set the scope:
+  // "own" reaches only records stamped with the caller's id, "all" reaches every
+  // one. Without rules, the plain ownership rules: a record with a userId
+  // belongs to that user, admins bypass, and records without one (uploaded
+  // datasets) stay open to any authenticated user. Every resource is treated
+  // alike — a data/users.json included, since the identity table is not one.
+  const scoped = ctx.scope !== undefined;
+  const ownOnly = ctx.scope === "own";
+  const isMine = (row: any) =>
+    ctx.user !== undefined &&
+    row !== null &&
+    typeof row === "object" &&
+    row.userId !== undefined &&
+    String(row.userId) === ctx.user.sub;
+  const inScope = (row: any) => !ownOnly || isMine(row);
+  const isAdmin = !scoped && ctx.user?.role === "admin";
   const mayMutate = (row: any) => {
+    if (scoped) return inScope(row);
     const u = ctx.user;
     if (!state.config.auth.enabled || !u || isAdmin) return true;
     const owner = row && typeof row === "object" && "userId" in row ? String(row.userId) : null;
     return owner === null || owner === u.sub;
+  };
+  /** A record the caller may not change: 403 if they can see it, 404 if they may not even know it exists. */
+  const refuseRecord = () => {
+    const rules = rulesOf(state);
+    if (!scoped || !rules) return err(403, "forbidden: not the record owner");
+    const read = decide(rules, ctx.user?.role, resource, "read");
+    return read.allowed && read.scope === "all"
+      ? err(403, "forbidden: not the record owner")
+      : err(404, "record not found");
   };
 
   if (req.method === "GET") {
@@ -2062,7 +2178,8 @@ const coreOperation: Middleware = async (ctx) => {
       // 1. filter — `field=value` exact, `field[op]=value` an operator; all must hold
       const filters = parseFilters(params);
       if (filters instanceof Response) return filters;
-      let out = rows;
+      // Scope first, so filters, paging and X-Total-Count only ever see the caller's reach.
+      let out = ownOnly ? rows.filter(isMine) : rows;
       for (const filter of filters) out = out.filter((row) => matchesFilter(row, filter));
 
       // 2. sort — on a copy, so the cached array keeps its insertion order
@@ -2125,7 +2242,7 @@ const coreOperation: Middleware = async (ctx) => {
     }
 
     const row = rows.find((r) => String(r?.id) === id);
-    if (!row) return err(404, "record not found");
+    if (!row || !inScope(row)) return err(404, "record not found");
     ctx.response = json(expandRow(row, expansions, state));
     return;
   }
@@ -2140,8 +2257,10 @@ const coreOperation: Middleware = async (ctx) => {
       ...(body as object),
       ...newTimestamps(),
     };
-    if (state.config.auth.enabled && ctx.user && !("userId" in record))
-      record.userId = ctx.user.sub; // stamp ownership
+    // Stamp ownership. "own" means created for the caller whatever the body
+    // says; otherwise a userId in the body stands and the caller's fills a gap.
+    if (state.config.auth.enabled && ctx.user && (ownOnly || !("userId" in record)))
+      record.userId = ctx.user.sub;
     if (rows.some((r) => String(r?.id) === String(record.id)))
       return err(409, "record with this id already exists");
     rows.push(record);
@@ -2158,11 +2277,16 @@ const coreOperation: Middleware = async (ctx) => {
     const idx = rows.findIndex((r) => String(r?.id) === id);
     if (idx === -1) return err(404, "record not found");
     const prev = rows[idx];
-    if (!mayMutate(prev)) return err(403, "forbidden: not the record owner");
+    if (!mayMutate(prev)) return refuseRecord();
     const record: Record<string, any> = { ...(body as object), id: prev.id };
     const prevObj = prev && typeof prev === "object" ? (prev as Record<string, any>) : null;
-    if (prevObj && !isAdmin && state.config.auth.enabled && "userId" in prevObj)
-      record.userId = prevObj.userId; // ownership cannot be reassigned
+    if (prevObj && state.config.auth.enabled && "userId" in prevObj) {
+      // Ownership moves only for someone whose reach is every record — an admin
+      // without rules, "update all" with them — and a body that leaves userId
+      // out keeps it rather than orphaning the record.
+      const mayReassign = scoped ? !ownOnly : isAdmin;
+      if (!mayReassign || !("userId" in record)) record.userId = prevObj.userId;
+    }
     // Server-owned timestamps: keep when the record was created — or leave it
     // unset if that was never recorded, rather than inventing a date — and
     // stamp this write. A PUT that echoes a fetched record would otherwise
@@ -2180,7 +2304,7 @@ const coreOperation: Middleware = async (ctx) => {
   if (req.method === "DELETE" && id !== undefined) {
     const idx = rows.findIndex((r) => String(r?.id) === id);
     if (idx === -1) return err(404, "record not found");
-    if (!mayMutate(rows[idx])) return err(403, "forbidden: not the record owner");
+    if (!mayMutate(rows[idx])) return refuseRecord();
     const [removed] = rows.splice(idx, 1);
     await persist(state, tenantId, resource);
     ctx.result = removed;
@@ -2195,6 +2319,7 @@ const PIPELINE: Middleware[] = [
   statusGuard,
   quotaGuard,
   authGuard,
+  rbacGuard,
   chaosGuard,
   validationGuard,
   beforeWebhookGuard,

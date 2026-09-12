@@ -176,18 +176,20 @@ backends take no npm dependencies).
 | Key | Example | Purpose |
 |---|---|---|
 | `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` (never a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
-| `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). |
+| `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). Ignored while the project has a `system/rbac.json` — its `guest` role decides what visitors may do. |
 | `AUTH_JWT_TTL_SECONDS` | `"3600"` | JWT lifetime (default 86400 = 24 h, min 60). |
 | `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>` instead of returning JSON. |
 | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_SECRET` | — | Tenant's own Google OAuth app. Both present ⇒ `GET /<tenant>/auth/google` (+ `/callback`) go live. The tenant registers `<origin>/<tenant>/auth/google/callback` in their Google console. |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_SECRET` | — | Same for GitHub (`/auth/github`). |
 | `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself needs `RESEND_API_KEY` (§ Notifications) — or the core's `AUTH_RESET_LOG_CODES` locally — and answers `404` without either. |
 
-Role note: a `"role": "admin"` on a `system/users.json` record bypasses
-ownership checks, but no API sets one yet (RBAC is not built), so every account
-signs up as `user`. JWTs carry `sub`/`email`/`role`/`pwdAt` claims signed with
-the derived per-tenant key (nothing stored on disk); the role is re-read from
-the record on every request.
+Roles: an account's `role` lives on its `system/users.json` record and is
+re-read on every request, so a change applies from the next one. Without an
+`rbac.json`, `"admin"` bypasses the ownership rules and every signup is `user`.
+With one, signups get its `defaultRole`, and a role is changed from the
+dashboard or by a role holding `_users: update`. JWTs carry
+`sub`/`email`/`role`/`pwdAt` claims signed with the derived per-tenant key
+(nothing stored on disk).
 
 **Password reset and revocation** (not keys — fixed behaviour): a reset code is
 six digits, lives 15 minutes, works once, is spent by five wrong guesses, and is
@@ -195,6 +197,37 @@ replaced by the next request; each account gets at most five codes an hour. Code
 are stored in `system/reset-password.json` as an HMAC keyed off `ADMIN_SECRET`.
 Changing or resetting a password stamps `passwordChangedAt`, and every token
 signed before it stops verifying.
+
+### Roles and permissions (`<tenant>/system/rbac.json`)
+
+Not env keys: a JSON file, edited in the dashboard beside the `.env`, staged as
+`draft_rbac.json` and promoted on deploy. It takes effect only with
+`AUTH_ENABLED=true`; without the file, the ownership rules above apply.
+
+```json
+{
+  "defaultRole": "customer",
+  "roles": {
+    "guest":    { "products": ["read"] },
+    "customer": { "orders": { "create": "own", "read": "own", "update": "own" } },
+    "staff":    { "products": "*", "orders": { "read": "all" }, "_users": ["read"] },
+    "admin":    "*"
+  }
+}
+```
+
+| Part | Meaning |
+|---|---|
+| `defaultRole` | Required. The role every new account gets; must be one of `roles`, and not `guest`. |
+| `roles.<name>` | `"*"` (everything, managing accounts included), or an object keyed by resource name — `"*"` as a key covers any resource the role doesn't name. |
+| a resource's value | `"*"`, a list of actions (each on every record), or `{ "<action>": "own" \| "all" }`. Actions are `read` (GET), `create` (POST), `update` (PUT) and `delete` (DELETE). |
+| `own` / `all` | `own` reaches records whose `userId` is the caller's: lists are filtered, anyone else's record reads as `404`, a create is stamped with the caller whatever the body says, and an update can't move `userId`. `all` reaches every record. |
+| `_users` | `["read"]` lists accounts (`GET /auth/users`); `["read", "update"]` or `"*"` also changes roles (`PUT /auth/users/<id>/role`). |
+| `guest` | The role for requests without a token: `all` scopes only, no `_users`. While the file exists, `AUTH_PUBLIC_ROUTES` is ignored. |
+
+Anything a role doesn't list is refused — `401` for a visitor, `403` naming the
+role for an account. A write is validated and refused with every problem listed;
+a file broken on disk refuses everything rather than falling back to open access.
 
 ### Webhooks
 
@@ -238,42 +271,22 @@ creates one account per plan — `free@`, `pro@` and `ai@stubbase.dev`, password
 | Plan id | Name | Requests/month | Unlocks |
 |---|---|---|---|
 | `free` | Free | 5,000 | — |
-| `pro` | Pro QA | 50,000 | `chaos`, `auth` |
-| `pro_ai` | Pro + AI | 250,000 | `chaos`, `auth`, `webhooks`, `ai` |
+| `pro` | Pro QA | 50,000 | — |
+| `pro_ai` | Pro + AI | 250,000 | `ai` |
 
 An unknown or absent plan string reads as **Free**, never as unlimited.
 
-**Features are enforced at write time.** Each maps to tenant config keys, and
-the dashboard's files proxy refuses to *turn one on* off-plan with `402`:
-
-| Feature | Config keys it gates |
-|---|---|
-| `chaos` | `QA_MODE=true` |
-| `auth` | `AUTH_ENABLED=true` |
-| `webhooks` | any non-empty `HOOK_*` |
-| `ai` | none — gates `POST /projects/<id>/ai/chat` |
-
-Only switching a key **on** is checked: a config that carries `QA_MODE=false`
-or an empty `HOOK_*` always saves, so an account can always remove a setting it
-is no longer entitled to. Config that was already saved keeps working — a
-feature is never re-enforced by ignoring settings the tenant has live, because
-quietly treating `AUTH_ENABLED` as off would publish their data.
-
-There are **two** doors onto live config and both are checked: the write
-(`PUT /projects/<id>/files/config`, which stages `draft_config`) and the deploy
-(`POST /projects/<id>/deploy`, which promotes it). A draft can outlive the plan
-that was allowed to stage it, so deploy re-checks rather than trusting the
-earlier write.
+**Plans differ by request allowance.** Every project feature — auth and roles,
+webhooks, QA mode — is on every plan, so nothing a project's `.env` or
+`rbac.json` switches on is refused. The one gated feature is the AI Co-Pilot
+(`ai`): `POST /projects/<id>/ai/chat` answers `402` below Pro + AI, because every
+turn is a paid provider call.
 
 `PLATFORM_TENANTS` (Dashboard API env, default `public`) lists tenants the
 platform itself serves. They belong to no account, so they are counted but
 never quoted an allowance — the landing site's demo tenant would otherwise be
 capped at the Free plan across all its visitors. They are simply left out of
 the flush reply, so the core's fail-open path serves them with no special case.
-
-`GET /<tenant>/openapi.json` is deliberately **not** gated, though the pricing
-page lists it under Pro + AI — four content spokes promise it on every project.
-See the comment on `type Feature`.
 
 **The request allowance is enforced at request time, in the core.** The core
 never learns what a plan is: the Dashboard API answers each usage flush with

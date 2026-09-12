@@ -12,6 +12,8 @@ export type Selection =
   | { kind: 'env' }
   // A feature-owned file in the project's system/ folder — shown, never edited.
   | { kind: 'system'; file: string }
+  // The project's roles and permissions (system/rbac.json), edited like the .env.
+  | { kind: 'rbac' }
   | null
 
 export type EditorTab = 'docs' | 'live'

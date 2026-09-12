@@ -3,8 +3,8 @@
  * exercised locally — there is no payment gateway, so a plan is a column value
  * and these three rows are how you see all three sides of it.
  *
- *   free@stubbase.dev   Free      5,000 requests/mo, no paid features
- *   pro@stubbase.dev    Pro QA    50,000/mo, ChaosGuard + AuthGuard
+ *   free@stubbase.dev   Free      5,000 requests/mo
+ *   pro@stubbase.dev    Pro QA    50,000/mo
  *   ai@stubbase.dev     Pro + AI  250,000/mo, everything incl. the Co-Pilot
  *
  * All three share the password below. Dev-only: this writes to the local

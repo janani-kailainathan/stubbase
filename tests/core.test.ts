@@ -901,6 +901,219 @@ describe("ownership (RBAC)", () => {
   });
 });
 
+// ── Roles and permissions (rbac.json) ──────────────────────────────
+
+describe("roles and permissions (rbac.json)", () => {
+  const RULES = {
+    defaultRole: "customer",
+    roles: {
+      guest: { products: ["read"] },
+      customer: {
+        products: ["read"],
+        orders: { create: "own", read: "own", update: "own" },
+        reviews: { read: "all", create: "own", delete: "own" },
+      },
+      staff: {
+        products: ["read", "create", "update"],
+        orders: { read: "all", update: "all" },
+        _users: ["read"],
+      },
+      admin: "*",
+    },
+  };
+  type Account = { token: string; user: { id: string; role?: string } };
+  let ada: Account, bea: Account, staff: Account, admin: Account;
+
+  const call = (method: string, path: string, token?: string, body?: unknown) =>
+    fetch(`${core.base}/store${path}`, {
+      method,
+      headers: {
+        ...(token ? bearer(token) : {}),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const assign = (id: string, role: string) =>
+    fetch(`${core.base}/store/_admin/users/${id}/role`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+
+  beforeAll(async () => {
+    await seed(core, "store", {
+      products: [{ id: "p1", title: "A book" }],
+      orders: [],
+      reviews: [],
+      ledger: [{ id: "l1" }],
+      config: { AUTH_ENABLED: "true", AUTH_PUBLIC_ROUTES: "ledger" },
+      rbac: RULES,
+    });
+    ada = await signupAs("store", "ada@shop.co");
+    bea = await signupAs("store", "bea@shop.co");
+    staff = await signupAs("store", "sam@shop.co");
+    admin = await signupAs("store", "root@shop.co");
+    expect((await assign(staff.user.id, "staff")).status).toBe(200);
+    expect((await assign(admin.user.id, "admin")).status).toBe(200);
+  }, 30_000);
+
+  test("a signup gets the default role", () => {
+    expect(ada.user.role).toBe("customer");
+  });
+
+  test("the owner assigns roles on the admin plane, and only roles the rules define", async () => {
+    expect((await assign(bea.user.id, "superuser")).status).toBe(400);
+    expect((await assign("no-such-user", "staff")).status).toBe(404);
+    const anon = await fetch(`${core.base}/store/_admin/users/${bea.user.id}/role`, {
+      method: "POST",
+      body: JSON.stringify({ role: "staff" }),
+    });
+    expect(anon.status).toBe(401);
+    const accounts = await systemFile(core, "store", "users");
+    expect(accounts.find((u: any) => u.id === staff.user.id).role).toBe("staff");
+  });
+
+  test("a visitor gets the guest role's permissions, and AUTH_PUBLIC_ROUTES no longer applies", async () => {
+    expect((await call("GET", "/products")).status).toBe(200);
+    expect((await call("POST", "/products", undefined, { title: "free" })).status).toBe(401);
+    expect((await call("GET", "/orders")).status).toBe(401);
+    expect((await call("GET", "/ledger")).status).toBe(401); // public route, but guest isn't granted it
+  });
+
+  test("a bad token is refused outright, never downgraded to guest", async () => {
+    expect((await call("GET", "/products", "not.a.token")).status).toBe(401);
+  });
+
+  test("a resource or action a role doesn't list is refused, naming the role", async () => {
+    const res = await call("GET", "/ledger", ada.token);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "forbidden: role 'customer' may not read ledger" });
+    expect((await call("POST", "/products", ada.token, { title: "mine now" })).status).toBe(403);
+  });
+
+  test("read own lists only the caller's records, and create own stamps the caller", async () => {
+    // The body names someone else as the owner: "own" creates it for the caller regardless.
+    const mine = await call("POST", "/orders", ada.token, { item: "p1", userId: bea.user.id }).then((r) => r.json());
+    expect(mine.userId).toBe(ada.user.id);
+    const theirs = await call("POST", "/orders", bea.token, { item: "p1" }).then((r) => r.json());
+
+    const list = await call("GET", "/orders", ada.token);
+    expect((await list.json()).map((o: any) => o.id)).toEqual([mine.id]);
+    expect(list.headers.get("x-total-count")).toBe("1");
+    expect((await call("GET", `/orders/${theirs.id}`, ada.token)).status).toBe(404);
+
+    const all = await call("GET", "/orders", staff.token).then((r) => r.json());
+    expect(all.map((o: any) => o.id).sort()).toEqual([mine.id, theirs.id].sort());
+  });
+
+  test("update own hides other people's records, and ownership stays put", async () => {
+    const mine = await call("POST", "/orders", ada.token, { item: "p1" }).then((r) => r.json());
+    const theirs = await call("POST", "/orders", bea.token, { item: "p1" }).then((r) => r.json());
+    expect((await call("PUT", `/orders/${theirs.id}`, ada.token, { item: "p2" })).status).toBe(404);
+    const edited = await call("PUT", `/orders/${mine.id}`, ada.token, { item: "p2", userId: bea.user.id });
+    expect(await edited.json()).toMatchObject({ item: "p2", userId: ada.user.id });
+    // "update all" reaches every record, and may hand one to someone else.
+    const moved = await call("PUT", `/orders/${mine.id}`, staff.token, { item: "p3", userId: bea.user.id });
+    expect((await moved.json()).userId).toBe(bea.user.id);
+  });
+
+  test("delete own: 403 on a record the caller can see, and nothing without the action", async () => {
+    const mine = await call("POST", "/reviews", ada.token, { stars: 5 }).then((r) => r.json());
+    const theirs = await call("POST", "/reviews", bea.token, { stars: 1 }).then((r) => r.json());
+    expect((await call("DELETE", `/reviews/${theirs.id}`, ada.token)).status).toBe(403); // reviews are read-all
+    expect((await call("DELETE", `/reviews/${mine.id}`, ada.token)).status).toBe(200);
+    const order = await call("POST", "/orders", ada.token, { item: "p1" }).then((r) => r.json());
+    expect((await call("DELETE", `/orders/${order.id}`, ada.token)).status).toBe(403);
+    expect((await call("DELETE", `/orders/${order.id}`, admin.token)).status).toBe(200); // "*"
+  });
+
+  test("a role change applies from the next request, on the same token", async () => {
+    expect((await call("GET", "/ledger", bea.token)).status).toBe(403);
+    await assign(bea.user.id, "admin");
+    expect((await call("GET", "/ledger", bea.token)).status).toBe(200);
+    await assign(bea.user.id, "customer");
+    expect((await call("GET", "/ledger", bea.token)).status).toBe(403);
+  });
+
+  test("managing accounts through the API takes the _users permission", async () => {
+    expect((await call("GET", "/auth/users")).status).toBe(401);
+    expect((await call("GET", "/auth/users", ada.token)).status).toBe(403);
+    const listed = await call("GET", "/auth/users", staff.token);
+    expect(listed.status).toBe(200);
+    const accounts = await listed.json();
+    expect(accounts.length).toBe(4);
+    for (const account of accounts) expect(account).not.toHaveProperty("passwordHash");
+
+    // staff may list but not change; admin ("*") may, and only to a role the rules define.
+    const role = (token: string, body: unknown) => call("PUT", `/auth/users/${ada.user.id}/role`, token, body);
+    expect((await role(staff.token, { role: "staff" })).status).toBe(403);
+    expect((await role(admin.token, { role: "wizard" })).status).toBe(400);
+    const promoted = await role(admin.token, { role: "staff" });
+    expect(await promoted.json()).toMatchObject({ id: ada.user.id, role: "staff" });
+    await assign(ada.user.id, "customer");
+  });
+
+  test("the refusing stage in the request log is rbacGuard", async () => {
+    const res = await call("GET", "/ledger", ada.token);
+    const cid = res.headers.get("x-correlation-id");
+    const { entries } = await fetch(`${core.base}/store/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+    const entry = entries.find((e: any) => e.correlationId === cid);
+    expect(entry.lifecycle.filter((s: any) => !s.ok).map((s: any) => s.stage)).toEqual(["rbacGuard"]);
+  });
+
+  test("rules are checked where they are written, and deploy promotes them", async () => {
+    await seed(core, "rulewrites", { posts: [], config: { AUTH_ENABLED: "true" } });
+    const write = (body: unknown) =>
+      fetch(`${core.base}/rulewrites/_admin/files/draft_rbac`, {
+        method: "POST",
+        headers: { ...adminAuth, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const bad = await write({
+      defaultRole: "nobody",
+      roles: { guest: { posts: { read: "own" } }, member: { posts: ["reed"] } },
+    });
+    expect(bad.status).toBe(400);
+    const problems = ((await bad.json()).problems as string[]).join(" | ");
+    expect(problems).toContain("defaultRole");
+    expect(problems).toContain('"own"');
+    expect(problems).toContain('"reed"');
+    expect(await Bun.file(join(core.dir, "rulewrites", "system", "draft_rbac.json")).exists()).toBe(false);
+
+    expect((await write({ defaultRole: "member", roles: { member: { posts: ["read"] } } })).status).toBe(201);
+    const deploy = await fetch(`${core.base}/rulewrites/_admin/deploy`, { method: "POST", headers: adminAuth });
+    expect((await deploy.json()).promoted).toEqual(["rbac"]);
+    const { token } = await signupAs("rulewrites", "m@x.co");
+    expect((await fetch(`${core.base}/rulewrites/posts`, { headers: bearer(token) })).status).toBe(200);
+    const create = await fetch(`${core.base}/rulewrites/posts`, {
+      method: "POST",
+      headers: { ...bearer(token), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(create.status).toBe(403);
+  }, 20_000);
+
+  test("rules that are invalid on disk refuse everything rather than open up", async () => {
+    await seed(core, "badrules", {
+      posts: [{ id: "1" }],
+      config: { AUTH_ENABLED: "true" },
+      rbac: { roles: "everyone" },
+    });
+    const { token } = await signupAs("badrules", "b@x.co");
+    expect((await fetch(`${core.base}/badrules/posts`, { headers: bearer(token) })).status).toBe(403);
+    expect((await fetch(`${core.base}/badrules/posts`)).status).toBe(401);
+  }, 15_000);
+
+  test("rbac.json is never served, and does nothing without AUTH_ENABLED", async () => {
+    expect((await call("GET", "/rbac", admin.token)).status).toBe(403);
+    await seed(core, "rulesnoauth", {
+      posts: [{ id: "1" }],
+      rbac: { defaultRole: "member", roles: { member: {} } },
+    });
+    expect((await fetch(`${core.base}/rulesnoauth/posts`)).status).toBe(200);
+  });
+});
+
 // ── Tenant layout: data/ and system/ ───────────────────────────────
 
 describe("tenant layout", () => {
@@ -1805,6 +2018,7 @@ describe("live request log", () => {
       "statusGuard",
       "quotaGuard",
       "authGuard",
+      "rbacGuard",
       "chaosGuard",
       "validationGuard",
       "beforeWebhookGuard",

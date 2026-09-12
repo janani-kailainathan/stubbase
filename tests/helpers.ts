@@ -135,7 +135,7 @@ export const tenantFilePath = (core: Service, tenant: string, name: string) =>
   join(
     core.dir,
     tenant,
-    name === "config" || name === "draft_config" ? "system" : "data",
+    ["config", "draft_config", "rbac", "draft_rbac"].includes(name) ? "system" : "data",
     `${name}.json`,
   );
 

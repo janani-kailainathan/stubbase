@@ -10,6 +10,8 @@ import { useCurrentProject } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
 import { useSystemFile } from '@/hooks/system'
+import { useLiveRbac, useRbac, useSaveRbac, useSetUserRole } from '@/hooks/rbac'
+import { RBAC_EXAMPLE, assignableRoles } from '@/lib/rbac'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
 import { useWorkspaceStore, type EditorTab, type LogView, type Method } from '@/stores/workspace'
 import { PaneTab, PaneTabs } from './pane-tabs'
@@ -196,9 +198,73 @@ function SystemActions({ tenantId, file }: { tenantId: string; file: string }) {
 
 const SYSTEM_FILE_NOTES: Record<string, string> = {
   users:
-    'The accounts that sign in to your API. Written by /auth/signup and the login providers; password hashes are never shown.',
+    'The accounts that sign in to your API, created by /auth/signup and the login providers. You can change an account’s role here; password hashes are never shown.',
   'reset-password':
     'Password reset codes that are outstanding or were sent in the last hour. Codes themselves are never shown.',
+}
+
+interface AccountRow {
+  id: string
+  email?: string
+  role?: string
+}
+
+const isAccount = (row: unknown): row is AccountRow =>
+  typeof row === 'object' && row !== null && typeof (row as { id?: unknown }).id === 'string'
+
+/**
+ * A role picker per account. The choices are the deployed rules' roles, since
+ * those are the ones the API will accept; without rules, `user` and `admin`.
+ */
+function AccountRoles({ tenantId, accounts }: { tenantId: string; accounts: unknown[] }) {
+  const { data: rules } = useLiveRbac(tenantId)
+  const setRole = useSetUserRole(tenantId)
+  const roles = assignableRoles(rules)
+  const rows = accounts.filter(isAccount)
+  if (rows.length === 0) return null
+
+  return (
+    <section className="mb-4 overflow-hidden rounded border border-border">
+      <div className="flex h-8 items-center border-b border-border bg-panel px-2.5 font-mono text-[11px] text-subtle">
+        roles · a change applies from the account&rsquo;s next request
+      </div>
+      {rows.map((account) => {
+        const current = account.role ?? 'user'
+        const options = roles.includes(current) ? roles : [current, ...roles]
+        const who = account.email ?? account.id
+        return (
+          <div
+            key={account.id}
+            className="flex items-center gap-3 border-b border-border px-2.5 py-1.5 last:border-b-0"
+          >
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-body">{who}</span>
+            <select
+              value={current}
+              disabled={setRole.isPending}
+              aria-label={`Role for ${who}`}
+              onChange={(e) => {
+                const role = e.target.value
+                setRole.mutate(
+                  { userId: account.id, role },
+                  {
+                    onSuccess: () => toast.success(`${who} is now ${role}`),
+                    onError: (err) => toast.error(`Could not change the role: ${err.message}`),
+                  },
+                )
+              }}
+              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-heading focus:border-primary focus:outline-none disabled:opacity-60"
+            >
+              {options.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </div>
+        )
+      })}
+    </section>
+  )
 }
 
 function SystemFileView({ tenantId, file }: { tenantId: string; file: string }) {
@@ -206,13 +272,123 @@ function SystemFileView({ tenantId, file }: { tenantId: string; file: string }) 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <p className="shrink-0 border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
-        {SYSTEM_FILE_NOTES[file] ?? 'Owned by a feature of your API.'} Changes go through your API&rsquo;s
-        auth endpoints, not this editor.
+        {SYSTEM_FILE_NOTES[file] ?? 'Owned by a feature of your API.'} Everything else changes through
+        your API&rsquo;s auth endpoints, not this editor.
       </p>
       <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
         {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
         {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
+        {file === 'users' && Array.isArray(data) && <AccountRoles tenantId={tenantId} accounts={data} />}
         {data !== undefined && <JsonTree key={file} data={data} initialDepth="first-level" />}
+      </div>
+    </div>
+  )
+}
+
+// ── Roles and permissions (rbac.json) ─────────────────────────────
+
+/** Edit / Save / Cancel, as for a resource — but the file is an object, and the core checks it. */
+function RbacActions({ tenantId }: { tenantId: string }) {
+  const editing = useWorkspaceStore((s) => s.editing)
+  const draft = useWorkspaceStore((s) => s.draft)
+  const startEdit = useWorkspaceStore((s) => s.startEdit)
+  const stopEdit = useWorkspaceStore((s) => s.stopEdit)
+  const { data } = useRbac(tenantId)
+  const save = useSaveRbac(tenantId)
+
+  const onSave = () => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(draft)
+    } catch (err) {
+      toast.error(parseErrorMessage(draft, err))
+      return
+    }
+    save.mutate(parsed, {
+      onSuccess: () => {
+        stopEdit()
+        toast.success('Saved rbac.json — deploy to put the rules live')
+      },
+      // The core's reasons, e.g. "'defaultRole' is 'x', which is not one of the roles".
+      onError: (e) => toast.error(`Save failed: ${e.message}`),
+    })
+  }
+
+  useSaveShortcut(editing && !save.isPending, onSave)
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => startEdit(stringify(data ?? RBAC_EXAMPLE))}
+        disabled={data === undefined}
+        className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
+      >
+        {data === null ? 'Create' : 'Edit'}
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={stopEdit}
+        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-foreground"
+      >
+        <X className="h-3.5 w-3.5" />
+        Cancel
+      </button>
+      <button
+        onClick={onSave}
+        disabled={save.isPending}
+        title={`Save (${SAVE_HINT})`}
+        className="flex cursor-pointer items-center gap-1 rounded bg-primary px-2 py-1 font-mono text-xs text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+      >
+        <Check className="h-3.5 w-3.5" />
+        {save.isPending ? 'Saving…' : 'Save'}
+        <span className="text-primary-foreground/50">{SAVE_HINT}</span>
+      </button>
+    </div>
+  )
+}
+
+function RbacView({ tenantId }: { tenantId: string }) {
+  const editing = useWorkspaceStore((s) => s.editing)
+  const draft = useWorkspaceStore((s) => s.draft)
+  const changeDraft = useWorkspaceStore((s) => s.changeDraft)
+  const { data, isLoading, error } = useRbac(tenantId)
+
+  if (editing) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-0 flex-1 bg-code-bg p-4 font-mono text-xs text-faint">
+            Loading editor&hellip;
+          </div>
+        }
+      >
+        <JsonEditor value={draft} onChange={changeDraft} />
+      </Suspense>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <p className="shrink-0 border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
+        Who may do what with your API: roles, each a set of permissions on your resources. Takes effect
+        with AUTH_ENABLED=true, and goes live on Deploy.
+      </p>
+      <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
+        {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
+        {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
+        {data === null && (
+          <div className="space-y-1 font-mono text-[13px] leading-relaxed">
+            <p className="text-faint"># No rules yet.</p>
+            <p className="text-faint">
+              # Every signed-in user reads everything and changes only their own records.
+            </p>
+            <p className="text-faint"># Click Create to start from an example shop: guest, customer, staff, admin.</p>
+          </div>
+        )}
+        {data && <JsonTree key="rbac" data={data} initialDepth="first-level" />}
       </div>
     </div>
   )
@@ -429,7 +605,9 @@ export function EditorPane() {
         ? '.env'
         : selection?.kind === 'system'
           ? `system/${selection.file}.json`
-          : endpoint && tenantId
+          : selection?.kind === 'rbac'
+            ? 'system/rbac.json'
+            : endpoint && tenantId
           ? `${endpoint.method} /${tenantId}${endpoint.path}`
           : ''
 
@@ -465,6 +643,7 @@ export function EditorPane() {
             {selection?.kind === 'system' && tenantId && (
               <SystemActions tenantId={tenantId} file={selection.file} />
             )}
+            {selection?.kind === 'rbac' && tenantId && <RbacActions tenantId={tenantId} />}
             {endpoint && (
               <PaneTabs>
                 <TabButton tab="docs" label="Docs" />
@@ -521,6 +700,8 @@ export function EditorPane() {
           {selection?.kind === 'system' && tenantId && (
             <SystemFileView tenantId={tenantId} file={selection.file} />
           )}
+
+          {selection?.kind === 'rbac' && tenantId && <RbacView tenantId={tenantId} />}
 
           {endpoint && tenantId && activeTab === 'docs' && (
             <DocsView endpoint={endpoint} tenantId={tenantId} />

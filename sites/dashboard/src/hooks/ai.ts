@@ -29,6 +29,8 @@ export function useCoPilotChat(tenantId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['resource', tenantId] })
       queryClient.invalidateQueries({ queryKey: ['config', tenantId] })
+      // deploy_project promotes a staged rbac.json along with everything else.
+      queryClient.invalidateQueries({ queryKey: ['rbac', tenantId] })
       // set_server_status starts or stops the API, and status is not config.
       queryClient.invalidateQueries({ queryKey: ['status', tenantId] })
       queryClient.invalidateQueries({ queryKey: ['diagnostics', tenantId] })

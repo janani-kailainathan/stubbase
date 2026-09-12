@@ -15,9 +15,6 @@ import { LANDING_URL, type PlanFeature } from '@/lib/api'
  * Keep the labels in step with it and with the pricing page.
  */
 const SELLS: Record<PlanFeature, string> = {
-  chaos: 'Pro QA',
-  auth: 'Pro QA',
-  webhooks: 'Pro + AI',
   ai: 'Pro + AI',
 }
 

@@ -207,38 +207,19 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 // heard of an account, so it is told a *number* (this tenant's monthly request
 // allowance) rather than a tier name. See the usage-flush reply below.
 //
-// Two kinds of entitlement, enforced in two different places, and the split is
-// load-bearing:
-//
-//   Features are gated at WRITE time, in the files proxy. Turning ChaosGuard or
-//   AuthGuard on means writing config.json, and this service is the only writer
-//   a browser (or the Co-Pilot, or an MCP client) can reach — ADMIN_SECRET
-//   never leaves it. Refusing the write is therefore complete, and it fails in
-//   the one place where a person can read why.
-//
-//   Requests are gated at REQUEST time, in the core, because that is the only
-//   thing in the traffic path.
-//
-// A feature must NEVER be re-enforced by ignoring config the tenant already
-// saved. Quietly treating AUTH_ENABLED as off for a downgraded account would
-// strip the guard off their data and publish it — the failure mode of an
-// entitlement check must never be "less secure than the customer asked for".
-// Denying a write is safe; un-protecting a live API is not.
+// Plans differ in one thing: the monthly request allowance, gated at REQUEST
+// time in the core because that is the only thing in the traffic path. Every
+// project feature — auth and roles, webhooks, QA mode — is on every plan, so
+// nothing a project's .env or rbac.json can switch on is refused here. The one
+// exception is the AI Co-Pilot, which costs money on every turn and stays on
+// Pro + AI for now (see aiChat).
 
 type PlanId = "free" | "pro" | "pro_ai";
 /**
- * Capabilities a plan can unlock. Names match the pricing page's Features row,
- * with one deliberate omission: `openapi.json` is NOT gated.
- *
- * The pricing page lists it under Pro + AI, but four content spokes promise it
- * on every project ("Every project generates its own openapi.json" —
- * roles/student, roles/frontend-developer, use-cases/mock-apis,
- * features/ai-rest-api-generation), and the student and frontend-developer
- * pitches are built on it. Enforcing the pricing line would make four pages
- * false; leaving it open makes one line generous. Resolve the copy first, then
- * gate it here if that is the answer.
+ * Capabilities a plan can unlock. Only the Co-Pilot: project features are the
+ * same on every plan, which differ by request allowance alone.
  */
-type Feature = "chaos" | "auth" | "webhooks" | "ai";
+type Feature = "ai";
 
 interface Plan {
   id: PlanId;
@@ -258,13 +239,13 @@ const PLANS: Record<PlanId, Plan> = {
     id: "pro",
     name: "Pro QA",
     monthlyRequests: 50_000,
-    features: ["chaos", "auth"],
+    features: [],
   },
   pro_ai: {
     id: "pro_ai",
     name: "Pro + AI",
     monthlyRequests: 250_000,
-    features: ["chaos", "auth", "webhooks", "ai"],
+    features: ["ai"],
   },
 };
 
@@ -1006,11 +987,9 @@ const envSection = (title: string) => `# ── ${title} ${"─".repeat(Math.max
  * absent — that is system/status.json, which only Start/Stop writes.
  *
  * tests/dashboard-api.test.ts holds it to the keys the core reads (ENVIRONMENT.md
- * §2). Plan names come from PLANS, so a label cannot disagree with what the
- * files proxy enforces, and the OAuth callbacks are this project's real ones.
+ * §2). The OAuth callbacks it names are this project's real ones.
  */
 function envTemplate(tenantId: string): string {
-  const plan = (feature: Feature) => `${cheapestPlanWith(feature).name} plan`;
   const callback = (provider: string) => `${PUBLIC_API_BASE}/${tenantId}/auth/${provider}/callback`;
   return [
     "# Project settings",
@@ -1021,9 +1000,10 @@ function envTemplate(tenantId: string): string {
     "#",
     "# Starting and stopping the API is not a setting: use the Start / Stop button.",
     "",
-    envSection(`Auth: sign-up and login for your users (${plan("auth")})`),
+    envSection("Auth: sign-up and login for your users"),
     "# The switch. Every request then needs a token, and /auth/signup, /auth/login",
-    "# and /auth/change-password go live. Accounts show up in the system folder.",
+    "# and /auth/change-password go live. Accounts show up in the system folder,",
+    "# and who may do what is set by roles and permissions in rbac.json.",
     "# AUTH_ENABLED=true",
     "",
     "# Resources anyone may read without a token, comma-separated.",
@@ -1068,7 +1048,7 @@ function envTemplate(tenantId: string): string {
     "# TWILIO_AUTH_TOKEN=your-twilio-auth-token",
     "# TWILIO_FROM=+15551234567",
     "",
-    envSection(`QA: simulate slow, failing and empty responses (${plan("chaos")})`),
+    envSection("QA: simulate slow, failing and empty responses"),
     "# Lets a request ask for trouble with the x-stubbase-delay, x-stubbase-status,",
     "# x-stubbase-error-rate and x-stubbase-empty headers. Ignored while this is off.",
     "# QA_MODE=true",
@@ -1078,7 +1058,7 @@ function envTemplate(tenantId: string): string {
     "# does not match gets a 400. Add one line per resource.",
     '# SCHEMA_POSTS={"type":"object","required":["title"],"properties":{"title":{"type":"string"}}}',
     "",
-    envSection(`Webhooks (${plan("webhooks")})`),
+    envSection("Webhooks"),
     "# HOOK_<BEFORE|AFTER>_<INSERT|UPDATE|DELETE>_<RESOURCE>=<url>",
     "# A BEFORE hook must answer 200 or the write is refused.",
     "# An AFTER hook is told about the write once it has happened.",
@@ -1199,8 +1179,10 @@ async function deleteProject(user: User, tenantId: string): Promise<Response> {
     if (!res.ok && res.status !== 404)
       return err(502, `core engine failed to delete '${rName}' (status ${res.status})`);
   }
-  await coreAdmin("DELETE", tenantId, "config");
-  await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}config`);
+  for (const settings of ["config", "rbac"]) {
+    await coreAdmin("DELETE", tenantId, settings);
+    await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}${settings}`);
+  }
   // Keys die with the project. Leaving them behind would keep credentials
   // valid for a tenant id that no longer belongs to anyone.
   db.query("DELETE FROM developer_api_keys WHERE tenant_id = ?").run(tenantId);
@@ -1230,53 +1212,6 @@ function invalidResourceName(resource: string): Response | null {
   if (!NAME_RE.test(resource)) return err(400, "invalid resource name");
   if (resource.startsWith(DRAFT_PREFIX))
     return err(400, "resource names must not start with draft_");
-  return null;
-}
-
-/**
- * The write-time half of the entitlement check (see PLANS).
- *
- * Every paid *feature* is a tenant config key, and config can only be written
- * here, so refusing the write is the whole enforcement — there is no second
- * door. Nothing a browser, the Co-Pilot or an MCP client can reach writes
- * config any other way, and the core's `_admin` plane needs ADMIN_SECRET,
- * which never leaves this process.
- *
- * Only a key being turned ON is checked. A config that merely *carries* a key
- * the plan does not include — because it was written on a richer plan, or is
- * being edited to switch it off — must still save, or a downgraded account
- * would be unable to remove the very setting it is not entitled to.
- */
-const GATED_CONFIG: { feature: Feature; label: string; on: (env: Record<string, unknown>) => boolean }[] = [
-  {
-    feature: "chaos",
-    label: "ChaosGuard (QA_MODE)",
-    on: (env) => String(env.QA_MODE ?? "").trim().toLowerCase() === "true",
-  },
-  {
-    feature: "auth",
-    label: "AuthGuard (AUTH_ENABLED)",
-    on: (env) => String(env.AUTH_ENABLED ?? "").trim().toLowerCase() === "true",
-  },
-  {
-    feature: "webhooks",
-    label: "webhook routing (HOOK_*)",
-    on: (env) =>
-      Object.entries(env).some(
-        ([k, v]) => k.startsWith("HOOK_") && typeof v === "string" && v.trim() !== "",
-      ),
-  },
-];
-
-function planForbidsConfig(user: User, env: Record<string, unknown>): Response | null {
-  for (const gate of GATED_CONFIG) {
-    if (!gate.on(env) || hasFeature(user, gate.feature)) continue;
-    const needed = cheapestPlanWith(gate.feature);
-    return err(
-      402,
-      `${gate.label} is part of ${needed.name}. Your account is on ${planOf(user).name}.`,
-    );
-  }
   return null;
 }
 
@@ -1338,8 +1273,10 @@ async function putFile(
 
   const body = await readJsonBody(req);
   if (body instanceof Response) return body;
-  const isConfig = resource === "config";
-  if (isConfig) {
+  // Settings files are objects the core parses, never record arrays, and never
+  // resources: config (the .env editor) and rbac (roles and permissions).
+  const isSettings = resource === "config" || resource === "rbac";
+  if (resource === "config") {
     if (body === null || typeof body !== "object" || Array.isArray(body))
       return err(400, "config must be a JSON object");
     // env-style keys are strings; `resources` is the one structured key
@@ -1352,13 +1289,16 @@ async function putFile(
       }
       if (typeof v !== "string") return err(400, "config values must be strings");
     }
-    const forbidden = planForbidsConfig(user, body as Record<string, unknown>);
-    if (forbidden) return forbidden;
+  } else if (resource === "rbac") {
+    if (body === null || typeof body !== "object" || Array.isArray(body))
+      return err(400, "rbac.json must be a JSON object");
   } else if (!Array.isArray(body)) {
     return err(400, "body must be a JSON array of records");
   }
 
   const res = await coreAdmin("POST", tenantId, `${DRAFT_PREFIX}${resource}`, body);
+  // The core validates rules where they are written; its reasons are the user's to read.
+  if (res.status === 400) return json(res.data ?? { error: "the core engine refused the file" }, 400);
   if (!res.ok) return err(502, `core engine refused the write (status ${res.status})`);
 
   // The draft is on disk, so the live API is now behind — recorded after the
@@ -1368,7 +1308,7 @@ async function putFile(
 
   // Re-read inside addResources rather than reusing `row`: that snapshot was
   // taken before the core write above, so it is stale by the time we get here.
-  if (!isConfig) addResources(tenantId, [resource]);
+  if (!isSettings) addResources(tenantId, [resource]);
   const records = Array.isArray(body) ? body.length : Object.keys(body as object).length;
   return json({ ok: true, tenant: tenantId, resource, records, draft: true });
 }
@@ -1412,6 +1352,28 @@ async function listSystemFiles(user: User, tenantId: string): Promise<Response> 
   return json({ files: Array.isArray(files) ? files.filter((f) => typeof f === "string") : [] });
 }
 
+/**
+ * PUT /projects/<id>/system/users/<userId>/role — the owner setting an account's
+ * role, which is how a project's first admin is made. The core decides whether
+ * the role exists; its 400 and 404 are passed through for the user to read.
+ */
+async function setUserRole(req: Request, user: User, tenantId: string, userId: string): Promise<Response> {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  if (!NAME_RE.test(userId)) return err(400, "invalid user id");
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const res = await fetch(`${CORE_API_URL}/${tenantId}/_admin/users/${userId}/role`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+    body: JSON.stringify({ role: (body as { role?: unknown } | null)?.role }),
+  });
+  const data = await res.json().catch(() => null);
+  if (res.status === 400 || res.status === 404)
+    return json(data ?? { error: "the core engine refused the role" }, res.status);
+  if (!res.ok) return err(502, `core engine refused the role change (status ${res.status})`);
+  return json(data);
+}
+
 async function getSystemFile(user: User, tenantId: string, name: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
   if (!NAME_RE.test(name)) return err(400, "invalid file name");
@@ -1451,7 +1413,7 @@ const AI_MAX_RECORDS = 50;
 const AI_MAX_LOG_ENTRIES = 15; // recent requests handed to get_diagnostics
 const AI_MAX_LOG_BODY = 300;
 /** Names the core treats as settings or routes — never generatable tables. */
-const RESERVED_TABLES = new Set(["config", "stubbase", "env", "auth"]);
+const RESERVED_TABLES = new Set(["config", "rbac", "stubbase", "env", "auth"]);
 
 // ── History validation ────────────────────────────────────────────
 
@@ -2140,7 +2102,7 @@ async function collectSyntaxErrors(
   // because a broken draft blocks a deploy and a broken config silently
   // reverts every tenant setting to its default.
   const live = parseResources(project.resources);
-  const names = [...new Set([...live, ...live.map((r) => `${DRAFT_PREFIX}${r}`), "config"])];
+  const names = [...new Set([...live, ...live.map((r) => `${DRAFT_PREFIX}${r}`), "config", "rbac"])];
 
   const syntaxErrors: { file: string; message: string }[] = [];
   await Promise.all(
@@ -2194,16 +2156,6 @@ async function promoteDrafts(
 
 async function deployProject(user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
-  // Deploy is the *second* door onto live config, so the entitlement is
-  // re-checked here rather than trusted from write time. A draft can outlive
-  // the plan that was allowed to stage it — written on Pro, deployed after a
-  // downgrade — and promoting it would put a paid feature live without any
-  // request ever being refused.
-  const staged = await coreAdmin("GET", tenantId, `${DRAFT_PREFIX}config`);
-  if (staged.ok && staged.data && typeof staged.data === "object" && !Array.isArray(staged.data)) {
-    const forbidden = planForbidsConfig(user, staged.data as Record<string, unknown>);
-    if (forbidden) return forbidden;
-  }
   const out = await promoteDrafts(tenantId);
   if ("error" in out) return err(502, out.error);
   return json({ ok: true, tenant: tenantId, promoted: out.promoted });
@@ -2586,6 +2538,15 @@ async function route(req: Request): Promise<Response> {
 
     if (segments.length === 4 && req.method === "GET" && segments[2] === "system")
       return getSystemFile(user, segments[1], segments[3]);
+
+    if (
+      segments.length === 6 &&
+      req.method === "PUT" &&
+      segments[2] === "system" &&
+      segments[3] === "users" &&
+      segments[5] === "role"
+    )
+      return setUserRole(req, user, segments[1], segments[4]);
 
     if (segments.length === 3 && req.method === "POST" && segments[2] === "keys")
       return createKey(req, user, segments[1]);

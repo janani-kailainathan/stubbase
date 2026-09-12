@@ -161,6 +161,11 @@ describe("project ownership scoping", () => {
     { method: "GET", path: `/projects/${tenantId}/system` },
     { method: "GET", path: `/projects/${tenantId}/system/users` },
     {
+      method: "PUT",
+      path: `/projects/${tenantId}/system/users/nobody/role`,
+      body: JSON.stringify({ role: "admin" }),
+    },
+    {
       method: "POST",
       path: `/projects/${tenantId}/ai/chat`,
       body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "a blog" }] }] }),
@@ -948,27 +953,45 @@ describe("the dirty flag", () => {
 
   test("a refused deploy leaves it dirty", async () => {
     // The safe direction: over-reporting costs a redundant redeploy, while
-    // under-reporting serves stale data with a dashboard that looks clean.
-    // The plan re-check is a deploy that fails before anything is promoted.
-    const pro = await signup();
-    setPlan(pro.email, "pro");
-    const project = (await createProject(pro.token, "Refused", { posts: [] })).tenantId;
-
-    const write = await fetch(`${app.base}/projects/${project}/files/config`, {
-      method: "PUT",
-      headers: jsonHeaders(pro.token),
-      body: JSON.stringify({ QA_MODE: "true" }),
+    // under-reporting serves stale data with a dashboard that looks clean. A
+    // stand-in core accepts every write and fails only the deploy.
+    const refusing = Bun.serve({
+      port: 0,
+      fetch: (req) =>
+        new URL(req.url).pathname.endsWith("/_admin/deploy")
+          ? Response.json({ error: "disk full" }, { status: 500 })
+          : Response.json({ ok: true }, { status: req.method === "POST" ? 201 : 200 }),
     });
-    expect(write.status).toBe(200);
-    expect(await dirtyOf(project, pro.token)).toBe(true);
+    try {
+      const other = await startApp(ROOT, "app-refused-deploy", {
+        CORE_API_URL: `http://127.0.0.1:${refusing.port}`,
+        ALLOWED_ORIGINS: ALLOWED_ORIGIN,
+      });
+      running.push(other);
+      const account = await signup(other);
+      const project = (await createProject(account.token, "Refused", { posts: [] }, other)).tenantId;
+      const dirty = async () => {
+        const list = await fetch(`${other.base}/projects`, { headers: as(account.token) }).then((r) => r.json());
+        return list.find((p: any) => p.tenant_id === project).dirty;
+      };
 
-    setPlan(pro.email, "free");
-    const deploy = await fetch(`${app.base}/projects/${project}/deploy`, {
-      method: "POST",
-      headers: as(pro.token),
-    });
-    expect(deploy.status).toBe(402);
-    expect(await dirtyOf(project, pro.token)).toBe(true);
+      const write = await fetch(`${other.base}/projects/${project}/files/posts`, {
+        method: "PUT",
+        headers: jsonHeaders(account.token),
+        body: JSON.stringify([{ id: "1" }]),
+      });
+      expect(write.status).toBe(200);
+      expect(await dirty()).toBe(true);
+
+      const deploy = await fetch(`${other.base}/projects/${project}/deploy`, {
+        method: "POST",
+        headers: as(account.token),
+      });
+      expect(deploy.status).toBe(502);
+      expect(await dirty()).toBe(true);
+    } finally {
+      refusing.stop(true);
+    }
   }, 30_000);
 
   test("deleting a resource does not clear it", async () => {
@@ -1167,13 +1190,11 @@ describe("usage ingestion", () => {
 // ── Plans and entitlements ─────────────────────────────────────────
 
 /**
- * The three tiers actually mean something.
- *
- * Two enforcement points, and the suite covers both sides of each: features are
- * refused at WRITE time in the files proxy (the only config writer a user can
- * reach), and the request allowance is handed to the core on the usage-flush
- * reply. What the SPA does with `features` is presentation — these are the
- * checks that hold when the browser is lying.
+ * The three tiers differ by request allowance, handed to the core on the
+ * usage-flush reply. Every project feature is on every plan; the Co-Pilot is
+ * the one gated feature, refused by its own route. What the SPA does with
+ * `features` is presentation — these are the checks that hold when the browser
+ * is lying.
  */
 describe("plans and entitlements", () => {
   const config = (token: string, tenantId: string, body: Record<string, unknown>) =>
@@ -1205,64 +1226,36 @@ describe("plans and entitlements", () => {
     expect(user.features).toEqual([]);
   }, 30_000);
 
-  test("Free cannot switch on a paid config key, and the refusal names the plan", async () => {
+  test("every plan can switch on every project feature, and deploy it", async () => {
+    // Plans differ by request allowance alone: nothing a project's .env can
+    // turn on is refused on Free.
     const owner = await signup();
-    const { tenantId } = await createProject(owner.token, "Gate", { posts: [] });
-
-    const chaos = await config(owner.token, tenantId, { QA_MODE: "true" });
-    expect(chaos.status).toBe(402);
-    expect((await chaos.json()).error).toContain("Pro QA");
-
-    const auth = await config(owner.token, tenantId, { AUTH_ENABLED: "true" });
-    expect(auth.status).toBe(402);
-
-    const hooks = await config(owner.token, tenantId, {
+    const { tenantId } = await createProject(owner.token, "Everything", { posts: [] });
+    const all = await config(owner.token, tenantId, {
+      QA_MODE: "true",
+      AUTH_ENABLED: "true",
       HOOK_AFTER_INSERT_POSTS: "https://example.com/hook",
     });
-    expect(hooks.status).toBe(402);
-    expect((await hooks.json()).error).toContain("Pro + AI");
-  }, 30_000);
+    expect(all.status).toBe(200);
 
-  test("…and the core never sees the refused setting", async () => {
-    const owner = await signup();
-    const { tenantId } = await createProject(owner.token, "Refused", { posts: [] });
-    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(402);
-
-    // The write is refused before it reaches the core: a 402 that still staged
-    // the draft would go live on the next deploy.
-    const draft = await fetch(`${core.base}/${tenantId}/_admin/files/draft_config`, {
+    const deploy = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: as(owner.token),
+    });
+    expect(deploy.status).toBe(200);
+    const live = await fetch(`${core.base}/${tenantId}/_admin/files/config`, {
       headers: { authorization: `Bearer ${ADMIN_SECRET}` },
-    });
-    expect(draft.status).toBe(404);
+    }).then((r) => r.json());
+    expect(live).toMatchObject({ QA_MODE: "true", AUTH_ENABLED: "true" });
   }, 30_000);
 
-  test("a paid key that is being switched OFF still saves on Free", async () => {
-    // Otherwise a downgraded account could never remove the setting it is no
-    // longer entitled to — the gate is on turning something on, not on the
-    // key existing.
-    const owner = await signup();
-    const { tenantId } = await createProject(owner.token, "Downgrade", { posts: [] });
-
-    const off = await config(owner.token, tenantId, {
-      QA_MODE: "false",
-      AUTH_ENABLED: "",
-      HOOK_AFTER_INSERT_POSTS: "",
-    });
-    expect(off.status).toBe(200);
-  }, 30_000);
-
-  test("Pro QA unlocks chaos and auth but not the Co-Pilot", async () => {
+  test("the Co-Pilot is the one gated feature: Pro is still refused it", async () => {
     const owner = await signup();
     setPlan(owner.email, "pro");
-    const { tenantId } = await createProject(owner.token, "ProQA", { posts: [] });
-
-    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(200);
-    expect((await config(owner.token, tenantId, { AUTH_ENABLED: "true" })).status).toBe(200);
-
-    const hooks = await config(owner.token, tenantId, {
-      HOOK_AFTER_INSERT_POSTS: "https://example.com/hook",
-    });
-    expect(hooks.status).toBe(402);
+    const { tenantId } = await createProject(owner.token, "ProNoAi", { posts: [] });
+    const me = () =>
+      fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
+    expect((await me()).user.features).toEqual([]);
 
     const ai = await fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
       method: "POST",
@@ -1271,6 +1264,9 @@ describe("plans and entitlements", () => {
     });
     expect(ai.status).toBe(402);
     expect((await ai.json()).error).toContain("Pro + AI");
+
+    setPlan(owner.email, "pro_ai");
+    expect((await me()).user.features).toEqual(["ai"]);
   }, 30_000);
 
   test("the Co-Pilot gate is checked before the provider key, so it can't probe the server", async () => {
@@ -1300,38 +1296,6 @@ describe("plans and entitlements", () => {
 
     const res = await config(stranger.token, tenantId, { QA_MODE: "true" });
     expect(res.status).toBe(404);
-  }, 30_000);
-
-  test("deploy re-checks the plan — a draft cannot smuggle a paid feature live", async () => {
-    // Deploy is the second door onto live config. Stage the draft while
-    // entitled, then downgrade and try to promote it: without the check the
-    // feature would go live having never been refused.
-    const owner = await signup();
-    setPlan(owner.email, "pro");
-    const { tenantId } = await createProject(owner.token, "Smuggle", { posts: [] });
-    expect((await config(owner.token, tenantId, { QA_MODE: "true" })).status).toBe(200);
-
-    setPlan(owner.email, "free");
-    const deploy = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
-      method: "POST",
-      headers: jsonHeaders(owner.token),
-    });
-    expect(deploy.status).toBe(402);
-
-    // …and the live config really was left alone.
-    const live = await fetch(`${core.base}/${tenantId}/_admin/files/config`, {
-      headers: { authorization: `Bearer ${ADMIN_SECRET}` },
-    });
-    if (live.status === 200) expect((await live.json()).QA_MODE).not.toBe("true");
-
-    // Restore the plan and it goes through, so the check gates on entitlement
-    // rather than simply blocking any config deploy.
-    setPlan(owner.email, "pro");
-    const allowed = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
-      method: "POST",
-      headers: jsonHeaders(owner.token),
-    });
-    expect(allowed.status).toBe(200);
   }, 30_000);
 
   test("a deploy carrying no staged config is unaffected", async () => {
@@ -2304,6 +2268,93 @@ describe("system files", () => {
       expect({ name, status: res.status }).toEqual({ name, status: 404 });
     }
   }, 15_000);
+});
+
+// ── Roles and permissions (rbac.json) ──────────────────────────────
+
+describe("roles and permissions", () => {
+  const RULES = {
+    defaultRole: "customer",
+    roles: { customer: { posts: ["read"] }, staff: { posts: "*" }, admin: "*" },
+  };
+
+  test("rbac.json is validated by the core, staged like config, and deployed", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Rules", { posts: [] });
+    const put = (body: unknown) =>
+      fetch(`${app.base}/projects/${tenantId}/files/rbac`, {
+        method: "PUT",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify(body),
+      });
+    const read = (live = false) =>
+      fetch(`${app.base}/projects/${tenantId}/files/rbac${live ? "?source=live" : ""}`, {
+        headers: as(owner.token),
+      });
+
+    const bad = await put({ defaultRole: "nobody", roles: {} });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toContain("defaultRole");
+    expect((await put([])).status).toBe(400);
+
+    expect((await put(RULES)).status).toBe(200);
+    const list = await fetch(`${app.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    const row = list.find((p: any) => p.tenant_id === tenantId);
+    expect(row.resources).not.toContain("rbac");
+    expect(row.dirty).toBe(true);
+    expect(await (await read()).json()).toEqual(RULES);
+    expect((await read(true)).status).toBe(404); // staged, not live
+
+    const deploy = await fetch(`${app.base}/projects/${tenantId}/deploy`, {
+      method: "POST",
+      headers: as(owner.token),
+    });
+    expect((await deploy.json()).promoted).toContain("rbac");
+    expect(await (await read(true)).json()).toEqual(RULES);
+  }, 30_000);
+
+  test("the owner sets an account's role from the dashboard", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "Roles", { posts: [] });
+    for (const [name, body] of [
+      ["config", { AUTH_ENABLED: "true" }],
+      ["rbac", RULES],
+    ] as const) {
+      const res = await fetch(`${app.base}/projects/${tenantId}/files/${name}`, {
+        method: "PUT",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+    }
+    await activate(owner.token, tenantId);
+    await fetch(`${app.base}/projects/${tenantId}/deploy`, { method: "POST", headers: as(owner.token) });
+
+    const signed = await fetch(`${core.base}/${tenantId}/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "shopper@test.co", password: "password123" }),
+    }).then((r) => r.json());
+    expect(signed.user.role).toBe("customer");
+
+    const set = (userId: string, role: string) =>
+      fetch(`${app.base}/projects/${tenantId}/system/users/${userId}/role`, {
+        method: "PUT",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify({ role }),
+      });
+    const ok = await set(signed.user.id, "staff");
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ id: signed.user.id, role: "staff" });
+    const shown = await fetch(`${app.base}/projects/${tenantId}/system/users`, {
+      headers: as(owner.token),
+    }).then((r) => r.json());
+    expect(shown[0].role).toBe("staff");
+
+    expect((await set(signed.user.id, "wizard")).status).toBe(400);
+    expect((await set("no-such-user", "staff")).status).toBe(404);
+    expect((await set("not a valid id", "staff")).status).toBe(400);
+  }, 30_000);
 });
 
 // ── Diagnostics ────────────────────────────────────────────────────

@@ -59,11 +59,15 @@ POST   /<tenant>/auth/change-password   (JWT) { currentPassword, password } → 
 POST   /<tenant>/auth/forgot-password   { email }                        → 202, emails a 6-digit code
 POST   /<tenant>/auth/reset-password    { email, code, password }        → { token, user }
 GET    /<tenant>/auth/google | github   OAuth sign-in (when configured)
+GET    /<tenant>/auth/users             (JWT, role with _users: read) list accounts
+PUT    /<tenant>/auth/users/<id>/role   (JWT, role with _users: update) { role }
 ```
 
 Changing or resetting a password revokes every token issued before it.
 
-Each resource is one file: `/tenants/<tenant>/data/<resource>.json`, a JSON array of objects. Everything that is not a resource sits beside it in `/tenants/<tenant>/system/` — the tenant's `config.json`, its `status.json` (whether it is serving — set by Start/Stop, never deployed), and the files a feature owns (auth's `users.json` and `reset-password.json`), which are never served as resources. A project may still have a `data/users.json` of its own; it is ordinary CRUD.
+With a `system/rbac.json` as well, every CRUD request is checked against the caller's role: a permission is resource + action (`read`/`create`/`update`/`delete`) + scope (`own`/`all`), anything a role doesn't list is refused, and requests without a token use the `guest` role. New accounts get the file's `defaultRole`.
+
+Each resource is one file: `/tenants/<tenant>/data/<resource>.json`, a JSON array of objects. Everything that is not a resource sits beside it in `/tenants/<tenant>/system/` — the tenant's `config.json` and `rbac.json` (roles and permissions), its `status.json` (whether it is serving — set by Start/Stop, never deployed), and the files a feature owns (auth's `users.json` and `reset-password.json`), which are never served as resources. A project may still have a `data/users.json` of its own; it is ordinary CRUD.
 
 **List query params** (all optional, composable in this order — filter → sort → paginate → expand):
 
@@ -87,6 +91,7 @@ POST   /<tenant>/_admin/files/<resource>   create/overwrite file (body = seed ar
 DELETE /<tenant>/_admin/files/<resource>   delete file
 GET    /<tenant>/_admin/system[/<file>]    list / read a feature's files (read-only, credentials stripped)
 GET|POST /<tenant>/_admin/status           read / set whether the public plane is serving (applies immediately)
+POST   /<tenant>/_admin/users/<id>/role    set an account's role (must exist in the rules)
 POST   /<tenant>/_admin/flush              drop the RAM cache
 POST   /<tenant>/_admin/deploy             promote draft_* files to production
 GET    /<tenant>/_admin/sse-logs           SSE stream of the live request log

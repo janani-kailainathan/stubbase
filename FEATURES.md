@@ -215,8 +215,8 @@ accounts change only through these endpoints. Passwords are hashed and never
 appear in a response or in the dashboard. A `users.json` you add to your data is
 an ordinary resource like any other and has nothing to do with signing in.
 
-Every account is a standard user. There is no way to give one extra permissions
-yet.
+Every account is a standard user until you add roles — see
+[1.4.4 Roles and permissions](#144-roles-and-permissions).
 
 **Changing a password** takes the user's token *and* their current password, so
 a stolen token alone cannot lock anyone out. It signs the user out everywhere
@@ -248,6 +248,9 @@ Comma-separated, no spaces.
 
 Leave this key out and *nothing* is public — the right default for a private
 app, the wrong one for a public blog with a signed-in comment box.
+
+Once your project has an `rbac.json`, this key is ignored: the `guest` role
+decides what visitors can do (see 1.4.4).
 
 ##### To control how long a login lasts:
 
@@ -401,6 +404,80 @@ your page and send them to `reset-password` with the new password.
 
 Leave it out and the email carries the code alone — the right choice for a
 mobile app, or anything without a web page to land on.
+
+#### 1.4.4 Roles and permissions
+
+Decide who may do what with your API — say, customers place orders and see only
+their own, while staff see every order and edit the products. You describe
+roles in an `rbac.json` file in your project, and every request is checked
+against the role of the user making it.
+
+A **permission** is an action on a resource — `read`, `create`, `update` or
+`delete` — and whose records it reaches: `own` (records that user created) or
+`all`. A **role** is a set of permissions, and every account has one.
+
+```json
+{
+  "defaultRole": "customer",
+  "roles": {
+    "guest":    { "products": ["read"] },
+    "customer": { "products": ["read"],
+                  "orders":   { "create": "own", "read": "own", "update": "own" } },
+    "staff":    { "products": ["read", "create", "update"],
+                  "orders":   { "read": "all", "update": "all" },
+                  "_users":   ["read"] },
+    "admin":    "*"
+  }
+}
+```
+
+With these rules, the same request gets a different answer depending on who
+sends it:
+
+```
+GET  /<project>/orders      as a customer     → only their own orders
+GET  /<project>/orders      as staff          → every order
+GET  /<project>/orders      without a token   → 401
+POST /<project>/products    as a customer     → 403
+```
+
+- **`own` holds everywhere.** A customer's list shows only their records, and
+  asking for someone else's order by id gets a 404, as if it didn't exist. A
+  customer's new order is always theirs, whatever the body says.
+- **`"*"` is everything**, and a list like `["read", "create"]` means those
+  actions on every record.
+- **Anything a role doesn't mention is refused.** Add a resource and only a role
+  with `"*"` can touch it until you grant it to the others.
+- **`guest` is for requests without a token.** It can only use `all`, since a
+  visitor has no records of their own.
+- **Without an `rbac.json`, nothing changes:** every signed-in user reads
+  everything and changes only their own records, as described in 1.4.
+
+**Giving someone a role.** New accounts get `defaultRole`. You change an
+account's role in the dashboard — open **system → users.json** and pick one —
+which is how you make your first admin. A role with `"_users": ["read",
+"update"]`, or `"*"`, can do the same from your own app:
+
+```
+GET  /<project>/auth/users              list accounts
+PUT  /<project>/auth/users/<id>/role    { "role": "staff" }
+```
+
+A new role applies from that user's very next request — they don't need to sign
+in again.
+
+##### To enable this, add an `rbac.json` to your project:
+
+In the dashboard, open **rbac.json** in your project's files, click **Create** to
+start from the example above, make it yours, Save, then Deploy. Roles only apply
+to an API that has auth switched on:
+
+```
+AUTH_ENABLED=true
+```
+
+If something in the file is wrong — a `defaultRole` that isn't one of the roles,
+a misspelt action — Save tells you what and where, and nothing changes.
 
 ### 1.5 Atomic operations
 

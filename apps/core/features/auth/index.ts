@@ -7,6 +7,8 @@
  *   POST /<tenant>/auth/forgot-password   { email }                          → 202
  *   POST /<tenant>/auth/reset-password    { email, code, password }          → { token, user }
  *   GET  /<tenant>/auth/google|github[/callback]                             (when configured)
+ *   GET  /<tenant>/auth/users                                                (role with _users: read)
+ *   PUT  /<tenant>/auth/users/<id>/role   { role }                           (role with _users: update)
  *
  * Every route needs AUTH_ENABLED. The identity table is `system/users.json` and
  * outstanding reset codes are `system/reset-password.json`; neither is a CRUD
@@ -23,6 +25,11 @@ import { handleOauth } from "./oauth.ts";
 import { changePassword, login, signup } from "./password.ts";
 import { forgotPassword, resetPassword } from "./password-reset.ts";
 import type { AuthHost, AuthTenant, Claims } from "./types.ts";
+import { changeRole, listUsers, setRole } from "./users.ts";
+
+/** A parsed JSON body as fields; anything that was not an object reads as empty. */
+const asFields = (body: unknown): Fields =>
+  body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Fields) : {};
 
 export { parseAuthConfig } from "./config.ts";
 export { LOG_RESET_CODES } from "./password-reset.ts";
@@ -85,6 +92,15 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
     };
 
     const [action, sub] = segments;
+    if (action === "users") {
+      if (req.method === "GET" && segments.length === 1) return listUsers(ctx);
+      if (req.method === "PUT" && segments.length === 3 && segments[2] === "role") {
+        const body = await host.readJsonBody(req);
+        if (body instanceof Response) return body;
+        return changeRole(ctx, segments[1], asFields(body));
+      }
+      return err(404, "unknown auth route");
+    }
     if (req.method === "GET" && (action === "google" || action === "github") && segments.length <= 2) {
       if (sub !== undefined && sub !== "callback") return err(404, "unknown auth route");
       return handleOauth(ctx, action, sub === "callback");
@@ -94,9 +110,19 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
     if (!route) return err(404, "unknown auth route");
     const body = await host.readJsonBody(req);
     if (body instanceof Response) return body;
-    const fields = body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Fields) : {};
-    return route(ctx, fields);
+    return route(ctx, asFields(body));
   }
 
-  return { handle, authenticate };
+  /**
+   * The project owner changing an account's role from the dashboard, through
+   * the core's admin plane: no token, the owner's authority. Not refused for a
+   * stopped project — the admin plane never is.
+   */
+  async function assignRole(tenantId: string, userId: string, role: unknown): Promise<Response> {
+    const tenant = await host.getTenant(tenantId);
+    if (!tenant) return err(404, "tenant not found");
+    return setRole(host, tenantId, tenant, userId, role);
+  }
+
+  return { handle, authenticate, assignRole };
 }

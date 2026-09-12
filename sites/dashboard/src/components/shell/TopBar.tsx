@@ -438,6 +438,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
       // deployed copy, so this refetch is what moves the auth routes in or out
       // of the list — the deploy is the only thing that should.
       queryClient.invalidateQueries({ queryKey: ['config', tenantId] })
+      queryClient.invalidateQueries({ queryKey: ['rbac', tenantId] })
       // Promoted drafts are the deployed files now: the playground's "not
       // deployed yet" check and the editor's read order both change with them.
       queryClient.invalidateQueries({ queryKey: ['resource', tenantId] })

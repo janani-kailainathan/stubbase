@@ -125,7 +125,7 @@ export async function handleOauth<T extends AuthTenant>(
       id: crypto.randomUUID(),
       email,
       ...(typeof profile.name === "string" && profile.name ? { name: profile.name } : {}),
-      role: "user",
+      role: host.defaultRole(tenant),
       provider,
       ...newTimestamps(),
     };

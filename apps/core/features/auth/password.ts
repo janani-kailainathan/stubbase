@@ -32,7 +32,7 @@ export async function signup<T extends AuthTenant>(ctx: AuthContext<T>, body: Fi
     id: crypto.randomUUID(),
     email,
     ...(typeof name === "string" && name ? { name } : {}),
-    role: "user",
+    role: ctx.host.defaultRole(ctx.tenant),
     passwordHash,
     ...newTimestamps(),
   };

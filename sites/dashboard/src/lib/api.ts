@@ -11,6 +11,7 @@
  */
 
 import { setSignedInHint } from '@/lib/cross-site'
+import type { RbacRules } from '@/lib/rbac'
 
 const DEV = import.meta.env.DEV
 
@@ -96,8 +97,11 @@ function appHeaders(hasBody = false): Record<string, string> {
 
 // ── Dashboard API: auth ───────────────────────────────────────────
 
-/** Capabilities a plan unlocks. Mirrors the Feature union in server-app.ts. */
-export type PlanFeature = 'chaos' | 'auth' | 'webhooks' | 'ai'
+/**
+ * Capabilities a plan unlocks. Mirrors the Feature union in server-app.ts: only
+ * the Co-Pilot, since every project feature is on every plan.
+ */
+export type PlanFeature = 'ai'
 
 /**
  * The signed-in account, with its plan already resolved by the server.
@@ -285,6 +289,34 @@ export const fetchSystemFiles = (tenantId: string) =>
 export const fetchSystemFile = (tenantId: string, name: string) =>
   request<unknown[]>(`${APP_API_URL}/projects/${tenantId}/system/${name}`, {
     headers: appHeaders(),
+  })
+
+/**
+ * Give an account a role — how a project's first admin is made. Applies from
+ * the account's next request; nothing to deploy.
+ */
+export const setUserRole = (tenantId: string, userId: string, role: string) =>
+  request<Record<string, unknown>>(
+    `${APP_API_URL}/projects/${tenantId}/system/users/${encodeURIComponent(userId)}/role`,
+    { method: 'PUT', headers: appHeaders(true), body: JSON.stringify({ role }) },
+  )
+
+/** A project's roles and permissions (system/rbac.json) — the staged draft if there is one. */
+export const fetchRbac = (tenantId: string) =>
+  request<RbacRules>(`${APP_API_URL}/projects/${tenantId}/files/rbac`, { headers: appHeaders() })
+
+/** The deployed rules alone, which decide the roles an account can be given. */
+export const fetchLiveRbac = (tenantId: string) =>
+  request<RbacRules>(`${APP_API_URL}/projects/${tenantId}/files/rbac?source=live`, {
+    headers: appHeaders(),
+  })
+
+/** Stage rules for the next deploy. The core checks them and says what is wrong. */
+export const saveRbac = (tenantId: string, rules: unknown) =>
+  request<{ ok: boolean }>(`${APP_API_URL}/projects/${tenantId}/files/rbac`, {
+    method: 'PUT',
+    headers: appHeaders(true),
+    body: JSON.stringify(rules),
   })
 
 export const deleteResourceFile = (tenantId: string, resource: string) =>

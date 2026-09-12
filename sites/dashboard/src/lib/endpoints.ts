@@ -93,6 +93,24 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
       request: { email: 'ada@example.com', code: '123456', password: 'a new password' },
     },
   },
+  // Account management — answered only for a role with `_users` rights in rbac.json.
+  {
+    resource: 'auth',
+    method: 'GET',
+    path: '/auth/users',
+    needsId: false,
+    kind: 'auth',
+  },
+  {
+    resource: 'auth',
+    method: 'PUT',
+    path: '/auth/users/{id}/role',
+    needsId: true,
+    kind: 'auth',
+    sample: {
+      request: { role: 'staff' },
+    },
+  },
 ]
 
 /**
