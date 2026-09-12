@@ -40,7 +40,7 @@ function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
       }
       className={
         isSelected
-          ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-7'
+          ? 'flex cursor-pointer items-center gap-2 rounded border border-transparent bg-primary-soft py-1.5 pr-2 pl-7'
           : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-7 hover:bg-card'
       }
     >

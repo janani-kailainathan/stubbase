@@ -186,7 +186,7 @@ export function FilesSidebar() {
                 key={resource}
                 className={
                   isSelected
-                    ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                    ? 'flex cursor-pointer items-center gap-2 rounded border border-transparent bg-primary-soft py-1.5 pr-2 pl-8'
                     : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
                 }
                 onClick={() => select({ kind: 'resource', resource })}
@@ -219,7 +219,7 @@ export function FilesSidebar() {
           <div
             className={
               selection?.kind === 'rbac'
-                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                ? 'flex cursor-pointer items-center gap-2 rounded border border-transparent bg-primary-soft py-1.5 pr-2 pl-8'
                 : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
             }
             onClick={() => select({ kind: 'rbac' })}
@@ -237,7 +237,7 @@ export function FilesSidebar() {
                 key={file}
                 className={
                   isSelected
-                    ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                    ? 'flex cursor-pointer items-center gap-2 rounded border border-transparent bg-primary-soft py-1.5 pr-2 pl-8'
                     : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
                 }
                 onClick={() => select({ kind: 'system', file })}
@@ -252,7 +252,7 @@ export function FilesSidebar() {
           <div
             className={
               selection?.kind === 'env'
-                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft px-2 py-1.5'
+                ? 'flex cursor-pointer items-center gap-2 rounded border border-transparent bg-primary-soft px-2 py-1.5'
                 : 'flex cursor-pointer items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:bg-card'
             }
             onClick={() => select({ kind: 'env' })}

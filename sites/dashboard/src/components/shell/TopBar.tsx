@@ -346,7 +346,7 @@ function ModeToggle() {
               disabled
                 ? 'cursor-not-allowed rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-faintest'
                 : paneMode === mode
-                  ? 'cursor-pointer rounded border border-primary-soft-border bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
+                  ? 'cursor-pointer rounded border border-transparent bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
                   : 'cursor-pointer rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-subtle hover:text-emphasis'
             }
           >
