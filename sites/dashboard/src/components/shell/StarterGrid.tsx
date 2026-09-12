@@ -3,13 +3,13 @@ import {
   ChefHat,
   ClipboardList,
   FilePlus2,
+  Fingerprint,
   Flag,
   KeyRound,
   LifeBuoy,
   Link2,
   MessagesSquare,
   Newspaper,
-  Radio,
   ShieldCheck,
   ShoppingCart,
   Users,
@@ -33,7 +33,7 @@ import {
  * file: adding or removing a starter there changes both places, and the card
  * itself has one definition rather than two that drift.
  *
- * Nine cards, of which five are real and four are placeholders for examples not
+ * Nine cards, of which six are real and three are placeholders for examples not
  * written yet (PLANNED_STARTERS). Showing the planned ones greyed out is a
  * deliberate choice over hiding them: the grid reads as a set someone is filling
  * in rather than as three options and a shrug, and the layout stops moving every
@@ -52,9 +52,9 @@ const ICONS: Record<string, LucideIcon> = {
   storefront: ShoppingCart,
   recipes: ChefHat,
   helpdesk: LifeBuoy,
+  accounts: Fingerprint,
   chat: MessagesSquare,
   crm: Users,
-  telemetry: Radio,
   flags: Flag,
 }
 

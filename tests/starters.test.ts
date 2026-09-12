@@ -124,12 +124,13 @@ describe("starter examples", () => {
   test("the list really does escalate: plain, then relations, then auth, then roles", () => {
     // The order is the pitch — a card claiming `relations` must have foreign
     // keys, and one claiming neither must be a single flat resource.
-    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "blog", "storefront", "recipes", "helpdesk"]);
+    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "blog", "storefront", "recipes", "helpdesk", "accounts"]);
     expect(STARTERS.map((s) => s.features)).toEqual([
       [],
       ["relations"],
       ["relations", "auth"],
       ["relations", "auth"],
+      ["relations", "auth", "rbac"],
       ["relations", "auth", "rbac"],
     ]);
 
@@ -161,7 +162,7 @@ describe("starter examples", () => {
   });
 
   test("the placeholders stay placeholders, and stay distinguishable", () => {
-    // Nine cards on the empty state: five real, four not written yet. The grid
+    // Nine cards on the empty state: six real, three not written yet. The grid
     // renders both lists, so a placeholder that drifted into looking real —
     // duplicate id, empty resource list — would be a card promising an example
     // that cannot be seeded. Moving one into STARTERS is what makes the rest of
@@ -299,8 +300,8 @@ describe("starter examples", () => {
     expect((await fetch(`${core.base}/recipes-w/collections`)).status).toBe(401);
   });
 
-  test("the rbac starter's rules pass the core, and customers and agents see different queues", async () => {
-    const starter = STARTERS.find((s) => s.features.includes("rbac"))!;
+  test("Deskline's rules pass the core, and customers and agents see different queues", async () => {
+    const starter = STARTERS.find((s) => s.id === "helpdesk")!;
     const base = `${core.base}/${starter.id}-w`;
     const admin = { ...adminAuth, "content-type": "application/json" };
 
@@ -344,6 +345,77 @@ describe("starter examples", () => {
     const queue = await fetch(`${base}/tickets`, { headers: as }).then((r) => r.json());
     expect(queue).toHaveLength(starter.resources.tickets.length + 1);
     expect((await fetch(`${base}/macros`, { headers: as })).status).toBe(200);
+  }, 30_000);
+
+  test("Signet: every sign-in path it advertises is live, and roles decide who manages accounts", async () => {
+    const starter = STARTERS.find((s) => s.id === "accounts")!;
+    const base = `${core.base}/accounts-w`;
+    const admin = { ...adminAuth, "content-type": "application/json" };
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+      fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    const promote = (id: unknown, role: string) =>
+      fetch(`${base}/_admin/users/${id}/role`, { method: "POST", headers: admin, body: JSON.stringify({ role }) });
+
+    // The rules are accepted by the core's own validation, not merely written to disk.
+    expect((await post("/_admin/files/draft_rbac", starter.rbac, adminAuth)).status).toBe(201);
+
+    // Visitors get the org directory and the plans, and nothing about people.
+    expect((await fetch(`${base}/plans`)).status).toBe(200);
+    for (const name of ["memberships", "invitations", "profiles"])
+      expect((await fetch(`${base}/${name}`)).status, `${name} is open to visitors`).toBe(401);
+
+    // Sign up and log in with a password; a new account is a member.
+    const signup = await post("/auth/signup", { email: "ada@signet.example", password: "password123", name: "Ada" });
+    expect(signup.status).toBe(201);
+    const ada = (await signup.json()) as { token: string; user: { id: unknown; role: string } };
+    expect(ada.user.role).toBe(starter.rbac!.defaultRole);
+    expect((await post("/auth/login", { email: "ada@signet.example", password: "password123" })).status).toBe(200);
+    const bo = (await post("/auth/signup", { email: "bo@signet.example", password: "password123" }).then((r) =>
+      r.json(),
+    )) as { token: string; user: { id: unknown } };
+    const asAda = { authorization: `Bearer ${ada.token}` };
+
+    // A profile is its owner's alone, whatever the body claims.
+    expect(await fetch(`${base}/profiles`, { headers: asAda }).then((r) => r.json())).toEqual([]);
+    expect((await post("/profiles", { displayName: "Ada", userId: "someone-else" }, asAda)).status).toBe(201);
+    const mine = (await fetch(`${base}/profiles`, { headers: asAda }).then((r) => r.json())) as { userId: unknown }[];
+    expect(mine).toHaveLength(1);
+    expect(String(mine[0].userId)).toBe(String(ada.user.id));
+    expect(await fetch(`${base}/profiles`, { headers: { authorization: `Bearer ${bo.token}` } }).then((r) => r.json())).toEqual([]);
+
+    // Members can't list accounts; support can, but can't change a role; an admin can.
+    expect((await fetch(`${base}/auth/users`, { headers: asAda })).status).toBe(403);
+    expect((await promote(ada.user.id, "support")).status).toBe(200);
+    expect((await fetch(`${base}/auth/users`, { headers: asAda })).status).toBe(200);
+    const makeBoSupport = () =>
+      fetch(`${base}/auth/users/${bo.user.id}/role`, {
+        method: "PUT",
+        headers: { ...asAda, "content-type": "application/json" },
+        body: JSON.stringify({ role: "support" }),
+      });
+    expect((await makeBoSupport()).status).toBe(403);
+    expect((await promote(ada.user.id, "admin")).status).toBe(200);
+    expect((await makeBoSupport()).status).toBe(200);
+    expect((await fetch(`${base}/auth/users`, { headers: { authorization: `Bearer ${bo.token}` } })).status).toBe(200);
+
+    // Changing the password signs the old token out and hands back a new one.
+    const changed = await post("/auth/change-password", { currentPassword: "password123", password: "password456" }, asAda);
+    expect(changed.status).toBe(200);
+    expect((await fetch(`${base}/profiles`, { headers: asAda })).status).toBe(401);
+    const { token } = (await changed.json()) as { token: string };
+    expect((await fetch(`${base}/profiles`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+
+    // Social sign-in and reset emails wait on credentials only the owner has,
+    // which is exactly what the starter's next step tells them.
+    expect((await fetch(`${base}/auth/google`, { redirect: "manual" })).status).toBe(404);
+    expect((await fetch(`${base}/auth/github`, { redirect: "manual" })).status).toBe(404);
+    expect((await post("/auth/forgot-password", { email: "ada@signet.example" })).status).toBe(404);
+    expect(socialLoginConfigured(starter.config)).toBe(false);
+    for (const word of ["Google", "GitHub", "Resend"]) expect(starter.nextStep).toContain(word);
   }, 30_000);
 
   test("a starter without the auth feature needs no token at all", async () => {

@@ -11,6 +11,9 @@
  *               without credentials, and a whole product's worth of resources
  *   helpdesk    Deskline, a support desk: rbac.json roles — customers see their
  *               own tickets, agents the whole queue, a lead can promote agents
+ *   accounts    Signet, sign-in and user management in the spirit of Clerk:
+ *               every login path the auth plane has, organizations, members and
+ *               invites, and roles that decide who may list or promote accounts
  *
  * Foreign keys follow the core's convention exactly — `?_expand=authors`
  * singularizes to `author`, reads `authorId`, and nests the match under
@@ -32,7 +35,7 @@
 import type { RbacRules } from './rbac'
 
 export interface Starter {
-  id: 'tracker' | 'blog' | 'storefront' | 'recipes' | 'helpdesk'
+  id: 'tracker' | 'blog' | 'storefront' | 'recipes' | 'helpdesk' | 'accounts'
   title: string
   blurb: string
   /** Capabilities this example demonstrates, beyond plain CRUD. */
@@ -308,6 +311,83 @@ export const STARTERS: Starter[] = [
       ],
     },
   },
+  {
+    id: 'accounts',
+    title: 'Signet accounts',
+    blurb: 'Every way to sign in, with orgs, members and invites.',
+    features: ['relations', 'auth', 'rbac'],
+    example: '/organizations?_expand=plans&verified=true',
+    nextStep:
+      'Google and GitHub sign-in need your OAuth app’s keys, and reset emails a Resend API key — add them in the .env.',
+    // Sign-in as a product: signup, login, change and reset password, Google
+    // and GitHub, and a one-hour session. The org directory and plans are
+    // public; a member's profile, memberships and invitations are their own;
+    // support can list accounts, and only an admin can change a role. New
+    // accounts are members; make the first admin from system/users.json.
+    config: {
+      AUTH_ENABLED: 'true',
+      RBAC_ENABLED: 'true',
+      AUTH_JWT_TTL_SECONDS: '3600',
+      AUTH_OAUTH_REDIRECT: 'https://signet.app/sso-callback',
+      AUTH_RESET_URL: 'https://signet.app/reset-password',
+    },
+    rbac: {
+      defaultRole: 'member',
+      roles: {
+        guest: { organizations: ['read'], plans: ['read'] },
+        member: {
+          organizations: { read: 'all', create: 'own', update: 'own' },
+          plans: ['read'],
+          memberships: { read: 'own', create: 'own', delete: 'own' },
+          invitations: { read: 'own', create: 'own', delete: 'own' },
+          profiles: { read: 'own', create: 'own', update: 'own' },
+        },
+        support: {
+          organizations: ['read'],
+          plans: ['read'],
+          memberships: ['read'],
+          invitations: ['read', 'delete'],
+          profiles: ['read'],
+          _users: ['read'],
+        },
+        admin: '*',
+      },
+    },
+    resources: {
+      organizations: [
+        { id: '1', planId: '3', name: 'Larkspur Logistics', slug: 'larkspur', domain: 'larkspur.example', verified: true, seats: 120, createdOn: '2025-11-04' },
+        { id: '2', planId: '2', name: 'Brightline Studio', slug: 'brightline', domain: 'brightline.example', verified: true, seats: 18, createdOn: '2026-01-12' },
+        { id: '3', planId: '2', name: 'Kestrel Health', slug: 'kestrel', domain: 'kestrel.example', verified: true, seats: 42, createdOn: '2026-02-20' },
+        { id: '4', planId: '1', name: 'Tamarind Labs', slug: 'tamarind', domain: null, verified: false, seats: 4, createdOn: '2026-03-02' },
+      ],
+      plans: [
+        { id: '1', name: 'Free', monthlyPrice: 0, seatLimit: 5, sso: false, auditLog: false },
+        { id: '2', name: 'Team', monthlyPrice: 49, seatLimit: 50, sso: false, auditLog: true },
+        { id: '3', name: 'Enterprise', monthlyPrice: 499, seatLimit: null, sso: true, auditLog: true },
+      ],
+      memberships: [
+        { id: '1', organizationId: '1', member: 'Amara Osei', email: 'amara@example.com', orgRole: 'owner', signedInWith: 'google', joinedOn: '2025-11-04' },
+        { id: '2', organizationId: '1', member: 'Jonas Weber', email: 'jonas@example.com', orgRole: 'admin', signedInWith: 'email', joinedOn: '2025-11-19' },
+        { id: '3', organizationId: '2', member: 'Leila Farahani', email: 'leila@example.com', orgRole: 'owner', signedInWith: 'github', joinedOn: '2026-01-12' },
+        { id: '4', organizationId: '2', member: 'Rui Costa', email: 'rui@example.com', orgRole: 'member', signedInWith: 'google', joinedOn: '2026-02-03' },
+        { id: '5', organizationId: '3', member: 'Sienna Park', email: 'sienna@example.com', orgRole: 'owner', signedInWith: 'email', joinedOn: '2026-02-20' },
+        { id: '6', organizationId: '4', member: 'Tariq Aziz', email: 'tariq@example.com', orgRole: 'owner', signedInWith: 'github', joinedOn: '2026-03-02' },
+      ],
+      invitations: [
+        { id: '1', organizationId: '1', email: 'maya@example.com', orgRole: 'member', status: 'pending', sentOn: '2026-04-01', expiresOn: '2026-04-08' },
+        { id: '2', organizationId: '2', email: 'rui@example.com', orgRole: 'member', status: 'accepted', sentOn: '2026-02-01', expiresOn: '2026-02-08' },
+        { id: '3', organizationId: '3', email: 'dev@example.com', orgRole: 'admin', status: 'expired', sentOn: '2026-03-01', expiresOn: '2026-03-08' },
+        { id: '4', organizationId: '1', email: 'contractor@example.com', orgRole: 'member', status: 'revoked', sentOn: '2026-03-15', expiresOn: '2026-03-22' },
+      ],
+      profiles: [
+        { id: '1', displayName: 'Amara Osei', username: 'amara', locale: 'en-GB', timezone: 'Europe/London', signedInWith: 'google', twoFactor: true, lastSignInAt: '2026-04-05T08:14:00Z' },
+        { id: '2', displayName: 'Jonas Weber', username: 'jonas', locale: 'de-DE', timezone: 'Europe/Berlin', signedInWith: 'email', twoFactor: false, lastSignInAt: '2026-04-04T16:02:00Z' },
+        { id: '3', displayName: 'Leila Farahani', username: 'leila', locale: 'fa-IR', timezone: 'Asia/Tehran', signedInWith: 'github', twoFactor: true, lastSignInAt: '2026-04-05T11:47:00Z' },
+        { id: '4', displayName: 'Rui Costa', username: 'rui', locale: 'pt-PT', timezone: 'Europe/Lisbon', signedInWith: 'google', twoFactor: false, lastSignInAt: '2026-03-30T19:25:00Z' },
+        { id: '5', displayName: 'Tariq Aziz', username: 'tariq', locale: 'en-US', timezone: 'America/Chicago', signedInWith: 'github', twoFactor: true, lastSignInAt: '2026-04-02T13:09:00Z' },
+      ],
+    },
+  },
 ]
 
 export const countRecords = (s: Starter) =>
@@ -351,13 +431,6 @@ export const PLANNED_STARTERS: PlannedStarter[] = [
     blurb: 'Deals moving through stages.',
     features: ['relations'],
     resources: ['companies', 'contacts', 'deals'],
-  },
-  {
-    id: 'telemetry',
-    title: 'Device telemetry',
-    blurb: 'One wide table, thousands of rows.',
-    features: [],
-    resources: ['readings'],
   },
   {
     id: 'flags',
