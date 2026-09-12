@@ -2,9 +2,10 @@
  * Roles and permissions for a project's own users (`system/rbac.json`).
  *
  * A permission is resource + action + scope; a role is a named bundle of them;
- * each account has one role. Only in effect with AUTH_ENABLED and a rules file:
- * without the file a project keeps the plain ownership rules (read everything,
- * change your own records), and the file is staged and deployed like config.
+ * each account has one role. Only in effect with AUTH_ENABLED, RBAC_ENABLED and
+ * a rules file: otherwise a project keeps the plain ownership rules (read
+ * everything, change your own records). The file is staged and deployed like
+ * config.
  *
  * The core calls `decide` from its rbacGuard pipeline stage, which settles
  * whether the request may happen at all and hands coreOperation the scope that

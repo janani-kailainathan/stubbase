@@ -176,17 +176,18 @@ backends take no npm dependencies).
 | Key | Example | Purpose |
 |---|---|---|
 | `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` (never a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
-| `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). Ignored while the project has a `system/rbac.json` — its `guest` role decides what visitors may do. |
+| `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). Ignored while roles are on (`RBAC_ENABLED=true` with a `system/rbac.json`) — the `guest` role decides what visitors may do. |
 | `AUTH_JWT_TTL_SECONDS` | `"3600"` | JWT lifetime (default 86400 = 24 h, min 60). |
 | `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>` instead of returning JSON. |
 | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_SECRET` | — | Tenant's own Google OAuth app. Both present ⇒ `GET /<tenant>/auth/google` (+ `/callback`) go live. The tenant registers `<origin>/<tenant>/auth/google/callback` in their Google console. |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_SECRET` | — | Same for GitHub (`/auth/github`). |
 | `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself needs `RESEND_API_KEY` (§ Notifications) — or the core's `AUTH_RESET_LOG_CODES` locally — and answers `404` without either. |
+| `RBAC_ENABLED` | `"true"` | Roles and permissions. With `AUTH_ENABLED=true` too, every CRUD request is checked against `system/rbac.json` (below), and the dashboard lets you create or save that file only while this is on. Off, the file is kept but ignored, and the ownership rules apply. |
 
 Roles: an account's `role` lives on its `system/users.json` record and is
 re-read on every request, so a change applies from the next one. Without an
-`rbac.json`, `"admin"` bypasses the ownership rules and every signup is `user`.
-With one, signups get its `defaultRole`, and a role is changed from the
+`rbac.json` in force, `"admin"` bypasses the ownership rules and every signup is
+`user`. With one (and `RBAC_ENABLED=true`), signups get its `defaultRole`, and a role is changed from the
 dashboard or by a role holding `_users: update`. JWTs carry
 `sub`/`email`/`role`/`pwdAt` claims signed with the derived per-tenant key
 (nothing stored on disk).
@@ -200,9 +201,11 @@ signed before it stops verifying.
 
 ### Roles and permissions (`<tenant>/system/rbac.json`)
 
-Not env keys: a JSON file, edited in the dashboard beside the `.env`, staged as
-`draft_rbac.json` and promoted on deploy. It takes effect only with
-`AUTH_ENABLED=true`; without the file, the ownership rules above apply.
+A JSON file, switched on by `RBAC_ENABLED=true` (which needs `AUTH_ENABLED=true`),
+edited in the dashboard's `system` folder, staged as `draft_rbac.json` and
+promoted on deploy. The dashboard lets you create or save it only while both
+switches are on (`409` otherwise); with either switch off, or no file, the
+ownership rules above apply.
 
 ```json
 {

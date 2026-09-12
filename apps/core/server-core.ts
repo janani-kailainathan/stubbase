@@ -141,6 +141,7 @@ interface TenantConfig {
   qaMode: boolean; // gates every x-stubbase-* simulation header
   schemas: Record<string, unknown>; // resource → JSON Schema for POST/PUT bodies
   auth: AuthConfig; // the AUTH_* keys, parsed by the auth feature
+  rbacEnabled: boolean; // RBAC_ENABLED — roles and permissions from system/rbac.json (needs auth)
   hooks: Record<string, string>; // HOOK_BEFORE_INSERT_POSTS etc → webhook URL
   resendKey: string;
   resendFrom: string;
@@ -153,6 +154,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   qaMode: false,
   schemas: {},
   auth: parseAuthConfig({}),
+  rbacEnabled: false,
   hooks: {},
   resendKey: "",
   resendFrom: "",
@@ -193,6 +195,7 @@ function parseConfig(raw: unknown): TenantConfig {
     qaMode: str("QA_MODE").toLowerCase() === "true",
     schemas,
     auth: parseAuthConfig(env),
+    rbacEnabled: str("RBAC_ENABLED").toLowerCase() === "true",
     hooks,
     resendKey: str("RESEND_API_KEY"),
     resendFrom: str("RESEND_FROM"),
@@ -235,8 +238,13 @@ interface TenantState {
 
 const activeTenants = new Map<string, TenantState>();
 
-/** The roles and permissions in force: a rules file only governs a project with auth switched on. */
-const rulesOf = (state: TenantState) => (state.config.auth.enabled ? state.rbac : null);
+/**
+ * The roles and permissions in force. Rules govern a project only while both
+ * switches are on — AUTH_ENABLED and RBAC_ENABLED — and a rules file exists;
+ * otherwise the plain ownership rules apply, and a file on disk is inert.
+ */
+const rulesOf = (state: TenantState) =>
+  state.config.auth.enabled && state.config.rbacEnabled ? state.rbac : null;
 
 /**
  * Rules that fail validation deny everything rather than fall back to open
@@ -2002,10 +2010,11 @@ const authGuard: Middleware = (ctx) => {
   const cfg = ctx.state.config.auth;
   if (!cfg.enabled) return;
   const hasToken = (ctx.req.headers.get("authorization") ?? "").startsWith("Bearer ");
-  // With rules, a visitor is judged by the guest role (rbacGuard) and
+  const rules = rulesOf(ctx.state);
+  // With rules in force, a visitor is judged by the guest role (rbacGuard) and
   // AUTH_PUBLIC_ROUTES no longer applies; without, it opens anonymous reads.
-  if (!hasToken && ctx.state.rbac) return;
-  if (!ctx.state.rbac && ctx.req.method === "GET" && cfg.publicRoutes.has(ctx.resource)) return;
+  if (!hasToken && rules) return;
+  if (!rules && ctx.req.method === "GET" && cfg.publicRoutes.has(ctx.resource)) return;
   // Signature, expiry, and whether a password change has since revoked it. A
   // token that fails is refused outright, never downgraded to a guest.
   const claims = auth.authenticate(ctx.tenantId, ctx.state, ctx.req);

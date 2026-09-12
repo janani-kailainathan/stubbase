@@ -31,6 +31,19 @@ export const RBAC_EXAMPLE: RbacRules = {
 }
 
 /**
+ * Whether roles are switched on in a config: RBAC_ENABLED, which needs
+ * AUTH_ENABLED too. Read exactly as the core reads it — anything but a literal
+ * `true` is off.
+ */
+export function rbacEnabled(config: Record<string, string> | undefined): boolean {
+  const on = (key: string) =>
+    String(config?.[key] ?? '')
+      .trim()
+      .toLowerCase() === 'true'
+  return on('AUTH_ENABLED') && on('RBAC_ENABLED')
+}
+
+/**
  * The roles an account can hold. With rules, every role they define except
  * guest, which is for requests without a token. Without rules, the two the
  * plain ownership rules understand.

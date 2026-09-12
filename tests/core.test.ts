@@ -946,7 +946,7 @@ describe("roles and permissions (rbac.json)", () => {
       orders: [],
       reviews: [],
       ledger: [{ id: "l1" }],
-      config: { AUTH_ENABLED: "true", AUTH_PUBLIC_ROUTES: "ledger" },
+      config: { AUTH_ENABLED: "true", RBAC_ENABLED: "true", AUTH_PUBLIC_ROUTES: "ledger" },
       rbac: RULES,
     });
     ada = await signupAs("store", "ada@shop.co");
@@ -1062,7 +1062,7 @@ describe("roles and permissions (rbac.json)", () => {
   });
 
   test("rules are checked where they are written, and deploy promotes them", async () => {
-    await seed(core, "rulewrites", { posts: [], config: { AUTH_ENABLED: "true" } });
+    await seed(core, "rulewrites", { posts: [], config: { AUTH_ENABLED: "true", RBAC_ENABLED: "true" } });
     const write = (body: unknown) =>
       fetch(`${core.base}/rulewrites/_admin/files/draft_rbac`, {
         method: "POST",
@@ -1096,7 +1096,7 @@ describe("roles and permissions (rbac.json)", () => {
   test("rules that are invalid on disk refuse everything rather than open up", async () => {
     await seed(core, "badrules", {
       posts: [{ id: "1" }],
-      config: { AUTH_ENABLED: "true" },
+      config: { AUTH_ENABLED: "true", RBAC_ENABLED: "true" },
       rbac: { roles: "everyone" },
     });
     const { token } = await signupAs("badrules", "b@x.co");
@@ -1104,14 +1104,31 @@ describe("roles and permissions (rbac.json)", () => {
     expect((await fetch(`${core.base}/badrules/posts`)).status).toBe(401);
   }, 15_000);
 
-  test("rbac.json is never served, and does nothing without AUTH_ENABLED", async () => {
+  test("rbac.json is never served, and does nothing unless both switches are on", async () => {
     expect((await call("GET", "/rbac", admin.token)).status).toBe(403);
-    await seed(core, "rulesnoauth", {
-      posts: [{ id: "1" }],
-      rbac: { defaultRole: "member", roles: { member: {} } },
-    });
+    // Rules that would lock every account out, if they applied.
+    const locked = { defaultRole: "member", roles: { member: {} } };
+
+    // No AUTH_ENABLED: no sign-in, so no roles, whatever RBAC_ENABLED says.
+    await seed(core, "rulesnoauth", { posts: [{ id: "1" }], config: { RBAC_ENABLED: "true" }, rbac: locked });
     expect((await fetch(`${core.base}/rulesnoauth/posts`)).status).toBe(200);
-  });
+
+    // No RBAC_ENABLED: the plain ownership rules, AUTH_PUBLIC_ROUTES honoured, signups are "user".
+    await seed(core, "rulesoff", {
+      posts: [{ id: "1" }],
+      config: { AUTH_ENABLED: "true", AUTH_PUBLIC_ROUTES: "posts" },
+      rbac: locked,
+    });
+    expect((await fetch(`${core.base}/rulesoff/posts`)).status).toBe(200);
+    const { token, user } = await signupAs("rulesoff", "o@x.co");
+    expect((user as { role?: string }).role).toBe("user");
+    const created = await fetch(`${core.base}/rulesoff/posts`, {
+      method: "POST",
+      headers: { ...bearer(token), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(created.status).toBe(201);
+  }, 15_000);
 });
 
 // ── Tenant layout: data/ and system/ ───────────────────────────────

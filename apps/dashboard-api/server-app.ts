@@ -1002,8 +1002,7 @@ function envTemplate(tenantId: string): string {
     "",
     envSection("Auth: sign-up and login for your users"),
     "# The switch. Every request then needs a token, and /auth/signup, /auth/login",
-    "# and /auth/change-password go live. Accounts show up in the system folder,",
-    "# and who may do what is set by roles and permissions in rbac.json.",
+    "# and /auth/change-password go live. Accounts show up in the system folder.",
     "# AUTH_ENABLED=true",
     "",
     "# Resources anyone may read without a token, comma-separated.",
@@ -1011,6 +1010,11 @@ function envTemplate(tenantId: string): string {
     "",
     "# How long a login lasts, in seconds. Default 86400 (24 hours), minimum 60.",
     "# AUTH_JWT_TTL_SECONDS=86400",
+    "",
+    envSection("Auth: roles and permissions (needs AUTH_ENABLED=true)"),
+    "# Who may do what with your API: roles, each a set of permissions, written in",
+    "# rbac.json. Switch this on, Save, and rbac.json appears in the system folder.",
+    "# RBAC_ENABLED=true",
     "",
     envSection("Auth: Google login (needs AUTH_ENABLED=true)"),
     "# Your own Google OAuth app. Both values together turn on /auth/google.",
@@ -1260,6 +1264,22 @@ async function getFile(
   return json(res.data);
 }
 
+/**
+ * Whether roles are switched on in the settings being edited: the staged
+ * draft_config if there is one, else the live config. rbac.json is saved and
+ * deployed alongside those settings, so they are the ones it has to agree with.
+ */
+async function rbacSwitchedOn(tenantId: string): Promise<boolean> {
+  let res = await coreAdmin("GET", tenantId, `${DRAFT_PREFIX}config`);
+  if (res.status === 404) res = await coreAdmin("GET", tenantId, "config");
+  const env =
+    res.ok && res.data && typeof res.data === "object" && !Array.isArray(res.data)
+      ? (res.data as Record<string, unknown>)
+      : {};
+  const on = (key: string) => String(env[key] ?? "").trim().toLowerCase() === "true";
+  return on("AUTH_ENABLED") && on("RBAC_ENABLED");
+}
+
 async function putFile(
   req: Request,
   user: User,
@@ -1292,6 +1312,12 @@ async function putFile(
   } else if (resource === "rbac") {
     if (body === null || typeof body !== "object" || Array.isArray(body))
       return err(400, "rbac.json must be a JSON object");
+    // Roles have their own switch, and rbac.json exists only while it is on.
+    if (!(await rbacSwitchedOn(tenantId)))
+      return err(
+        409,
+        "rbac.json can be created only while RBAC_ENABLED=true and AUTH_ENABLED=true are set in the .env",
+      );
   } else if (!Array.isArray(body)) {
     return err(400, "body must be a JSON array of records");
   }

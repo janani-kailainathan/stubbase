@@ -320,6 +320,7 @@ describe("project provisioning", () => {
     "AUTH_JWT_TTL_SECONDS",
     "AUTH_OAUTH_REDIRECT",
     "AUTH_RESET_URL",
+    "RBAC_ENABLED",
     "AUTH_GOOGLE_CLIENT_ID",
     "AUTH_GOOGLE_SECRET",
     "AUTH_GITHUB_CLIENT_ID",
@@ -2292,6 +2293,17 @@ describe("roles and permissions", () => {
         headers: as(owner.token),
       });
 
+    // Roles have their own switch: rbac.json can't be created until it is on.
+    const early = await put(RULES);
+    expect(early.status).toBe(409);
+    expect((await early.json()).error).toContain("RBAC_ENABLED");
+    const switched = await fetch(`${app.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ AUTH_ENABLED: "true", RBAC_ENABLED: "true" }),
+    });
+    expect(switched.status).toBe(200);
+
     const bad = await put({ defaultRole: "nobody", roles: {} });
     expect(bad.status).toBe(400);
     expect((await bad.json()).error).toContain("defaultRole");
@@ -2317,7 +2329,7 @@ describe("roles and permissions", () => {
     const owner = await signup();
     const { tenantId } = await createProject(owner.token, "Roles", { posts: [] });
     for (const [name, body] of [
-      ["config", { AUTH_ENABLED: "true" }],
+      ["config", { AUTH_ENABLED: "true", RBAC_ENABLED: "true" }],
       ["rbac", RULES],
     ] as const) {
       const res = await fetch(`${app.base}/projects/${tenantId}/files/${name}`, {

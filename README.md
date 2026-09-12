@@ -65,7 +65,7 @@ PUT    /<tenant>/auth/users/<id>/role   (JWT, role with _users: update) { role }
 
 Changing or resetting a password revokes every token issued before it.
 
-With a `system/rbac.json` as well, every CRUD request is checked against the caller's role: a permission is resource + action (`read`/`create`/`update`/`delete`) + scope (`own`/`all`), anything a role doesn't list is refused, and requests without a token use the `guest` role. New accounts get the file's `defaultRole`.
+With `RBAC_ENABLED=true` and a `system/rbac.json` as well, every CRUD request is checked against the caller's role: a permission is resource + action (`read`/`create`/`update`/`delete`) + scope (`own`/`all`), anything a role doesn't list is refused, and requests without a token use the `guest` role. New accounts get the file's `defaultRole`.
 
 Each resource is one file: `/tenants/<tenant>/data/<resource>.json`, a JSON array of objects. Everything that is not a resource sits beside it in `/tenants/<tenant>/system/` — the tenant's `config.json` and `rbac.json` (roles and permissions), its `status.json` (whether it is serving — set by Start/Stop, never deployed), and the files a feature owns (auth's `users.json` and `reset-password.json`), which are never served as resources. A project may still have a `data/users.json` of its own; it is ordinary CRUD.
 

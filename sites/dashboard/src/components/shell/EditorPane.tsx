@@ -11,7 +11,8 @@ import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
 import { useSystemFile } from '@/hooks/system'
 import { useLiveRbac, useRbac, useSaveRbac, useSetUserRole } from '@/hooks/rbac'
-import { RBAC_EXAMPLE, assignableRoles } from '@/lib/rbac'
+import { RBAC_EXAMPLE, assignableRoles, rbacEnabled } from '@/lib/rbac'
+import { useTenantConfig } from '@/hooks/config'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
 import { useWorkspaceStore, type EditorTab, type LogView, type Method } from '@/stores/workspace'
 import { PaneTab, PaneTabs } from './pane-tabs'
@@ -295,6 +296,9 @@ function RbacActions({ tenantId }: { tenantId: string }) {
   const stopEdit = useWorkspaceStore((s) => s.stopEdit)
   const { data } = useRbac(tenantId)
   const save = useSaveRbac(tenantId)
+  // The server refuses the save while roles are off; say so before anyone types.
+  const { data: config } = useTenantConfig(tenantId)
+  const enabled = rbacEnabled(config)
 
   const onSave = () => {
     let parsed: unknown
@@ -320,7 +324,8 @@ function RbacActions({ tenantId }: { tenantId: string }) {
     return (
       <button
         onClick={() => startEdit(stringify(data ?? RBAC_EXAMPLE))}
-        disabled={data === undefined}
+        disabled={data === undefined || !enabled}
+        title={enabled ? undefined : 'Set RBAC_ENABLED=true and AUTH_ENABLED=true in the .env first'}
         className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
       >
         {data === null ? 'Create' : 'Edit'}
@@ -355,6 +360,8 @@ function RbacView({ tenantId }: { tenantId: string }) {
   const draft = useWorkspaceStore((s) => s.draft)
   const changeDraft = useWorkspaceStore((s) => s.changeDraft)
   const { data, isLoading, error } = useRbac(tenantId)
+  const { data: config } = useTenantConfig(tenantId)
+  const enabled = rbacEnabled(config)
 
   if (editing) {
     return (
@@ -373,8 +380,8 @@ function RbacView({ tenantId }: { tenantId: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <p className="shrink-0 border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
-        Who may do what with your API: roles, each a set of permissions on your resources. Takes effect
-        with AUTH_ENABLED=true, and goes live on Deploy.
+        Who may do what with your API: roles, each a set of permissions on your resources. Needs
+        RBAC_ENABLED=true and AUTH_ENABLED=true in the .env, and goes live on Deploy.
       </p>
       <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
         {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
@@ -385,7 +392,11 @@ function RbacView({ tenantId }: { tenantId: string }) {
             <p className="text-faint">
               # Every signed-in user reads everything and changes only their own records.
             </p>
-            <p className="text-faint"># Click Create to start from an example shop: guest, customer, staff, admin.</p>
+            <p className="text-faint">
+              {enabled
+                ? '# Click Create to start from an example shop: guest, customer, staff, admin.'
+                : '# Set RBAC_ENABLED=true (with AUTH_ENABLED=true) in the .env to create one.'}
+            </p>
           </div>
         )}
         {data && <JsonTree key="rbac" data={data} initialDepth="first-level" />}

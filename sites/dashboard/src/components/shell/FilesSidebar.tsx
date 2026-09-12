@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
+import { rbacEnabled } from '@/lib/rbac'
+import { useTenantConfig } from '@/hooks/config'
 import { useCurrentProject } from '@/hooks/projects'
 import { useCreateResources } from '@/hooks/resources'
 import { useSystemFiles } from '@/hooks/system'
@@ -104,6 +106,10 @@ export function FilesSidebar() {
 
   const resources = project?.resources ?? []
   const { data: systemFiles = [] } = useSystemFiles(project?.tenantId)
+  // rbac.json is offered only while roles are switched on in the .env being
+  // edited — the settings it will be deployed alongside.
+  const { data: config } = useTenantConfig(project?.tenantId)
+  const rbacOn = rbacEnabled(config)
 
   // Folded to a strip, like the playground's response pane: the editor takes
   // the width, and the way back stays exactly where the rail was.
@@ -190,9 +196,10 @@ export function FilesSidebar() {
         {dataExpanded && project && resources.length === 0 && (
           <p className="px-8 py-1.5 font-mono text-xs text-faint">No resources yet.</p>
         )}
-        {/* What the project's features own. Listed so an owner can see who has
-            signed up, but never editable: these change only through the
-            feature's own endpoints, so there is no Edit and no New here. */}
+        {/* What isn't a resource. rbac.json, while roles are switched on, is
+            edited here like the .env. The files a feature writes itself are
+            listed so an owner can see who has signed up, but locked: they
+            change only through the feature's own endpoints. */}
         {project && (
           <div
             className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-card"
@@ -201,9 +208,21 @@ export function FilesSidebar() {
             <ChevronDown
               className={`h-3.5 w-3.5 text-subtle transition-transform ${systemExpanded ? '' : '-rotate-90'}`}
             />
-            <Lock className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <Folder className="h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="font-mono text-xs text-body">system</span>
-            <span className="ml-auto pr-1 font-mono text-[10px] text-faint">read-only</span>
+          </div>
+        )}
+        {project && systemExpanded && rbacOn && (
+          <div
+            className={
+              selection?.kind === 'rbac'
+                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
+            }
+            onClick={() => select({ kind: 'rbac' })}
+          >
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <span className="truncate font-mono text-xs text-body">rbac.json</span>
           </div>
         )}
         {project &&
@@ -222,14 +241,10 @@ export function FilesSidebar() {
               >
                 <span className="shrink-0 font-mono text-xs text-faint">{'{}'}</span>
                 <span className="truncate font-mono text-xs text-body">{file}.json</span>
+                <Lock aria-label="read-only" className="ml-auto h-3 w-3 shrink-0 text-faint" />
               </div>
             )
           })}
-        {project && systemExpanded && systemFiles.length === 0 && (
-          <p className="px-8 py-1.5 font-mono text-xs text-faint">
-            Empty until auth is used — the first signup adds users.json.
-          </p>
-        )}
         {project && (
           <div
             className={
@@ -241,19 +256,6 @@ export function FilesSidebar() {
           >
             <AlignLeft className="h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="font-mono text-xs text-body">.env</span>
-          </div>
-        )}
-        {project && (
-          <div
-            className={
-              selection?.kind === 'rbac'
-                ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft px-2 py-1.5'
-                : 'flex cursor-pointer items-center gap-2 rounded border border-transparent px-2 py-1.5 hover:bg-card'
-            }
-            onClick={() => select({ kind: 'rbac' })}
-          >
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-subtle" />
-            <span className="font-mono text-xs text-body">rbac.json</span>
           </div>
         )}
       </div>

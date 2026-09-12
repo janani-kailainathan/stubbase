@@ -249,8 +249,8 @@ Comma-separated, no spaces.
 Leave this key out and *nothing* is public — the right default for a private
 app, the wrong one for a public blog with a signed-in comment box.
 
-Once your project has an `rbac.json`, this key is ignored: the `guest` role
-decides what visitors can do (see 1.4.4).
+Once roles are on (`RBAC_ENABLED=true` with an `rbac.json`), this key is
+ignored: the `guest` role decides what visitors can do (see 1.4.4).
 
 ##### To control how long a login lasts:
 
@@ -450,8 +450,8 @@ POST /<project>/products    as a customer     → 403
   with `"*"` can touch it until you grant it to the others.
 - **`guest` is for requests without a token.** It can only use `all`, since a
   visitor has no records of their own.
-- **Without an `rbac.json`, nothing changes:** every signed-in user reads
-  everything and changes only their own records, as described in 1.4.
+- **With roles off, nothing changes:** every signed-in user reads everything and
+  changes only their own records, as described in 1.4.
 
 **Giving someone a role.** New accounts get `defaultRole`. You change an
 account's role in the dashboard — open **system → users.json** and pick one —
@@ -466,15 +466,21 @@ PUT  /<project>/auth/users/<id>/role    { "role": "staff" }
 A new role applies from that user's very next request — they don't need to sign
 in again.
 
-##### To enable this, add an `rbac.json` to your project:
-
-In the dashboard, open **rbac.json** in your project's files, click **Create** to
-start from the example above, make it yours, Save, then Deploy. Roles only apply
-to an API that has auth switched on:
+##### To enable this, add to your `.env`:
 
 ```
 AUTH_ENABLED=true
+RBAC_ENABLED=true
 ```
+
+Save the `.env` and **rbac.json** appears in your project's **system** folder.
+Open it, click **Create** to start from the example above, make it yours, Save,
+then Deploy. `AUTH_ENABLED=true` has to be there too: roles decide what
+signed-in users may do, so they need sign-in.
+
+Switch `RBAC_ENABLED` off and your roles stop applying — every signed-in user is
+back to reading everything and changing only their own records — but
+`rbac.json` stays in your project, ready for when you switch it back on.
 
 If something in the file is wrong — a `defaultRole` that isn't one of the roles,
 a misspelt action — Save tells you what and where, and nothing changes.
@@ -529,7 +535,7 @@ Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 
 | Key | Example | What it does |
 |---|---|---|
-| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login and change-password endpoints, keeps your users' accounts in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub and password reset ones. |
+| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login and change-password endpoints, keeps your users' accounts in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub, password reset and roles ones. |
 | `AUTH_PUBLIC_ROUTES` | `posts,comments` | Resources anyone may `GET` without a token. Writes to them still need one. Comma-separated, no spaces. Left out, nothing is public. |
 | `AUTH_JWT_TTL_SECONDS` | `3600` | How long a token stays valid, in seconds. Defaults to `86400` (24 hours); the minimum is `60`. |
 
@@ -562,3 +568,11 @@ Feature: [1.4.3 Password reset](#143-password-reset)
 | `RESEND_API_KEY` | `re_your_resend_key` | **The switch.** Your Resend key — with it, `/<project>/auth/forgot-password` can email codes. Needs `AUTH_ENABLED=true` as well. Shared with email notifications. |
 | `RESEND_FROM` | `Your App <no-reply@your-app.com>` | Who the email is from. Left out, Resend's onboarding address. Shared with email notifications. |
 | `AUTH_RESET_URL` | `https://your-app.com/reset-password` | Adds a link to this page below the code, with `#email=…&code=…` attached. Must start with `http://` or `https://`. Left out, the email carries the code alone. |
+
+#### 3.1.4 Roles and permissions
+
+Feature: [1.4.4 Roles and permissions](#144-roles-and-permissions)
+
+| Key | Example | What it does |
+|---|---|---|
+| `RBAC_ENABLED` | `true` | **The switch.** Checks every request against the roles in your project's `rbac.json`, and lets you create that file in the **system** folder. Needs `AUTH_ENABLED=true` as well. Switched off, your roles are kept but not applied. |
