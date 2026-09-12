@@ -43,6 +43,12 @@ export interface Starter {
    * token.
    */
   example: string
+  /**
+   * The one thing left for the owner once it is deployed — something no starter
+   * can do for them, like registering their own OAuth app. Shown under the
+   * confirmation toast.
+   */
+  nextStep?: string
   /** Staged into the tenant's config.json, merged over what is already there. */
   config?: Record<string, string>
   /**
@@ -156,6 +162,7 @@ export const STARTERS: Starter[] = [
     blurb: 'Browse recipes freely; sign in to review and save.',
     features: ['relations', 'auth'],
     example: '/recipes?_expand=cuisines&difficulty=easy&_sort=publishedAt&_direction=desc',
+    nextStep: 'To let people sign in with Google or GitHub, add your OAuth app’s keys in the .env.',
     // Every auth setting that works without a credential. Anyone may browse the
     // cookbook; reviewing, posting and saving collections needs an account from
     // /auth/signup (or /auth/login), and a signed-in user edits only what they
@@ -206,11 +213,11 @@ export const STARTERS: Starter[] = [
         { id: '7', recipeId: '4', position: 2, text: 'Add tomatoes and chickpeas and simmer for 25 minutes.' },
       ],
       reviews: [
-        { id: '1', recipeId: '1', stars: 5, reviewer: 'Giulia', body: 'Finally no clumps. The pan-water trick works.', createdOn: '2026-02-08' },
-        { id: '2', recipeId: '4', stars: 5, reviewer: 'Arjun', body: 'Tastes like home. Doubled the ginger.', createdOn: '2026-03-15' },
-        { id: '3', recipeId: '2', stars: 4, reviewer: 'Mei', body: 'Great glaze; watch the grill closely.', createdOn: '2026-02-21' },
-        { id: '4', recipeId: '3', stars: 4, reviewer: 'Diego', body: 'Add lime and cotija at the end.', createdOn: '2026-03-04' },
-        { id: '5', recipeId: '6', stars: 3, reviewer: 'Kenji', body: 'Worth it, but it really does take all day.', createdOn: '2026-04-14' },
+        { id: '1', recipeId: '1', stars: 5, reviewer: 'Giulia', signedInWith: 'google', body: 'Finally no clumps. The pan-water trick works.', createdOn: '2026-02-08' },
+        { id: '2', recipeId: '4', stars: 5, reviewer: 'Arjun', signedInWith: 'email', body: 'Tastes like home. Doubled the ginger.', createdOn: '2026-03-15' },
+        { id: '3', recipeId: '2', stars: 4, reviewer: 'Mei', signedInWith: 'github', body: 'Great glaze; watch the grill closely.', createdOn: '2026-02-21' },
+        { id: '4', recipeId: '3', stars: 4, reviewer: 'Diego', signedInWith: 'google', body: 'Add lime and cotija at the end.', createdOn: '2026-03-04' },
+        { id: '5', recipeId: '6', stars: 3, reviewer: 'Kenji', signedInWith: 'email', body: 'Worth it, but it really does take all day.', createdOn: '2026-04-14' },
       ],
       collections: [
         { id: '1', name: 'Weeknight dinners', description: 'On the table in under 45 minutes.', recipeIds: ['1', '3', '4'] },

@@ -1,14 +1,17 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Check, X } from 'lucide-react'
 import { useTenantConfig, useSaveTenantConfig } from '@/hooks/config'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
+import { CORE_PUBLIC_URL, LANDING_URL } from '@/lib/api'
+import { authEnabled } from '@/lib/endpoints'
 import {
   configToEnvText,
   envTextToConfig,
   isKnownKey,
   maskValue,
   parseEnvText,
+  socialLoginConfigured,
 } from '@/lib/env'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -133,6 +136,48 @@ export function EnvActions({ tenantId }: { tenantId: string }) {
   )
 }
 
+// ── Social login hint ─────────────────────────────────────────────
+
+/**
+ * Shown while auth is on but neither Google nor GitHub has both its keys. The
+ * lines are already in the .env, commented; what nobody can do for the owner is
+ * register an OAuth app, and that needs this project's own callback URLs.
+ * Hiding it lasts until the view remounts — it is a pointer, not a setting.
+ */
+function SocialLoginHint({ tenantId }: { tenantId: string }) {
+  const [hidden, setHidden] = useState(false)
+  if (hidden) return null
+  const callback = (provider: string) => `${CORE_PUBLIC_URL}/${tenantId}/auth/${provider}/callback`
+
+  return (
+    <div className="mb-4 space-y-1.5 rounded-md border border-border bg-panel px-3 py-2.5 font-mono text-[11px] leading-relaxed text-subtle">
+      <div className="flex items-start gap-3">
+        <p className="flex-1 text-body">
+          Google and GitHub sign-in are off. Fill in a client ID and secret for either one below, Save,
+          then Deploy.
+        </p>
+        <button
+          onClick={() => setHidden(true)}
+          className="shrink-0 cursor-pointer text-faint transition-colors hover:text-heading"
+        >
+          Hide
+        </button>
+      </div>
+      <p>Register this callback URL in the provider&rsquo;s OAuth app:</p>
+      <p className="break-all text-heading">{callback('google')}</p>
+      <p className="break-all text-heading">{callback('github')}</p>
+      <a
+        href={`${LANDING_URL}/features/google-github-social-login`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-block text-primary-accent hover:text-primary-ink"
+      >
+        How to get the keys
+      </a>
+    </div>
+  )
+}
+
 // ── View ──────────────────────────────────────────────────────────
 
 export function EnvView({ tenantId }: { tenantId: string }) {
@@ -158,6 +203,9 @@ export function EnvView({ tenantId }: { tenantId: string }) {
     <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
       {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
       {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
+      {data !== undefined && authEnabled(data) && !socialLoginConfigured(data) && (
+        <SocialLoginHint tenantId={tenantId} />
+      )}
       {data !== undefined &&
         (text.trim() ? (
           <EnvHighlight text={text} mask />

@@ -17,7 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
-import { RAW_KEY, mergeEnv, parseEnvText } from "../sites/dashboard/src/lib/env.ts";
+import { RAW_KEY, mergeEnv, parseEnvText, socialLoginConfigured } from "../sites/dashboard/src/lib/env.ts";
 import { adminAuth, seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
 let ROOT = "";
@@ -88,6 +88,31 @@ describe("a starter's config merged into a templated .env", () => {
       QA_MODE: "true",
       AUTH_ENABLED: "true",
     });
+  });
+});
+
+/**
+ * The .env view's social login hint (and Forkful's next step) tells an owner
+ * sign-in is off until a provider has both keys. That has to be the core's own
+ * rule, or the hint would vanish while the route still 404s.
+ */
+describe("the social login hint agrees with the core", () => {
+  test("a provider counts as set up only with both its keys, exactly as the core routes it", async () => {
+    const half = { AUTH_ENABLED: "true", AUTH_GOOGLE_CLIENT_ID: "client-id-only" };
+    const whole = { ...half, AUTH_GOOGLE_SECRET: "a-secret" };
+    await seedTenant(core, "oauth-half", { config: half });
+    await seedTenant(core, "oauth-whole", { config: whole });
+
+    expect(socialLoginConfigured(half)).toBe(false);
+    expect((await fetch(`${core.base}/oauth-half/auth/google`, { redirect: "manual" })).status).toBe(404);
+
+    expect(socialLoginConfigured(whole)).toBe(true);
+    expect((await fetch(`${core.base}/oauth-whole/auth/google`, { redirect: "manual" })).status).toBe(302);
+
+    // Forkful ships no keys, so the hint shows for it, and its next step says why.
+    const forkful = STARTERS.find((s) => s.id === "recipes")!;
+    expect(socialLoginConfigured(forkful.config)).toBe(false);
+    expect(forkful.nextStep).toContain("Google");
   });
 });
 

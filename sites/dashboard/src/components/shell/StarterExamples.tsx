@@ -34,7 +34,9 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
       // After the config: rbac.json is refused until RBAC_ENABLED is staged.
       if (starter.rbac) await saveRules.mutateAsync(starter.rbac)
       select({ kind: 'resource', resource: names[0] })
-      toast.success(`Added ${names.join(', ')} — Deploy, then try ${starter.example}`)
+      toast.success(`Added ${names.join(', ')} — Deploy, then try ${starter.example}`, {
+        description: starter.nextStep,
+      })
     } catch (e) {
       toast.error(`Could not add the ${starter.title} example: ${(e as Error).message}`)
     }

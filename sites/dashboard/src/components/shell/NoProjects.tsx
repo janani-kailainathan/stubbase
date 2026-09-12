@@ -20,7 +20,9 @@ export function NoProjects() {
     create.mutate(starter, {
       onSuccess: (created) => {
         openProject(created.tenantId)
-        toast.success(`Created ${created.tenantId} — Deploy, then try ${starter.example}`)
+        toast.success(`Created ${created.tenantId} — Deploy, then try ${starter.example}`, {
+          description: starter.nextStep,
+        })
       },
       onError: (e) => toast.error(`Could not create the ${starter.title} example: ${e.message}`),
     })

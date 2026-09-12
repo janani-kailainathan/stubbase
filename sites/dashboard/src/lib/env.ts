@@ -68,6 +68,19 @@ export const isKnownKey = (key: string) =>
   /^HOOK_(BEFORE|AFTER)_(INSERT|UPDATE|DELETE)_[A-Z0-9_]+$/.test(key) ||
   /^SCHEMA_[A-Z0-9_]+$/.test(key)
 
+/**
+ * Whether Google or GitHub sign-in is fully set up: both halves of at least one
+ * pair, which is exactly what makes the core route /auth/google or /auth/github.
+ * tests/starters.test.ts holds this against a real core.
+ */
+export function socialLoginConfigured(config: TenantConfig | undefined): boolean {
+  const set = (key: string) => String(config?.[key] ?? '').trim() !== ''
+  return (
+    (set('AUTH_GOOGLE_CLIENT_ID') && set('AUTH_GOOGLE_SECRET')) ||
+    (set('AUTH_GITHUB_CLIENT_ID') && set('AUTH_GITHUB_SECRET'))
+  )
+}
+
 /** Rebuild editor text from a stored config (preferring the raw round-trip). */
 export function configToEnvText(config: TenantConfig): string {
   if (typeof config[RAW_KEY] === 'string') return config[RAW_KEY]
