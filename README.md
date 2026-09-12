@@ -50,7 +50,20 @@ DELETE /<tenant>/<resource>/<id>     delete
 GET    /<tenant>/openapi.json        auto-generated OpenAPI 3.0 spec
 ```
 
-Each resource is one file: `/tenants/<tenant>/<resource>.json`, a JSON array of objects.
+With `AUTH_ENABLED=true` in the tenant config, every request needs a tenant JWT and the auth routes go live:
+
+```
+POST   /<tenant>/auth/signup            { email, password, name? }       → { token, user }
+POST   /<tenant>/auth/login             { email, password }              → { token, user }
+POST   /<tenant>/auth/change-password   (JWT) { currentPassword, password } → { token, user }
+POST   /<tenant>/auth/forgot-password   { email }                        → 202, emails a 6-digit code
+POST   /<tenant>/auth/reset-password    { email, code, password }        → { token, user }
+GET    /<tenant>/auth/google | github   OAuth sign-in (when configured)
+```
+
+Changing or resetting a password revokes every token issued before it.
+
+Each resource is one file: `/tenants/<tenant>/data/<resource>.json`, a JSON array of objects. Everything that is not a resource sits beside it in `/tenants/<tenant>/system/` — the tenant's `config.json`, its `status.json` (whether it is serving — set by Start/Stop, never deployed), and the files a feature owns (auth's `users.json` and `reset-password.json`), which are never served as resources. A project may still have a `data/users.json` of its own; it is ordinary CRUD.
 
 **List query params** (all optional, composable in this order — filter → sort → paginate → expand):
 
@@ -58,7 +71,7 @@ Each resource is one file: `/tenants/<tenant>/<resource>.json`, a JSON array of 
 |---|---|---|
 | `<field>` | `?category=shoes&status=active` | exact-match filter on any record field (case-sensitive) |
 | `<field>[contains]` | `?brand[contains]=sams` | text contains the value, ignoring case and accents; on an array, any item |
-| `<field>[gt]` `[gte]` `[lt]` `[lte]` | `?price[gte]=100&createdAt[lt]=2026-07-01` | numbers compare numerically, text (e.g. ISO dates) naturally. An unknown operator is a `400`; `passwordHash` on `users` can't be filtered |
+| `<field>[gt]` `[gte]` `[lt]` `[lte]` | `?price[gte]=100&createdAt[lt]=2026-07-01` | numbers compare numerically, text (e.g. ISO dates) naturally. An unknown operator is a `400` |
 | `_sort` / `_direction` | `?_sort=created&_direction=desc` | sort by field(s), comma-separated; `created` / `updated` sort by the server-set timestamps. `_direction` is `asc` or `desc` per key — `desc` by default for `created`/`updated`, `asc` for other fields. Records missing the field sort last |
 | `_page` / `_limit` | `?_page=2&_limit=10` | 1-based pagination (default 10 per page) |
 | `_offset` / `_limit` | `?_offset=20&_limit=10` | raw-index alternative to `_page` |
@@ -72,6 +85,8 @@ The unpaginated total is returned in the `X-Total-Count` response header.
 GET    /<tenant>/_admin/files/<resource>   read file (drafts included)
 POST   /<tenant>/_admin/files/<resource>   create/overwrite file (body = seed array)
 DELETE /<tenant>/_admin/files/<resource>   delete file
+GET    /<tenant>/_admin/system[/<file>]    list / read a feature's files (read-only, credentials stripped)
+GET|POST /<tenant>/_admin/status           read / set whether the public plane is serving (applies immediately)
 POST   /<tenant>/_admin/flush              drop the RAM cache
 POST   /<tenant>/_admin/deploy             promote draft_* files to production
 GET    /<tenant>/_admin/sse-logs           SSE stream of the live request log
@@ -112,7 +127,8 @@ Worth knowing:
 - **Columns are the union of keys across every record**, so fields that appear
   on only some records are still queryable. Nested objects and arrays are stored
   as JSON text — use `json_extract()`.
-- **`passwordHash` is never mounted**, so no query can reach it.
+- **Only `data/` is mounted.** The project's sign-in accounts, reset codes and
+  settings live in `system/`, so no query can reach them.
 - Projections are dropped after `SQL_IDLE_MS` of no queries even while the
   session stays open, and results are capped at `SQL_MAX_ROWS` rows per call.
 

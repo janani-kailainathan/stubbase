@@ -38,7 +38,7 @@ import {
 } from "../sites/dashboard/src/lib/playground.ts";
 import type { UsageResponse } from "../sites/dashboard/src/lib/api.ts";
 import { FLOOR_TTL_MS, applyFloor, raiseFloor } from "../sites/dashboard/src/lib/usage-floor.ts";
-import { adminAuth, seedTenant, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
+import { adminAuth, seedStatus, seedTenant, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
 
 const TENANT = "playground";
 
@@ -252,12 +252,16 @@ describe("query param value controls", () => {
 });
 
 describe("token autofill", () => {
-  test("adopts the token from a successful signup or login only", () => {
+  test("adopts the token from any auth route that successfully issues one", () => {
     const login = find("POST", "/auth/login");
     const signup = find("POST", "/auth/signup");
     const ok = JSON.stringify({ token: "jwt", user: { id: "u1" } });
     expect(tokenFrom(login, 200, ok)).toBe("jwt");
     expect(tokenFrom(signup, 201, ok)).toBe("jwt");
+    // A password change or reset revokes the old token, so the new one has to be taken up.
+    expect(tokenFrom(find("POST", "/auth/change-password"), 200, ok)).toBe("jwt");
+    expect(tokenFrom(find("POST", "/auth/reset-password"), 200, ok)).toBe("jwt");
+    expect(tokenFrom(find("POST", "/auth/forgot-password"), 202, JSON.stringify({ ok: true }))).toBeNull();
     expect(tokenFrom(login, 401, JSON.stringify({ token: "jwt" }))).toBeNull();
     expect(tokenFrom(login, 200, "not json")).toBeNull();
     expect(tokenFrom(find("POST", "/users"), 201, ok)).toBeNull();
@@ -272,7 +276,8 @@ describe("token autofill", () => {
 describe("the usage panel's instant count", () => {
   test("counts what the core meters, judged by a real core's responses", async () => {
     await seedTenant(core, "counted", { posts: [{ id: "p1" }] });
-    await seedTenant(core, "stopped-proj", { posts: [{ id: "p1" }], config: { PROJECT_STATUS: "stopped" } });
+    await seedTenant(core, "stopped-proj", { posts: [{ id: "p1" }] });
+    await seedStatus(core, "stopped-proj", "stopped");
     await seedTenant(core, "qa-proj", { posts: [{ id: "p1" }], config: { QA_MODE: "true" } });
     const hit = async (path: string, headers: Record<string, string> = {}) => {
       const res = await fetch(`${core.base}${path}`, { headers });

@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { StarterGrid } from '@/components/shell/StarterGrid'
 import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
 import { useCreateResources } from '@/hooks/resources'
+import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -24,9 +25,10 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
     const names = Object.keys(starter.resources)
     try {
       await create.mutateAsync(starter.resources)
-      // Merged over what is already there, so the project's own settings —
-      // PROJECT_STATUS above all — survive the starter turning auth on.
-      if (starter.config) await saveConfig.mutateAsync({ ...(config ?? {}), ...starter.config })
+      // Merged over what is already there, so the project's own settings
+      // survive the starter turning auth on; and into the .env text as well,
+      // so the editor shows those lines switched on.
+      if (starter.config) await saveConfig.mutateAsync(mergeEnv(config ?? {}, starter.config))
       select({ kind: 'resource', resource: names[0] })
       toast.success(`Added ${names.join(', ')} — Deploy, then try ${starter.example}`)
     } catch (e) {

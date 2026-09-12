@@ -106,12 +106,12 @@ const todos = range(200).map((id) => ({
 const RESOURCES = { posts, comments, albums, photos, todos, users };
 
 /**
- * Writes the tenant's JSON files. No-ops when the folder already exists unless
- * `force` is set, so local edits to the demo data survive a restart.
- * Returns true when files were written.
+ * Writes the tenant's resource files into its data/ folder. No-ops when that
+ * folder already exists unless `force` is set, so local edits to the demo data
+ * survive a restart. Returns true when files were written.
  */
 export async function seedPublicTenant(force = false): Promise<boolean> {
-  const dir = join(TENANTS_DIR, TENANT_ID);
+  const dir = join(TENANTS_DIR, TENANT_ID, "data");
   if (!force && (await stat(dir).catch(() => null))) return false;
 
   await mkdir(dir, { recursive: true });

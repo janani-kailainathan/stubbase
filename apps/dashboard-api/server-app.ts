@@ -801,6 +801,38 @@ async function coreAdminAction(
   return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
 }
 
+/** The core's read-only system plane: the list of feature files, or one of them. */
+async function coreAdminSystem(
+  tenantId: string,
+  name?: string,
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const res = await fetch(`${CORE_API_URL}/${tenantId}/_admin/system${name ? `/${name}` : ""}`, {
+    headers: { authorization: `Bearer ${ADMIN_SECRET}` },
+  });
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
+}
+
+/**
+ * The core's status plane: whether a tenant's public plane is serving. With no
+ * `next` it reads; with one it sets. Status is not config — see applyProjectStatus.
+ */
+async function coreAdminStatus(
+  tenantId: string,
+  next?: string,
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const res = await fetch(
+    `${CORE_API_URL}/${tenantId}/_admin/status`,
+    next === undefined
+      ? { headers: { authorization: `Bearer ${ADMIN_SECRET}` } }
+      : {
+          method: "POST",
+          headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+          body: JSON.stringify({ status: next }),
+        },
+  );
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
+}
+
 /**
  * Snapshot of the core's in-RAM request log, newest last. The SSE proxy is for
  * a human watching a stream; the Co-Pilot needs the same ring as plain data
@@ -960,6 +992,102 @@ function clearDirty(tenantId: string): void {
 
 // ── Projects ──────────────────────────────────────────────────────
 
+/** A `# ── Title ───` rule, padded so every section header ends in the same column. */
+const envSection = (title: string) => `# ── ${title} ${"─".repeat(Math.max(3, 68 - title.length))}`;
+
+/**
+ * The `.env` a new project starts with: every setting the Core Engine reads,
+ * grouped by feature and commented out, so switching a feature on means
+ * uncommenting its lines rather than looking up key names.
+ *
+ * Commented out is the point. A template line is documentation, not config:
+ * this text compiles to an empty object, so a new project is exactly as plain
+ * as before the template existed. Whether the API is serving is deliberately
+ * absent — that is system/status.json, which only Start/Stop writes.
+ *
+ * tests/dashboard-api.test.ts holds it to the keys the core reads (ENVIRONMENT.md
+ * §2). Plan names come from PLANS, so a label cannot disagree with what the
+ * files proxy enforces, and the OAuth callbacks are this project's real ones.
+ */
+function envTemplate(tenantId: string): string {
+  const plan = (feature: Feature) => `${cheapestPlanWith(feature).name} plan`;
+  const callback = (provider: string) => `${PUBLIC_API_BASE}/${tenantId}/auth/${provider}/callback`;
+  return [
+    "# Project settings",
+    "#",
+    "# Every feature below is off. To switch one on, delete the \"# \" in front of",
+    "# its setting lines, put in your own values, Save, then Deploy.",
+    "# Put the \"# \" back to switch it off again — your values stay in the file.",
+    "#",
+    "# Starting and stopping the API is not a setting: use the Start / Stop button.",
+    "",
+    envSection(`Auth: sign-up and login for your users (${plan("auth")})`),
+    "# The switch. Every request then needs a token, and /auth/signup, /auth/login",
+    "# and /auth/change-password go live. Accounts show up in the system folder.",
+    "# AUTH_ENABLED=true",
+    "",
+    "# Resources anyone may read without a token, comma-separated.",
+    "# AUTH_PUBLIC_ROUTES=posts,comments",
+    "",
+    "# How long a login lasts, in seconds. Default 86400 (24 hours), minimum 60.",
+    "# AUTH_JWT_TTL_SECONDS=86400",
+    "",
+    envSection("Auth: Google login (needs AUTH_ENABLED=true)"),
+    "# Your own Google OAuth app. Both values together turn on /auth/google.",
+    "# Register this callback URL in the Google console:",
+    `#   ${callback("google")}`,
+    "# AUTH_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com",
+    "# AUTH_GOOGLE_SECRET=GOCSPX-your-secret",
+    "",
+    envSection("Auth: GitHub login (needs AUTH_ENABLED=true)"),
+    "# Your own GitHub OAuth app. Both values together turn on /auth/github.",
+    "# Register this callback URL in the GitHub OAuth app:",
+    `#   ${callback("github")}`,
+    "# AUTH_GITHUB_CLIENT_ID=Iv1.a1b2c3d4e5f6",
+    "# AUTH_GITHUB_SECRET=your-github-secret",
+    "",
+    "# Where Google and GitHub login send the user afterwards, with #token=… attached.",
+    "# Left out, the token comes back as JSON instead.",
+    "# AUTH_OAUTH_REDIRECT=https://your-app.com/login",
+    "",
+    envSection("Auth: password reset (needs AUTH_ENABLED=true and RESEND_API_KEY)"),
+    "# /auth/forgot-password emails a 6-digit code, /auth/reset-password redeems it.",
+    "# It sends through RESEND_API_KEY in the Email section below.",
+    "# Optional: a page of yours the email links to, with #email=…&code=… attached.",
+    "# AUTH_RESET_URL=https://your-app.com/reset-password",
+    "",
+    envSection("Email through Resend"),
+    "# Sends password reset codes, and turns on POST /_notify/email",
+    "# (which, like all of /_notify, needs AUTH_ENABLED=true).",
+    "# RESEND_API_KEY=re_your_resend_key",
+    "# RESEND_FROM=Your App <no-reply@your-app.com>",
+    "",
+    envSection("SMS through Twilio"),
+    "# All three together turn on POST /_notify/sms (needs AUTH_ENABLED=true).",
+    "# TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "# TWILIO_AUTH_TOKEN=your-twilio-auth-token",
+    "# TWILIO_FROM=+15551234567",
+    "",
+    envSection(`QA: simulate slow, failing and empty responses (${plan("chaos")})`),
+    "# Lets a request ask for trouble with the x-stubbase-delay, x-stubbase-status,",
+    "# x-stubbase-error-rate and x-stubbase-empty headers. Ignored while this is off.",
+    "# QA_MODE=true",
+    "",
+    envSection("Validation: a JSON Schema per resource"),
+    "# SCHEMA_<RESOURCE> holds a JSON Schema on one line. A POST or PUT body that",
+    "# does not match gets a 400. Add one line per resource.",
+    '# SCHEMA_POSTS={"type":"object","required":["title"],"properties":{"title":{"type":"string"}}}',
+    "",
+    envSection(`Webhooks (${plan("webhooks")})`),
+    "# HOOK_<BEFORE|AFTER>_<INSERT|UPDATE|DELETE>_<RESOURCE>=<url>",
+    "# A BEFORE hook must answer 200 or the write is refused.",
+    "# An AFTER hook is told about the write once it has happened.",
+    "# HOOK_BEFORE_INSERT_POSTS=https://your-app.com/hooks/check-post",
+    "# HOOK_AFTER_UPDATE_ORDERS=https://your-app.com/hooks/order-changed",
+    "",
+  ].join("\n");
+}
+
 async function createProject(req: Request, user: User): Promise<Response> {
   const body = await readJsonBody(req);
   if (body instanceof Response) return body;
@@ -978,6 +1106,13 @@ async function createProject(req: Request, user: User): Promise<Response> {
 
   const tenantId = newTenantId(name);
 
+  // New projects start stopped: nothing is public until the owner has looked at
+  // the data and pressed Deploy. Written before anything else, so there is no
+  // moment in which seeded records are served — and it is what gives the tenant
+  // a folder on the core, so it exists as soon as it is created.
+  const stopped = await coreAdminStatus(tenantId, "stopped");
+  if (!stopped.ok) return err(502, `core engine refused the initial status (status ${stopped.status})`);
+
   const provisioned: string[] = [];
   for (const [rName, data] of Object.entries(resources)) {
     const res = await coreAdmin("POST", tenantId, rName, data);
@@ -989,10 +1124,8 @@ async function createProject(req: Request, user: User): Promise<Response> {
     provisioned.push(rName);
   }
 
-  // New projects start stopped: nothing is public until the owner has looked at
-  // the data and pressed Deploy. This also gives the tenant a folder on the
-  // core, so it exists as soon as it is created.
-  const cfg = await coreAdmin("POST", tenantId, "config", { PROJECT_STATUS: "stopped" });
+  // The .env editor's text: every setting, commented out (see envTemplate).
+  const cfg = await coreAdmin("POST", tenantId, "config", { __raw: envTemplate(tenantId) });
   if (!cfg.ok) {
     for (const done of provisioned) await coreAdmin("DELETE", tenantId, done);
     return err(502, `core engine refused the initial settings (status ${cfg.status})`);
@@ -1027,12 +1160,25 @@ async function renameProject(req: Request, user: User, tenantId: string): Promis
   return json(projectJson(ownedProject(tenantId, user.id)!));
 }
 
-/** A tenant with no config reads as active, exactly as the core defaults it. */
+/**
+ * Whether the tenant is serving. A tenant with no status file reads as active,
+ * exactly as the core treats it — and so does an unreachable core, since the
+ * callers guard destructive actions and "active" is the refusing answer.
+ */
 async function projectStatus(tenantId: string): Promise<string> {
-  const res = await coreAdmin("GET", tenantId, "config");
-  if (!res.ok || !res.data || typeof res.data !== "object") return "active";
-  const status = (res.data as Record<string, unknown>).PROJECT_STATUS;
-  return typeof status === "string" && status ? status : "active";
+  const res = await coreAdminStatus(tenantId);
+  const status = (res.data as { status?: unknown } | null)?.status;
+  return res.ok && typeof status === "string" ? status : "active";
+}
+
+/** GET /projects/<id>/status — what the dashboard's status badge and Start/Stop show. */
+async function getProjectStatus(user: User, tenantId: string): Promise<Response> {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  const res = await coreAdminStatus(tenantId);
+  const status = (res.data as { status?: unknown } | null)?.status;
+  if (!res.ok || typeof status !== "string")
+    return err(502, `core engine refused the status read (status ${res.status})`);
+  return json({ tenant: tenantId, status });
 }
 
 async function deleteProject(user: User, tenantId: string): Promise<Response> {
@@ -1092,9 +1238,9 @@ function invalidResourceName(resource: string): Response | null {
  *
  * Every paid *feature* is a tenant config key, and config can only be written
  * here, so refusing the write is the whole enforcement — there is no second
- * door. The AI Co-Pilot's set_server_status and an MCP client both land on
- * this same proxy, and the core's `_admin` plane needs ADMIN_SECRET, which
- * never leaves this process.
+ * door. Nothing a browser, the Co-Pilot or an MCP client can reach writes
+ * config any other way, and the core's `_admin` plane needs ADMIN_SECRET,
+ * which never leaves this process.
  *
  * Only a key being turned ON is checked. A config that merely *carries* a key
  * the plan does not include — because it was written on a richer plan, or is
@@ -1248,6 +1394,31 @@ async function deleteFile(user: User, tenantId: string, resource: string): Promi
   // it would write back a list missing anything created in the meantime.
   removeResource(tenantId, resource);
   return json({ ok: true, tenant: tenantId, resource, deleted: true });
+}
+
+// ── System files (read-only) ──────────────────────────────────────
+// A project's system/ folder holds what its features own — auth's users.json
+// and reset-password.json. The dashboard shows them so an owner can see who has
+// signed up, but never writes them: they change only through the feature's own
+// routes on the public plane (signup, reset-password, …), so there is no PUT or
+// DELETE here and nothing to keep in the `resources` column. The core strips
+// credentials before either response leaves it.
+
+async function listSystemFiles(user: User, tenantId: string): Promise<Response> {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  const res = await coreAdminSystem(tenantId);
+  if (!res.ok) return err(502, `core engine refused the read (status ${res.status})`);
+  const files = (res.data as { files?: unknown } | null)?.files;
+  return json({ files: Array.isArray(files) ? files.filter((f) => typeof f === "string") : [] });
+}
+
+async function getSystemFile(user: User, tenantId: string, name: string): Promise<Response> {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  if (!NAME_RE.test(name)) return err(400, "invalid file name");
+  const res = await coreAdminSystem(tenantId, name);
+  if (res.status === 404) return err(404, "file not found");
+  if (!res.ok) return err(502, `core engine refused the read (status ${res.status})`);
+  return json(res.data);
 }
 
 // ── AI Co-Pilot ───────────────────────────────────────────────────
@@ -1482,7 +1653,7 @@ async function toolSetServerStatus(
   const status = args.status;
   // Only the two states the tool declares. "maintenance" exists in the engine
   // but is not in the enum the model was given, so accepting it here would let
-  // a hallucinated argument reach the config file.
+  // a hallucinated argument reach the status file.
   if (status !== "active" && status !== "stopped")
     return { result: { error: "'status' must be 'active' or 'stopped'" } };
 
@@ -1607,7 +1778,7 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
   // manufacture traffic against the user's own quota.
   const warnings: string[] = [];
   if (status !== "active")
-    warnings.push(`PROJECT_STATUS=${status} — every public endpoint answers 503.`);
+    warnings.push(`The API is ${status} — every public endpoint answers 503.`);
   if (recent.some((e) => e.status === 429))
     warnings.push("Recent requests were rate limited (429).");
   if (recent.some((e) => e.status === 413))
@@ -2038,37 +2209,17 @@ async function deployProject(user: User, tenantId: string): Promise<Response> {
   return json({ ok: true, tenant: tenantId, promoted: out.promoted });
 }
 
-/** Replace or append a KEY=value line in the .env editor's raw text. */
-function upsertEnvLine(raw: string, key: string, value: string): string {
-  const line = `${key}=${value}`;
-  const re = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=.*$`, "m");
-  if (re.test(raw)) return raw.replace(re, line);
-  return raw.trim() ? `${raw.replace(/\n+$/, "")}\n${line}` : line;
-}
-
 /**
- * Write PROJECT_STATUS into the tenant's config. Shared by the start/stop
- * route and the Co-Pilot's set_server_status tool. Returns null on success.
+ * Start or stop the tenant's public plane. Shared by the start/stop route and
+ * the Co-Pilot's set_server_status tool. Returns null on success.
+ *
+ * One write to one file, and it applies immediately. Status is not config: it
+ * is never staged, never deployed and has no line in the .env text, so there is
+ * no draft to keep in step and nothing a later Save or Deploy can overwrite.
  */
 async function applyProjectStatus(tenantId: string, status: string): Promise<string | null> {
-  // Update production config (immediate — the core admin write evicts the
-  // tenant) and the draft config only when one exists: creating a draft here
-  // would later deploy over live settings the user never staged.
-  const apply = async (name: string, mustExist: boolean): Promise<string | null> => {
-    const cur = await coreAdmin("GET", tenantId, name);
-    if (cur.status === 404 && mustExist) return null;
-    const cfg =
-      cur.ok && cur.data && typeof cur.data === "object" && !Array.isArray(cur.data)
-        ? { ...(cur.data as Record<string, unknown>) }
-        : {};
-    cfg.PROJECT_STATUS = status;
-    if (typeof cfg.__raw === "string")
-      cfg.__raw = upsertEnvLine(cfg.__raw, "PROJECT_STATUS", status);
-    const res = await coreAdmin("POST", tenantId, name, cfg);
-    return res.ok ? null : `core engine refused the status write (status ${res.status})`;
-  };
-
-  return (await apply("config", false)) ?? (await apply(`${DRAFT_PREFIX}config`, true));
+  const res = await coreAdminStatus(tenantId, status);
+  return res.ok ? null : `core engine refused the status write (status ${res.status})`;
 }
 
 async function setProjectStatus(req: Request, user: User, tenantId: string): Promise<Response> {
@@ -2429,7 +2580,12 @@ async function route(req: Request): Promise<Response> {
       if (segments[2] === "live-logs") return liveLogs(req, user, segments[1]);
       if (segments[2] === "diagnostics") return projectDiagnostics(user, segments[1]);
       if (segments[2] === "keys") return listKeys(user, segments[1]);
+      if (segments[2] === "system") return listSystemFiles(user, segments[1]);
+      if (segments[2] === "status") return getProjectStatus(user, segments[1]);
     }
+
+    if (segments.length === 4 && req.method === "GET" && segments[2] === "system")
+      return getSystemFile(user, segments[1], segments[3]);
 
     if (segments.length === 3 && req.method === "POST" && segments[2] === "keys")
       return createKey(req, user, segments[1]);

@@ -38,9 +38,9 @@ export function endpointsFor(resources: string[]): Endpoint[] {
 }
 
 /**
- * The tenant's auth plane. These two routes are not resources — they appear
- * and disappear with AUTH_ENABLED rather than with a file, which is why they
- * are a fixed list here instead of coming from the project's `resources`.
+ * The tenant's auth plane. These routes are not resources — they appear and
+ * disappear with AUTH_ENABLED rather than with a file, which is why they are a
+ * fixed list here instead of coming from the project's `resources`.
  */
 export const AUTH_ENDPOINTS: Endpoint[] = [
   {
@@ -61,6 +61,36 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     kind: 'auth',
     sample: {
       request: { email: 'ada@example.com', password: 'at least 8 chars' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/change-password',
+    needsId: false,
+    kind: 'auth',
+    sample: {
+      request: { currentPassword: 'at least 8 chars', password: 'a new password' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/forgot-password',
+    needsId: false,
+    kind: 'auth',
+    sample: {
+      request: { email: 'ada@example.com' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/reset-password',
+    needsId: false,
+    kind: 'auth',
+    sample: {
+      request: { email: 'ada@example.com', code: '123456', password: 'a new password' },
     },
   },
 ]

@@ -42,13 +42,15 @@ export function parseEnvText(text: string): EnvParseResult {
 }
 
 /** Keys the Core Engine understands (see ENVIRONMENT.md). */
+// PROJECT_STATUS is deliberately absent: status is not a setting (it lives in
+// the project's system/status.json), so a line for it here does nothing.
 const KNOWN_KEYS = new Set([
-  'PROJECT_STATUS',
   'QA_MODE',
   'AUTH_ENABLED',
   'AUTH_PUBLIC_ROUTES',
   'AUTH_JWT_TTL_SECONDS',
   'AUTH_OAUTH_REDIRECT',
+  'AUTH_RESET_URL',
   'AUTH_GOOGLE_CLIENT_ID',
   'AUTH_GOOGLE_SECRET',
   'AUTH_GITHUB_CLIENT_ID',
@@ -77,6 +79,43 @@ export function configToEnvText(config: TenantConfig): string {
 /** Compile editor text into the config object sent to the files proxy. */
 export function envTextToConfig(text: string): TenantConfig {
   return { ...parseEnvText(text).env, [RAW_KEY]: text }
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Set KEY=value in .env text: replace the live line, else uncomment the
+ * template's `# KEY=…` line where it stands, else append. A new project's .env
+ * lists every setting commented out, so uncommenting keeps a key in its
+ * documented section.
+ */
+export function setEnvLine(text: string, key: string, value: string): string {
+  const line = `${key}=${value}`
+  const name = escapeRegExp(key)
+  const live = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=.*$`, 'm')
+  if (live.test(text)) return text.replace(live, () => line)
+  const commented = new RegExp(`^\\s*#\\s*${name}\\s*=.*$`, 'm')
+  if (commented.test(text)) return text.replace(commented, () => line)
+  return text.trim() ? `${text.replace(/\n+$/, '')}\n${line}` : line
+}
+
+/**
+ * Merge settings into a stored config without letting its two copies disagree.
+ *
+ * The keys are what the core acts on; `__raw` is what the editor shows and
+ * re-compiles on Save. Merging the keys alone would leave a setting live but
+ * invisible — still commented out in the text — and the next Save from the
+ * editor would silently switch it back off.
+ */
+export function mergeEnv(config: TenantConfig, patch: TenantConfig): TenantConfig {
+  const merged: TenantConfig = { ...config, ...patch }
+  const raw = config[RAW_KEY]
+  if (typeof raw === 'string')
+    merged[RAW_KEY] = Object.entries(patch).reduce(
+      (text, [key, value]) => setEnvLine(text, key, value),
+      raw,
+    )
+  return merged
 }
 
 // ── Display masking (view mode only — edit mode shows real values) ─

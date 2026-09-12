@@ -9,6 +9,7 @@ import { sampleRecordBody } from '@/lib/playground'
 import { useCurrentProject } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
+import { useSystemFile } from '@/hooks/system'
 import { SAVE_HINT, useSaveShortcut } from '@/hooks/save-shortcut'
 import { useWorkspaceStore, type EditorTab, type LogView, type Method } from '@/stores/workspace'
 import { PaneTab, PaneTabs } from './pane-tabs'
@@ -163,6 +164,56 @@ function ResourceView({ tenantId, resource }: { tenantId: string; resource: stri
       {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
       {/* Keyed by resource so folds don't carry over to a different file. */}
       {data !== undefined && <JsonTree key={resource} data={data} initialDepth="first-level" />}
+    </div>
+  )
+}
+
+// ── System files (read-only) ──────────────────────────────────────
+
+/** Refresh only: a system file changes through the project's API, never from here. */
+function SystemActions({ tenantId, file }: { tenantId: string; file: string }) {
+  const { refetch, isFetching } = useSystemFile(tenantId, file)
+  const onRefresh = () => {
+    refetch().then((res) => {
+      if (res.error) toast.error(`Could not refresh ${file}.json: ${res.error.message}`)
+    })
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={onRefresh}
+        disabled={isFetching}
+        title={`Reload ${file}.json from the server`}
+        className="flex cursor-pointer items-center gap-1 px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+        Refresh
+      </button>
+      <span className="px-2 py-1 font-mono text-xs text-faint">Read-only</span>
+    </div>
+  )
+}
+
+const SYSTEM_FILE_NOTES: Record<string, string> = {
+  users:
+    'The accounts that sign in to your API. Written by /auth/signup and the login providers; password hashes are never shown.',
+  'reset-password':
+    'Password reset codes that are outstanding or were sent in the last hour. Codes themselves are never shown.',
+}
+
+function SystemFileView({ tenantId, file }: { tenantId: string; file: string }) {
+  const { data, isLoading, error } = useSystemFile(tenantId, file)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <p className="shrink-0 border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
+        {SYSTEM_FILE_NOTES[file] ?? 'Owned by a feature of your API.'} Changes go through your API&rsquo;s
+        auth endpoints, not this editor.
+      </p>
+      <div className="min-h-0 flex-1 overflow-auto bg-code-bg p-4">
+        {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
+        {error && <p className="font-mono text-xs text-danger-ink">Could not load: {error.message}</p>}
+        {data !== undefined && <JsonTree key={file} data={data} initialDepth="first-level" />}
+      </div>
     </div>
   )
 }
@@ -376,7 +427,9 @@ export function EditorPane() {
       ? `${selection.resource}.json`
       : selection?.kind === 'env'
         ? '.env'
-        : endpoint && tenantId
+        : selection?.kind === 'system'
+          ? `system/${selection.file}.json`
+          : endpoint && tenantId
           ? `${endpoint.method} /${tenantId}${endpoint.path}`
           : ''
 
@@ -409,6 +462,9 @@ export function EditorPane() {
               <ResourceActions tenantId={tenantId} resource={selection.resource} />
             )}
             {selection?.kind === 'env' && tenantId && <EnvActions tenantId={tenantId} />}
+            {selection?.kind === 'system' && tenantId && (
+              <SystemActions tenantId={tenantId} file={selection.file} />
+            )}
             {endpoint && (
               <PaneTabs>
                 <TabButton tab="docs" label="Docs" />
@@ -461,6 +517,10 @@ export function EditorPane() {
           )}
 
           {selection?.kind === 'env' && tenantId && <EnvView tenantId={tenantId} />}
+
+          {selection?.kind === 'system' && tenantId && (
+            <SystemFileView tenantId={tenantId} file={selection.file} />
+          )}
 
           {endpoint && tenantId && activeTab === 'docs' && (
             <DocsView endpoint={endpoint} tenantId={tenantId} />

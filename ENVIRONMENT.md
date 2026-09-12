@@ -6,7 +6,7 @@ distinct layers — don't confuse them:
 1. **Process env** — read by the two Bun backends at startup (`process.env`).
    Set in your shell for dev, in `docker-compose.yml` for the local stack, and
    in the systemd units / `/etc/stubbase/stubbase.env` in production.
-2. **Tenant config** — env-*style* keys inside each tenant's `config.json`
+2. **Tenant config** — env-*style* keys inside each tenant's `system/config.json`
    (edited as a simulated `.env` in the dashboard UI). These are **not**
    process env; the Core Engine reads them per-tenant, per-request.
 3. **Frontend build env** — Vite/Astro variables baked into the static `dist/`
@@ -20,7 +20,7 @@ distinct layers — don't confuse them:
 |---|---|---|
 | `ADMIN_SECRET` | — **(required, exits if unset)** | Bearer token for the `_admin` plane; also the root key from which per-tenant JWT signing keys are derived (`HMAC(ADMIN_SECRET, "jwt:" + tenantId)`). Rotating it invalidates every tenant's JWTs. Must match the Dashboard API's value. **Never reaches a browser.** |
 | `PORT` | `3000` | Listen port. |
-| `TENANTS_DIR` | `./tenants` | Root of tenant folders (`<tenant>/<resource>.json` + `config.json`). The only writable path in the sandboxed systemd unit. |
+| `TENANTS_DIR` | `./tenants` | Root of tenant folders: `<tenant>/data/<resource>.json` (and drafts) for resources, `<tenant>/system/` for `config.json`, `status.json` and feature-owned files (`users.json`, `reset-password.json`). The only writable path in the sandboxed systemd unit. |
 | `IDLE_TTL_MS` | `300000` (5 min) | Idle time before a tenant is evicted from RAM (scale-to-zero). Set low to test eviction. |
 | `MAX_ACTIVE_TENANTS` | `500` | RAM cap; past it, the least-recently-seen tenant is evicted early. |
 | `MAX_BODY_BYTES` | `1048576` (1 MiB) | Request-body size limit. |
@@ -36,7 +36,8 @@ distinct layers — don't confuse them:
 | `SQL_MAX_QUERY_CHARS` | `4000` | Longest SQL statement an MCP client may submit. |
 | `MCP_MAX_SESSIONS` | `50` | Concurrent MCP SSE streams across all tenants. They are held open indefinitely by design, so they need a ceiling on the 1GB box; past it, new streams get 503. |
 | `HOOK_ALLOW_PRIVATE` | unset (off) | `true` disables the webhook SSRF guard so hooks may target private addresses. **Local dev/tests only — never set in production.** |
-| `RESEND_API_URL` | `https://api.resend.com/emails` | Upstream for the `_notify/email` proxy. Override only to point at a mock. |
+| `AUTH_RESET_LOG_CODES` | unset (off) | `true` writes every tenant password reset code (and its link) to the core's log, so reset can be tried with no email provider configured — `forgot-password` then works without `RESEND_API_KEY`. The core warns at boot while it is on. **Local dev/tests only — never set in production**: the log would hold working account-recovery codes for every project's users. |
+| `RESEND_API_URL` | `https://api.resend.com/emails` | Upstream for the `_notify/email` proxy and password reset emails. Override only to point at a mock. |
 | `TWILIO_API_BASE` | `https://api.twilio.com` | Upstream base for the `_notify/sms` proxy. Override only to point at a mock. |
 | `OAUTH_GOOGLE_AUTH_URL` | Google's real endpoint | OAuth consent-screen URL. Override only for mocks. |
 | `OAUTH_GOOGLE_TOKEN_URL` | Google's real endpoint | OAuth code-exchange URL. |
@@ -96,7 +97,7 @@ half missing is simply not written, and that provider's button never appears.
 
 ---
 
-## 2. Tenant config (`<tenant>/config.json`)
+## 2. Tenant config (`<tenant>/system/config.json`)
 
 Env-style keys stored as a flat JSON object of strings, written through the
 dashboard's files proxy (`PUT /projects/<id>/files/…` → core
@@ -110,17 +111,34 @@ The dashboard's `.env` editor is the intended writer: it compiles `KEY=value`
 text into this object and keeps the raw text (comments, ordering) under the
 `__raw` key, which `parseConfig()` ignores. Don't repurpose `__raw`.
 
-**Drafts:** dashboard saves land in `draft_<name>.json` (including
-`draft_config.json`) and only reach the live files on deploy
+**A new project's `.env` starts as a template.** `envTemplate` in
+`apps/dashboard-api/server-app.ts` writes every key in this section into
+`__raw`, grouped by feature with a comment on each, and every line commented
+out — so a new project is still plain, open CRUD, and switching a feature on is
+uncommenting its lines. Anything that sets a key from code (a starter)
+uncomments the template's line in place
+rather than appending, so `__raw` and the parsed keys never disagree. Adding a
+key here means adding it to the template as well.
+
+**Drafts:** dashboard saves land in `draft_<name>.json` beside the file they
+stage — `data/draft_<resource>.json`, or `system/draft_config.json` — and only
+reach the live files on deploy
 (`POST /projects/<id>/deploy` → core `_admin/deploy`). The core skips
 `draft_*` when loading a tenant, so staged data is never served. Editor reads
 prefer the draft; the Live tab and the public API always show deployed state.
 
-### Server state
+### Server state — not a config key
 
-| Key | Example | Purpose |
-|---|---|---|
-| `PROJECT_STATUS` | `"active"` | Virtual start/stop. `stopped` or `maintenance` makes the whole public plane (CRUD, auth, notify, openapi) answer `503` with `{"error":…,"projectStatus":…}`; `active` or absent serves normally. The `_admin` plane stays reachable so the dashboard can always start it again. Set it via the dashboard's start/stop toggle (`POST /projects/<id>/status`) rather than by hand — that writes live *and* draft config and applies immediately. |
+Whether a project is serving lives in its own file,
+`<tenant>/system/status.json` (`{ "status": "active" | "stopped" | "maintenance" }`),
+not in `config.json`. `stopped` or `maintenance` makes the whole public plane
+(CRUD, auth, notify, openapi) answer `503` with `{"error":…,"projectStatus":…}`;
+`active`, or no file at all, serves normally. It is set only by the dashboard's
+Start/Stop toggle and the Co-Pilot (`POST /projects/<id>/status` → core
+`POST _admin/status`), and applies immediately. It is never staged, never
+deployed and has no `.env` line, so neither a Save nor a Deploy can start or
+stop an API — a `PROJECT_STATUS` key in config is ignored. The `_admin` plane
+stays reachable so the dashboard can always start it again.
 
 ### QA Chaos Engine
 
@@ -157,16 +175,26 @@ backends take no npm dependencies).
 
 | Key | Example | Purpose |
 |---|---|---|
-| `AUTH_ENABLED` | `"true"` | Master switch. Turns `users.json` into the identity table, enables `POST /auth/signup` + `/auth/login`, and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
+| `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` (never a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
 | `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). |
 | `AUTH_JWT_TTL_SECONDS` | `"3600"` | JWT lifetime (default 86400 = 24 h, min 60). |
 | `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>` instead of returning JSON. |
 | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_SECRET` | — | Tenant's own Google OAuth app. Both present ⇒ `GET /<tenant>/auth/google` (+ `/callback`) go live. The tenant registers `<origin>/<tenant>/auth/google/callback` in their Google console. |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_SECRET` | — | Same for GitHub (`/auth/github`). |
+| `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself needs `RESEND_API_KEY` (§ Notifications) — or the core's `AUTH_RESET_LOG_CODES` locally — and answers `404` without either. |
 
-Role note: a `"role": "admin"` on a `users.json` record bypasses ownership
-checks; JWTs carry `sub`/`email`/`role` claims signed with the derived
-per-tenant key (nothing stored on disk).
+Role note: a `"role": "admin"` on a `system/users.json` record bypasses
+ownership checks, but no API sets one yet (RBAC is not built), so every account
+signs up as `user`. JWTs carry `sub`/`email`/`role`/`pwdAt` claims signed with
+the derived per-tenant key (nothing stored on disk); the role is re-read from
+the record on every request.
+
+**Password reset and revocation** (not keys — fixed behaviour): a reset code is
+six digits, lives 15 minutes, works once, is spent by five wrong guesses, and is
+replaced by the next request; each account gets at most five codes an hour. Codes
+are stored in `system/reset-password.json` as an HMAC keyed off `ADMIN_SECRET`.
+Changing or resetting a password stamps `passwordChangedAt`, and every token
+signed before it stops verifying.
 
 ### Webhooks
 
@@ -184,11 +212,11 @@ with `HOOK_ALLOW_PRIVATE=true`.
 
 | Key | Purpose |
 |---|---|
-| `RESEND_API_KEY` | Enables `_notify/email`; the key stays server-side, the tenant's frontend never sees it. |
-| `RESEND_FROM` | From address (default `Stubbase <onboarding@resend.dev>`). |
+| `RESEND_API_KEY` | Enables `_notify/email` and password reset emails (`/auth/forgot-password`); the key stays server-side, the tenant's frontend never sees it. |
+| `RESEND_FROM` | From address for both (default `Stubbase <onboarding@resend.dev>`). |
 | `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_FROM` | All three enable `_notify/sms`. |
 
-⚠️ These provider credentials are stored **plaintext** in `config.json` on
+⚠️ These provider credentials are stored **plaintext** in `system/config.json` on
 disk (encryption-at-rest is a known backlog item).
 
 ---

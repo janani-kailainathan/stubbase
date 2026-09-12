@@ -616,10 +616,11 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     if (issued) setTestToken(tenantId, issued)
     // A write through the public API changes the deployed file, which is also
     // what the editor shows whenever nothing is staged — refetch both rather
-    // than keep showing the records from before this request.
+    // than keep showing the records from before this request. An auth route
+    // writes the project's system files instead (a signup adds to users.json).
     if (result.ok && endpoint.method !== 'GET')
       queryClient.invalidateQueries({
-        queryKey: ['resource', tenantId, isCrud ? endpoint.resource : 'users'],
+        queryKey: isCrud ? ['resource', tenantId, endpoint.resource] : ['system', tenantId],
       })
   }
 

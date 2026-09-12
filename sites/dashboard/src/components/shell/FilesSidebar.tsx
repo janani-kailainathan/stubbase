@@ -8,11 +8,13 @@ import {
   Database,
   FilePlus,
   Folder,
+  Lock,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
 import { useCurrentProject } from '@/hooks/projects'
 import { useCreateResources } from '@/hooks/resources'
+import { useSystemFiles } from '@/hooks/system'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 function NewResourceDialog({
@@ -91,13 +93,16 @@ export function FilesSidebar() {
   const project = useCurrentProject()
   const selection = useWorkspaceStore((s) => s.selection)
   const dataExpanded = useWorkspaceStore((s) => s.dataExpanded)
+  const systemExpanded = useWorkspaceStore((s) => s.systemExpanded)
   const select = useWorkspaceStore((s) => s.select)
   const toggleData = useWorkspaceStore((s) => s.toggleData)
+  const toggleSystem = useWorkspaceStore((s) => s.toggleSystem)
   const collapsed = useWorkspaceStore((s) => s.filesCollapsed)
   const setCollapsed = useWorkspaceStore((s) => s.setFilesCollapsed)
   const [newOpen, setNewOpen] = useState(false)
 
   const resources = project?.resources ?? []
+  const { data: systemFiles = [] } = useSystemFiles(project?.tenantId)
 
   // Folded to a strip, like the playground's response pane: the editor takes
   // the width, and the way back stays exactly where the rail was.
@@ -183,6 +188,46 @@ export function FilesSidebar() {
           })}
         {dataExpanded && project && resources.length === 0 && (
           <p className="px-8 py-1.5 font-mono text-xs text-faint">No resources yet.</p>
+        )}
+        {/* What the project's features own. Listed so an owner can see who has
+            signed up, but never editable: these change only through the
+            feature's own endpoints, so there is no Edit and no New here. */}
+        {project && (
+          <div
+            className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-card"
+            onClick={toggleSystem}
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-subtle transition-transform ${systemExpanded ? '' : '-rotate-90'}`}
+            />
+            <Lock className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <span className="font-mono text-xs text-body">system</span>
+            <span className="ml-auto pr-1 font-mono text-[10px] text-faint">read-only</span>
+          </div>
+        )}
+        {project &&
+          systemExpanded &&
+          systemFiles.map((file) => {
+            const isSelected = selection?.kind === 'system' && selection.file === file
+            return (
+              <div
+                key={file}
+                className={
+                  isSelected
+                    ? 'flex cursor-pointer items-center gap-2 rounded border border-primary-soft-border bg-primary-soft py-1.5 pr-2 pl-8'
+                    : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
+                }
+                onClick={() => select({ kind: 'system', file })}
+              >
+                <span className="shrink-0 font-mono text-xs text-faint">{'{}'}</span>
+                <span className="truncate font-mono text-xs text-body">{file}.json</span>
+              </div>
+            )
+          })}
+        {project && systemExpanded && systemFiles.length === 0 && (
+          <p className="px-8 py-1.5 font-mono text-xs text-faint">
+            Empty until auth is used — the first signup adds users.json.
+          </p>
         )}
         {project && (
           <div

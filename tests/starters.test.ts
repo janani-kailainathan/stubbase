@@ -17,6 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
+import { RAW_KEY, mergeEnv, parseEnvText } from "../sites/dashboard/src/lib/env.ts";
 import { seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
 let ROOT = "";
@@ -41,6 +42,52 @@ beforeAll(async () => {
 afterAll(async () => {
   await stopServices([core]);
   if (ROOT) await rm(ROOT, { recursive: true, force: true });
+});
+
+/**
+ * A starter's config lands in a project whose .env is the commented-out
+ * template. The keys are what the core acts on and the raw text is what the
+ * editor re-compiles on Save, so the two must still agree after the merge.
+ */
+describe("a starter's config merged into a templated .env", () => {
+  const TEMPLATE = [
+    "# ── Auth ──",
+    "# How long a login lasts — already set by the owner, and it must survive.",
+    "AUTH_JWT_TTL_SECONDS=3600",
+    "",
+    "# The switch.",
+    "# AUTH_ENABLED=true",
+    "",
+    "# Resources anyone may read without a token, comma-separated.",
+    "# AUTH_PUBLIC_ROUTES=posts,comments",
+    "",
+  ].join("\n");
+
+  test("uncomments the template's lines, so what Save compiles is what the core acts on", () => {
+    const configured = STARTERS.filter((s) => s.config);
+    expect(configured.length).toBeGreaterThan(0);
+    for (const starter of configured) {
+      const { [RAW_KEY]: raw, ...keys } = mergeEnv(
+        { AUTH_JWT_TTL_SECONDS: "3600", [RAW_KEY]: TEMPLATE },
+        starter.config!,
+      );
+      expect(parseEnvText(raw).env).toEqual(keys);
+      expect(keys.AUTH_JWT_TTL_SECONDS).toBe("3600");
+      for (const [key, value] of Object.entries(starter.config!)) {
+        // Set once, where the template documents it — not appended as a second copy.
+        expect(raw.match(new RegExp(`^#?\\s*${key}=.*$`, "gm"))).toEqual([`${key}=${value}`]);
+      }
+    }
+  });
+
+  test("a key the template does not offer is appended, and a config with no text only merges keys", () => {
+    const appended = mergeEnv({ [RAW_KEY]: TEMPLATE }, { SCHEMA_POSTS: "{}" })[RAW_KEY];
+    expect(appended.trimEnd().endsWith("SCHEMA_POSTS={}")).toBe(true);
+    expect(mergeEnv({ QA_MODE: "true" }, { AUTH_ENABLED: "true" })).toEqual({
+      QA_MODE: "true",
+      AUTH_ENABLED: "true",
+    });
+  });
 });
 
 /** `?_expand=authors` → the core nests the match under `author`. */
@@ -93,15 +140,8 @@ describe("starter examples", () => {
       expect(planned.blurb.length).toBeGreaterThan(0);
       // A `relations` claim needs somewhere for the relation to point.
       if (planned.features.includes("relations")) expect(planned.resources.length).toBeGreaterThan(1);
-      expect(planned.resources).not.toContain("users"); // same reason as below
     }
     expect(ids.size).toBe(9);
-  });
-
-  test("no starter ships a `users` resource", () => {
-    // users.json is the tenant identity table when AUTH_ENABLED — sample CRUD
-    // data there would collide the moment someone turned auth on.
-    for (const starter of STARTERS) expect(Object.keys(starter.resources)).not.toContain("users");
   });
 
   test("every foreign key resolves to a record that exists", () => {

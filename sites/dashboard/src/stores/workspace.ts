@@ -10,6 +10,8 @@ export type Selection =
   // so resource + method is no longer unique.
   | { kind: 'api'; resource: string; method: Method; path: string }
   | { kind: 'env' }
+  // A feature-owned file in the project's system/ folder — shown, never edited.
+  | { kind: 'system'; file: string }
   | null
 
 export type EditorTab = 'docs' | 'live'
@@ -66,6 +68,7 @@ interface WorkspaceState {
   logView: LogView
   paneMode: PaneMode
   dataExpanded: boolean
+  systemExpanded: boolean
   newProjectOpen: boolean
   /**
    * Playground edits, keyed by `playgroundKey` (tenant + method + path — the
@@ -132,6 +135,7 @@ interface WorkspaceState {
   setLogView: (view: LogView) => void
   setPaneMode: (mode: PaneMode) => void
   toggleData: () => void
+  toggleSystem: () => void
   setNewProjectOpen: (open: boolean) => void
   startEdit: (initial: string) => void
   changeDraft: (draft: string) => void
@@ -160,6 +164,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   logView: 'pretty',
   paneMode: 'editor',
   dataExpanded: true,
+  systemExpanded: true,
   newProjectOpen: false,
   playgroundInputs: {},
   playgroundRuns: {},
@@ -210,6 +215,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setPaneMode: (mode) => set({ paneMode: mode }),
 
   toggleData: () => set((s) => ({ dataExpanded: !s.dataExpanded })),
+
+  toggleSystem: () => set((s) => ({ systemExpanded: !s.systemExpanded })),
 
   setNewProjectOpen: (open) => set({ newProjectOpen: open }),
 

@@ -271,6 +271,22 @@ export const saveTenantConfig = (tenantId: string, config: Record<string, string
     body: JSON.stringify(config),
   })
 
+/**
+ * The project's system files: what its features own (auth's `users` and
+ * `reset-password`), with credentials already stripped by the core. Read-only —
+ * there is no write route, because they change only through the feature's own
+ * endpoints on the project's API.
+ */
+export const fetchSystemFiles = (tenantId: string) =>
+  request<{ files: string[] }>(`${APP_API_URL}/projects/${tenantId}/system`, {
+    headers: appHeaders(),
+  })
+
+export const fetchSystemFile = (tenantId: string, name: string) =>
+  request<unknown[]>(`${APP_API_URL}/projects/${tenantId}/system/${name}`, {
+    headers: appHeaders(),
+  })
+
 export const deleteResourceFile = (tenantId: string, resource: string) =>
   request<{ ok: boolean; deleted: boolean }>(
     `${APP_API_URL}/projects/${tenantId}/files/${resource}`,
@@ -289,7 +305,16 @@ export const deployProject = (tenantId: string) =>
 
 export type ProjectStatus = 'active' | 'stopped' | 'maintenance'
 
-/** Start/stop the virtual server (applies immediately, drafts and live). */
+/**
+ * Whether the project's API is serving. Its own route, not a config key: status
+ * is never staged or deployed, so the .env can never disagree with it.
+ */
+export const fetchProjectStatus = (tenantId: string) =>
+  request<{ tenant: string; status: ProjectStatus }>(`${APP_API_URL}/projects/${tenantId}/status`, {
+    headers: appHeaders(),
+  })
+
+/** Start/stop the virtual server. Applies immediately — there is nothing to deploy. */
 export const setProjectStatus = (tenantId: string, status: ProjectStatus) =>
   request<{ ok: boolean; status: ProjectStatus }>(`${APP_API_URL}/projects/${tenantId}/status`, {
     method: 'POST',

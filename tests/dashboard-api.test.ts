@@ -23,7 +23,15 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
-import { ADMIN_SECRET, startApp, startCore, stopServices, type Service } from "./helpers.ts";
+import {
+  ADMIN_SECRET,
+  startApp,
+  startCore,
+  stopServices,
+  systemFilePath,
+  tenantFilePath,
+  type Service,
+} from "./helpers.ts";
 import {
   ALLOWED_ORIGIN,
   PASSWORD,
@@ -69,8 +77,7 @@ async function createProject(
   return res.json();
 }
 
-const coreFile = (tenantId: string, name: string) =>
-  Bun.file(join(core.dir, tenantId, `${name}.json`));
+const coreFile = (tenantId: string, name: string) => Bun.file(tenantFilePath(core, tenantId, name));
 
 /**
  * Brings a project's public plane up. Projects are created stopped, so any test
@@ -140,6 +147,7 @@ describe("project ownership scoping", () => {
       path: `/projects/${tenantId}/status`,
       body: JSON.stringify({ status: "stopped" }),
     },
+    { method: "GET", path: `/projects/${tenantId}/status` },
     { method: "GET", path: `/projects/${tenantId}/files/config` },
     { method: "GET", path: `/projects/${tenantId}/files/config?source=live` },
     {
@@ -150,6 +158,8 @@ describe("project ownership scoping", () => {
     { method: "GET", path: `/projects/${tenantId}/files/posts` },
     { method: "PUT", path: `/projects/${tenantId}/files/posts`, body: JSON.stringify([{ id: "x" }]) },
     { method: "DELETE", path: `/projects/${tenantId}/files/posts` },
+    { method: "GET", path: `/projects/${tenantId}/system` },
+    { method: "GET", path: `/projects/${tenantId}/system/users` },
     {
       method: "POST",
       path: `/projects/${tenantId}/ai/chat`,
@@ -288,13 +298,79 @@ describe("project provisioning", () => {
 
   test("a new project starts stopped", async () => {
     const project = await createProject(owner.token, "Born Stopped");
-    // Recorded in the tenant's own config, so the core enforces it.
-    expect(await coreFile(project.tenantId, "config").json()).toMatchObject({
-      PROJECT_STATUS: "stopped",
-    });
+    // Recorded in the tenant's own status file, so the core enforces it.
+    expect(await Bun.file(systemFilePath(core, project.tenantId, "status")).json()).toEqual({ status: "stopped" });
+    const shown = await fetch(`${app.base}/projects/${project.tenantId}/status`, { headers: as(owner.token) });
+    expect(await shown.json()).toEqual({ tenant: project.tenantId, status: "stopped" });
     const res = await fetch(`${core.base}/${project.tenantId}/anything`);
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ projectStatus: "stopped" });
+  }, 15_000);
+
+  /** Every fixed key the core reads from a tenant's config (ENVIRONMENT.md §2). */
+  const CORE_TENANT_KEYS = [
+    "QA_MODE",
+    "AUTH_ENABLED",
+    "AUTH_PUBLIC_ROUTES",
+    "AUTH_JWT_TTL_SECONDS",
+    "AUTH_OAUTH_REDIRECT",
+    "AUTH_RESET_URL",
+    "AUTH_GOOGLE_CLIENT_ID",
+    "AUTH_GOOGLE_SECRET",
+    "AUTH_GITHUB_CLIENT_ID",
+    "AUTH_GITHUB_SECRET",
+    "RESEND_API_KEY",
+    "RESEND_FROM",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_FROM",
+  ];
+
+  const readConfig = (tenantId: string) =>
+    fetch(`${app.base}/projects/${tenantId}/files/config`, { headers: as(owner.token) }).then((r) => r.json());
+
+  test("a new project's .env lists every setting, all commented out", async () => {
+    const project = await createProject(owner.token, "Templated");
+    const { __raw: raw, ...keys } = await readConfig(project.tenantId);
+    expect(typeof raw).toBe("string");
+
+    // The template switches nothing on: not one live line, and no key at all.
+    const live = (raw as string).split("\n").filter((l) => l.trim() !== "" && !l.trim().startsWith("#"));
+    expect(live).toEqual([]);
+    expect(keys).toEqual({});
+
+    // …and every key the core reads is there to uncomment, patterns included.
+    const offered = [...(raw as string).matchAll(/^#\s*([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
+    for (const key of CORE_TENANT_KEYS) expect({ key, offered: offered.includes(key) }).toEqual({ key, offered: true });
+    expect(offered.some((k) => /^SCHEMA_[A-Z0-9_]+$/.test(k))).toBe(true);
+    expect(offered.some((k) => /^HOOK_(BEFORE|AFTER)_(INSERT|UPDATE|DELETE)_[A-Z0-9_]+$/.test(k))).toBe(true);
+    expect(new Set(offered).size).toBe(offered.length); // each offered once, or uncommenting is ambiguous
+    expect(offered).not.toContain("PROJECT_STATUS"); // not a setting: it is system/status.json
+
+    // The OAuth callbacks it tells you to register are this project's own.
+    expect(raw).toContain(`/${project.tenantId}/auth/google/callback`);
+    expect(raw).toContain(`/${project.tenantId}/auth/github/callback`);
+  }, 15_000);
+
+  test("saving the template untouched is allowed on any plan, and changes nothing", async () => {
+    const free = await signup(); // Free: no paid feature may be switched on
+    const project = await createProject(free.token, "Untouched");
+    const config = await fetch(`${app.base}/projects/${project.tenantId}/files/config`, { headers: as(free.token) }).then((r) => r.json());
+    const saved = await fetch(`${app.base}/projects/${project.tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(free.token),
+      body: JSON.stringify(config),
+    });
+    expect(saved.status).toBe(200);
+  }, 15_000);
+
+  test("start/stop never touches the .env", async () => {
+    const project = await createProject(owner.token, "Toggled");
+    const before = await readConfig(project.tenantId);
+    await activate(owner.token, project.tenantId);
+    expect(await readConfig(project.tenantId)).toEqual(before);
+    const shown = await fetch(`${app.base}/projects/${project.tenantId}/status`, { headers: as(owner.token) });
+    expect((await shown.json()).status).toBe("active");
   }, 15_000);
 
   test("a project with no resources starts genuinely empty", async () => {
@@ -393,12 +469,12 @@ describe("project provisioning", () => {
     expect(await coreFile(project.tenantId, "posts").exists()).toBe(false);
   }, 25_000);
 
-  test("a project with no config at all counts as running", async () => {
-    // The core defaults an absent PROJECT_STATUS to active, so the delete guard
-    // has to read it the same way — otherwise a legacy project with no config
-    // would be deletable while it is still serving.
-    const project = await createProject(owner.token, "No Config", { posts: [{ id: "1" }] });
-    await rm(join(core.dir, project.tenantId, "config.json"), { force: true });
+  test("a project with no status file counts as running", async () => {
+    // The core serves a tenant with no status file, so the delete guard has to
+    // read it the same way — otherwise a project whose file went missing would
+    // be deletable while it is still serving.
+    const project = await createProject(owner.token, "No Status", { posts: [{ id: "1" }] });
+    await rm(systemFilePath(core, project.tenantId, "status"), { force: true });
 
     const res = await fetch(`${app.base}/projects/${project.tenantId}`, {
       method: "DELETE",
@@ -849,7 +925,7 @@ describe("the dirty flag", () => {
     await fetch(`${app.base}/projects/${tenantId}/files/config`, {
       method: "PUT",
       headers: jsonHeaders(owner.token),
-      body: JSON.stringify({ PROJECT_STATUS: "active" }),
+      body: JSON.stringify({ QA_MODE: "false" }),
     });
     expect(await dirtyOf()).toBe(true);
 
@@ -977,6 +1053,30 @@ describe("tenant config writes", () => {
     });
     expect(start.status).toBe(200);
     expect((await fetch(`${core.base}/${tenantId}/posts`)).status).toBe(200);
+  }, 20_000);
+
+  test("a stale .env that still says active cannot restart a stopped API", async () => {
+    // Why status left config: an editor opened while the API was running, then
+    // saved and deployed after Stop was clicked, used to start it again.
+    const stop = await fetch(`${app.base}/projects/${tenantId}/status`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ status: "stopped" }),
+    });
+    expect(stop.status).toBe(200);
+
+    const saved = await fetch(`${app.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ PROJECT_STATUS: "active", __raw: "PROJECT_STATUS=active\n" }),
+    });
+    expect(saved.status).toBe(200);
+    const deployed = await fetch(`${app.base}/projects/${tenantId}/deploy`, { method: "POST", headers: as(owner.token) });
+    expect(deployed.status).toBe(200);
+
+    expect((await fetch(`${core.base}/${tenantId}/posts`)).status).toBe(503);
+    const shown = await fetch(`${app.base}/projects/${tenantId}/status`, { headers: as(owner.token) });
+    expect((await shown.json()).status).toBe("stopped");
   }, 20_000);
 
   test("an unknown status is rejected", async () => {
@@ -2147,6 +2247,65 @@ describe("MCP proxy", () => {
   }, 15_000);
 });
 
+// ── System files (read-only) ───────────────────────────────────────
+
+describe("system files", () => {
+  test("an owner can see who signed up — without a password hash — and cannot write it", async () => {
+    const owner = await signupOnPaidPlan();
+    const { tenantId } = await createProject(owner.token, "With Accounts", { posts: [] });
+    const staged = await fetch(`${app.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ AUTH_ENABLED: "true" }),
+    });
+    expect(staged.status).toBe(200);
+    await activate(owner.token, tenantId);
+    expect((await fetch(`${app.base}/projects/${tenantId}/deploy`, { method: "POST", headers: as(owner.token) })).status).toBe(200);
+
+    const list = () =>
+      fetch(`${app.base}/projects/${tenantId}/system`, { headers: as(owner.token) }).then((r) => r.json());
+    // config lives in system/ too, but it has its own door and is not listed.
+    expect(await list()).toEqual({ files: [] });
+
+    // One end user signs up through the project's public API.
+    const signed = await fetch(`${core.base}/${tenantId}/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "end-user@test.co", password: "password123" }),
+    });
+    expect(signed.status).toBe(201);
+
+    expect(await list()).toEqual({ files: ["users"] });
+    const users = await fetch(`${app.base}/projects/${tenantId}/system/users`, { headers: as(owner.token) });
+    expect(users.status).toBe(200);
+    const rows = await users.json();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: "end-user@test.co", role: "user" });
+    expect(rows[0]).not.toHaveProperty("passwordHash");
+
+    // No write route exists, and the files proxy cannot reach it either: `users` there is data/.
+    for (const method of ["PUT", "DELETE"]) {
+      const res = await fetch(`${app.base}/projects/${tenantId}/system/users`, {
+        method,
+        headers: jsonHeaders(owner.token),
+        ...(method === "PUT" ? { body: "[]" } : {}),
+      });
+      expect(res.status).toBe(404);
+    }
+    expect((await fetch(`${app.base}/projects/${tenantId}/files/users`, { headers: as(owner.token) })).status).toBe(404);
+    expect(await Bun.file(systemFilePath(core, tenantId, "users")).json()).toHaveLength(1);
+  }, 30_000);
+
+  test("a file name that is not a system file is a 404", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "No Such File");
+    for (const name of ["config", "posts", "nope"]) {
+      const res = await fetch(`${app.base}/projects/${tenantId}/system/${name}`, { headers: as(owner.token) });
+      expect({ name, status: res.status }).toEqual({ name, status: 404 });
+    }
+  }, 15_000);
+});
+
 // ── Diagnostics ────────────────────────────────────────────────────
 
 describe("diagnostics", () => {
@@ -2169,7 +2328,7 @@ describe("diagnostics", () => {
 
     // Corrupt the file behind the API's back — this is the "invisible error"
     // case: the core just skips the file and serves nothing.
-    await Bun.write(join(core.dir, tenantId, "posts.json"), "[{ broken json");
+    await Bun.write(tenantFilePath(core, tenantId, "posts"), "[{ broken json");
 
     const res = await fetch(`${app.base}/projects/${tenantId}/diagnostics`, {
       headers: as(owner.token),

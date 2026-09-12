@@ -10,16 +10,19 @@
  *   bun test tests/core.test.ts        (or: bun run scripts/build.ts -pl core)
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite"; // only to build a decoy DB the MCP tool must not reach
 import {
   ADMIN_SECRET,
   adminAuth,
+  seedStatus,
+  seedSystemFile,
   seedTenant,
   startCore,
   stopServices,
+  systemFile,
   tenantFile,
   waitFor,
   type Service,
@@ -38,6 +41,18 @@ async function boot(name: string, env: Record<string, string> = {}): Promise<Ser
 
 const seed = seedTenant;
 const readFile = tenantFile;
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+/** Signs a new account up on a tenant with AUTH_ENABLED, failing the test if it can't. */
+async function signupAs(tenant: string, email: string, password = "password123", on?: Service) {
+  const res = await fetch(`${(on ?? core).base}/${tenant}/auth/signup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  expect(res.status).toBe(201);
+  return (await res.json()) as { token: string; user: { id: string; email: string } };
+}
 
 // ── Shared server ──────────────────────────────────────────────────
 // One core covers everything that doesn't need process-level env; tenants are
@@ -67,7 +82,8 @@ beforeAll(async () => {
     posts: [{ id: "1", title: "readable" }],
     config: { AUTH_ENABLED: "true", AUTH_PUBLIC_ROUTES: "posts" },
   });
-  await seed(core, "stopped", { posts: [], config: { PROJECT_STATUS: "stopped" } });
+  await seed(core, "stopped", { posts: [] });
+  await seedStatus(core, "stopped", "stopped");
   await seed(core, "validated", {
     posts: [],
     config: {
@@ -229,9 +245,6 @@ describe("filters: plain is exact, brackets are operators", () => {
         { id: "5", brand: "Sony", category: "phone", price: null },
       ],
     });
-    await seed(core, "hashes", {
-      users: [{ id: "1", email: "ada@example.com", passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$abc" }],
-    });
   });
 
   test("a plain field=value stays exact and case-sensitive", async () => {
@@ -277,14 +290,6 @@ describe("filters: plain is exact, brackets are operators", () => {
     expect((await fetch(`${core.base}/filtering/products?price[]=10`)).status).toBe(400);
   });
 
-  test("passwordHash on users can never be filtered, with or without an operator", async () => {
-    expect((await fetch(`${core.base}/hashes/users?passwordHash[contains]=argon`)).status).toBe(400);
-    expect((await fetch(`${core.base}/hashes/users?passwordHash[gte]=$`)).status).toBe(400);
-    const exact = encodeURIComponent("$argon2id$v=19$m=19456,t=2,p=1$abc");
-    expect((await fetch(`${core.base}/hashes/users?passwordHash=${exact}`)).status).toBe(400);
-    // …while every other field on users filters normally.
-    expect((await fetch(`${core.base}/hashes/users?email[contains]=ada`)).status).toBe(200);
-  });
 });
 
 // ── CORS split ─────────────────────────────────────────────────────
@@ -562,7 +567,7 @@ describe("write-through persistence", () => {
    * file, destroying those records even for a resource nobody edited.
    */
   test("a promoted draft is consumed, so a second deploy promotes nothing", async () => {
-    const files = await readdir(join(core.dir, "deployable"));
+    const files = await readdir(join(core.dir, "deployable", "data"));
     expect(files).toContain("posts.json");
     expect(files).not.toContain("draft_posts.json");
 
@@ -657,38 +662,63 @@ describe("tenant auth", () => {
     expect(login.status).toBe(200);
     expect((await login.json()).user).not.toHaveProperty("passwordHash");
 
-    // ...and the hash really is on disk, so stripping is what hid it.
-    const onDisk = await readFile(core, "secure", "users");
+    // ...and the hash really is on disk, in system/, so stripping is what hid it.
+    const onDisk = await systemFile(core, "secure", "users");
     expect(onDisk.find((u: any) => u.email === "leak@test.co").passwordHash).toBeString();
   }, 15_000);
 
-  test("every users response path strips passwordHash", async () => {
-    const { token, user } = await fetch(`${core.base}/secure/auth/signup`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "paths@test.co", password: "password123" }),
-    }).then((r) => r.json());
-    const auth = { authorization: `Bearer ${token}` };
+  test("the identity table is not a resource: no route, no spec entry, nothing to expand", async () => {
+    await seed(core, "ident", { posts: [], config: { AUTH_ENABLED: "true" } });
+    const { token, user } = await signupAs("ident", "ident@test.co");
+    const auth = bearer(token);
 
-    const collection = await fetch(`${core.base}/secure/users`, { headers: auth }).then((r) => r.json());
-    expect(collection.length).toBeGreaterThan(0);
-    for (const row of collection) expect(row).not.toHaveProperty("passwordHash");
+    expect(await Bun.file(join(core.dir, "ident", "data", "users.json")).exists()).toBe(false);
+    expect((await fetch(`${core.base}/ident/users`, { headers: auth })).status).toBe(404);
+    expect((await fetch(`${core.base}/ident/users/${user.id}`, { headers: auth })).status).toBe(404);
 
-    const single = await fetch(`${core.base}/secure/users/${user.id}`, { headers: auth }).then((r) => r.json());
-    expect(single).not.toHaveProperty("passwordHash");
+    const spec = await fetch(`${core.base}/ident/openapi.json`).then((r) => r.json());
+    expect(Object.keys(spec.components.schemas)).not.toContain("users");
 
-    // _expand nests a users record into another resource — it must be stripped there too.
-    await fetch(`${core.base}/secure/posts`, {
+    // Ownership is still stamped from the token, but there is no users resource to nest.
+    await fetch(`${core.base}/ident/posts`, {
       method: "POST",
       headers: { ...auth, "content-type": "application/json" },
       body: JSON.stringify({ title: "mine" }),
     });
-    const expanded = await fetch(`${core.base}/secure/posts?_expand=users`, { headers: auth }).then((r) =>
-      r.json(),
-    );
-    expect(expanded[0].user).toBeTruthy();
-    expect(expanded[0].user).not.toHaveProperty("passwordHash");
-  }, 20_000);
+    const [post] = await fetch(`${core.base}/ident/posts?_expand=users`, { headers: auth }).then((r) => r.json());
+    expect(post.userId).toBe(user.id);
+    expect(post).not.toHaveProperty("user");
+  }, 15_000);
+
+  test("a data/users.json is an ordinary resource beside it", async () => {
+    // Plain CRUD in every respect: served exactly as stored, filterable on any
+    // field, writable under the ordinary ownership rules — and never the table
+    // anyone signs in against.
+    const plain = [{ id: "u1", name: "Ada", passwordHash: "just-a-field-here", role: "user" }];
+    await seed(core, "twousers", { users: plain, config: { AUTH_ENABLED: "true" } });
+    const { token } = await signupAs("twousers", "real@test.co");
+    const auth = bearer(token);
+
+    expect(await fetch(`${core.base}/twousers/users`, { headers: auth }).then((r) => r.json())).toEqual(plain);
+    expect((await fetch(`${core.base}/twousers/users?passwordHash[contains]=field`, { headers: auth })).status).toBe(200);
+
+    const put = await fetch(`${core.base}/twousers/users/u1`, {
+      method: "PUT",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Ada L", role: "admin" }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ name: "Ada L", role: "admin" });
+
+    // Writing to it touched no account: the real one still signs in, as a plain user.
+    const login = await fetch(`${core.base}/twousers/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "real@test.co", password: "password123" }),
+    });
+    expect(login.status).toBe(200);
+    expect((await login.json()).user.role).toBe("user");
+  }, 15_000);
 
   test("an unknown email fails login the same way a wrong password does", async () => {
     const unknown = await fetch(`${core.base}/secure/auth/login`, {
@@ -749,19 +779,17 @@ describe("ownership (RBAC)", () => {
       memoryCost: 19_456,
       timeCost: 2,
     });
-    await seed(core, "rbac", {
-      posts: [],
-      users: [
-        {
-          id: "admin-1",
-          email: "admin@test.co",
-          role: "admin",
-          passwordHash: adminHash,
-          createdAt: new Date().toISOString(),
-        },
-      ],
-      config: { AUTH_ENABLED: "true" },
-    });
+    await seed(core, "rbac", { posts: [], config: { AUTH_ENABLED: "true" } });
+    // There is no API that makes an admin yet, so one is written into the identity table directly.
+    await seedSystemFile(core, "rbac", "users", [
+      {
+        id: "admin-1",
+        email: "admin@test.co",
+        role: "admin",
+        passwordHash: adminHash,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
 
     const signup = async (email: string) => {
       const r = await fetch(`${core.base}/rbac/auth/signup`, {
@@ -844,32 +872,22 @@ describe("ownership (RBAC)", () => {
     expect((await update.json()).userId).toBe(alice.id);
   });
 
-  test("a non-admin cannot grant themselves a role, and keeps their passwordHash", async () => {
+  test("no public route can grant a role: the identity table is out of CRUD's reach", async () => {
+    // Alice's own account row is not addressable at all, so there is nothing to PUT a role into.
     const update = await fetch(`${core.base}/rbac/users/${alice.id}`, {
       method: "PUT",
       headers: { ...as(alice.token), "content-type": "application/json" },
       body: JSON.stringify({ email: "alice@test.co", role: "admin" }),
     });
-    expect(update.status).toBe(200);
-    expect((await update.json()).role).toBe("user");
-
-    // Dropping passwordHash from the body must not lock the account out.
-    const relogin = await fetch(`${core.base}/rbac/auth/login`, {
+    expect(update.status).toBe(404);
+    const me = await fetch(`${core.base}/rbac/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "alice@test.co", password }),
-    });
-    expect(relogin.status).toBe(200);
+    }).then((r) => r.json());
+    expect(me.user.role).toBe("user");
+    expect(bob.id).not.toBe(alice.id);
   }, 15_000);
-
-  test("a non-admin cannot mutate another user's row", async () => {
-    const res = await fetch(`${core.base}/rbac/users/${bob.id}`, {
-      method: "PUT",
-      headers: { ...as(alice.token), "content-type": "application/json" },
-      body: JSON.stringify({ email: "bob@test.co" }),
-    });
-    expect(res.status).toBe(403);
-  });
 
   test("an admin bypasses the ownership checks", async () => {
     const { record } = await createPost(alice.token, "admin will edit this");
@@ -883,6 +901,317 @@ describe("ownership (RBAC)", () => {
   });
 });
 
+// ── Tenant layout: data/ and system/ ───────────────────────────────
+
+describe("tenant layout", () => {
+  const write = (tenant: string, name: string, body: unknown) =>
+    fetch(`${core.base}/${tenant}/_admin/files/${name}`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("resources and their drafts land in data/, settings in system/", async () => {
+    expect((await write("layout", "posts", [{ id: "1" }])).status).toBe(201);
+    expect((await write("layout", "draft_posts", [{ id: "2" }])).status).toBe(201);
+    expect((await write("layout", "config", { QA_MODE: "true" })).status).toBe(201);
+    expect((await write("layout", "draft_config", { QA_MODE: "false" })).status).toBe(201);
+
+    expect((await readdir(join(core.dir, "layout"))).sort()).toEqual(["data", "system"]);
+    expect((await readdir(join(core.dir, "layout", "data"))).sort()).toEqual(["draft_posts.json", "posts.json"]);
+    expect((await readdir(join(core.dir, "layout", "system"))).sort()).toEqual(["config.json", "draft_config.json"]);
+  });
+
+  test("deploy promotes each draft within its own folder, and never a feature's file", async () => {
+    await seed(core, "promote", {
+      posts: [{ id: "1", title: "live" }],
+      draft_posts: [{ id: "1", title: "staged" }],
+      config: { QA_MODE: "false" },
+      draft_config: { QA_MODE: "true" },
+    });
+    // A feature's file is written by its feature alone, and settings never stage in data/.
+    await Bun.write(join(core.dir, "promote", "system", "draft_users.json"), JSON.stringify([{ id: "x", email: "x@y.co" }]));
+    await Bun.write(join(core.dir, "promote", "data", "draft_config.json"), JSON.stringify({ QA_MODE: "false" }));
+
+    const deploy = await fetch(`${core.base}/promote/_admin/deploy`, { method: "POST", headers: adminAuth });
+    expect(((await deploy.json()).promoted as string[]).sort()).toEqual(["config", "posts"]);
+
+    expect(await readFile(core, "promote", "posts")).toEqual([{ id: "1", title: "staged" }]);
+    expect(await readFile(core, "promote", "config")).toEqual({ QA_MODE: "true" });
+    expect(await Bun.file(join(core.dir, "promote", "system", "users.json")).exists()).toBe(false);
+    // Served, so the stray data/draft_config did not stop it; QA on, so system/'s draft did go live.
+    const teapot = await fetch(`${core.base}/promote/posts`, { headers: { "x-stubbase-status": "418" } });
+    expect(teapot.status).toBe(418);
+  });
+
+  test("files in the tenant root are not read — only the two folders are", async () => {
+    await mkdir(join(core.dir, "rootfiles"), { recursive: true });
+    await Bun.write(join(core.dir, "rootfiles", "posts.json"), JSON.stringify([{ id: "1" }]));
+    // Read, this would answer 503 rather than 404.
+    await Bun.write(join(core.dir, "rootfiles", "status.json"), JSON.stringify({ status: "stopped" }));
+    const res = await fetch(`${core.base}/rootfiles/posts`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "resource not found" });
+  });
+});
+
+describe("the admin system plane", () => {
+  beforeAll(async () => {
+    await seed(core, "sysview", { config: { AUTH_ENABLED: "true" } });
+    await seedSystemFile(core, "sysview", "users", [{ id: "1", email: "a@b.co", passwordHash: "HASH", role: "user" }]);
+    await seedSystemFile(core, "sysview", "reset-password", [
+      { userId: "1", codeHash: "CODEHASH", expiresAt: "2099-01-01T00:00:00.000Z", attempts: 2, issuedAt: [] },
+    ]);
+  });
+
+  test("lists a tenant's feature files and shows each without its credentials", async () => {
+    const list = await fetch(`${core.base}/sysview/_admin/system`, { headers: adminAuth });
+    expect(await list.json()).toEqual({ tenant: "sysview", files: ["users", "reset-password"] });
+
+    const users = await fetch(`${core.base}/sysview/_admin/system/users`, { headers: adminAuth });
+    expect(await users.json()).toEqual([{ id: "1", email: "a@b.co", role: "user" }]);
+
+    const resets = await fetch(`${core.base}/sysview/_admin/system/reset-password`, { headers: adminAuth });
+    expect(await resets.json()).toEqual([
+      { userId: "1", expiresAt: "2099-01-01T00:00:00.000Z", attempts: 2, issuedAt: [] },
+    ]);
+
+    const empty = await fetch(`${core.base}/plain/_admin/system`, { headers: adminAuth });
+    expect(await empty.json()).toEqual({ tenant: "plain", files: [] });
+  });
+
+  test("is read-only, admin-only, and names only feature files", async () => {
+    const url = `${core.base}/sysview/_admin/system/users`;
+    for (const method of ["POST", "PUT", "DELETE"])
+      expect((await fetch(url, { method, headers: adminAuth })).status).toBe(405);
+    expect((await fetch(url)).status).toBe(401);
+    expect((await fetch(url)).headers.get("access-control-allow-origin")).toBeNull();
+    // config has its own door (files/config); it is not a feature file.
+    expect((await fetch(`${core.base}/sysview/_admin/system/config`, { headers: adminAuth })).status).toBe(404);
+    // …and the files plane cannot reach a feature file: `users` there is data/users.json.
+    expect((await fetch(`${core.base}/sysview/_admin/files/users`, { headers: adminAuth })).status).toBe(404);
+  });
+});
+
+// ── Password: change, forgot, reset ────────────────────────────────
+
+describe("change password", () => {
+  const change = (token: string | undefined, body: unknown) =>
+    fetch(`${core.base}/chpw/auth/change-password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? bearer(token) : {}) },
+      body: JSON.stringify(body),
+    });
+  const login = (password: string) =>
+    fetch(`${core.base}/chpw/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "hal@test.co", password }),
+    });
+  const read = (token: string) => fetch(`${core.base}/chpw/posts`, { headers: bearer(token) });
+
+  test("takes the token and the current password, and signs every other session out", async () => {
+    await seed(core, "chpw", { posts: [], config: { AUTH_ENABLED: "true" } });
+    const first = await signupAs("chpw", "hal@test.co");
+    const second = (await (await login("password123")).json()).token as string;
+
+    expect((await change(undefined, { currentPassword: "password123", password: "new-password-1" })).status).toBe(401);
+    const wrong = await change(first.token, { currentPassword: "not-my-password", password: "new-password-1" });
+    expect(wrong.status).toBe(403);
+    expect(await wrong.json()).toEqual({ error: "current password is incorrect" });
+    expect((await read(second)).status).toBe(200); // a refused change revokes nothing
+
+    const ok = await change(first.token, { currentPassword: "password123", password: "new-password-1" });
+    expect(ok.status).toBe(200);
+    const { token: fresh, user } = await ok.json();
+    expect(user).not.toHaveProperty("passwordHash");
+
+    for (const stale of [first.token, second]) expect((await read(stale)).status).toBe(401);
+    expect((await read(fresh)).status).toBe(200);
+    expect((await login("password123")).status).toBe(401);
+    expect((await login("new-password-1")).status).toBe(200);
+  }, 30_000);
+});
+
+describe("forgot and reset password", () => {
+  const PASSWORD = "password123";
+  const mail: { from: string; to: string; subject: string; text: string; html: string; authorization: string | null }[] = [];
+  let mailStatus = 200;
+  let mailer: ReturnType<typeof Bun.serve>;
+  let svc: Service;
+
+  beforeAll(async () => {
+    // Stands in for Resend, so every code the core sends can be read back.
+    mailer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as any;
+        if (mailStatus !== 200) return new Response("{}", { status: mailStatus });
+        mail.push({ ...body, authorization: req.headers.get("authorization") });
+        return Response.json({ id: `email_${mail.length}` });
+      },
+    });
+    svc = await boot("reset", { RESEND_API_URL: `http://127.0.0.1:${mailer.port}/emails` });
+  }, 30_000);
+
+  afterAll(() => mailer.stop(true));
+
+  const post = (tenant: string, route: string, body: unknown, on = svc) =>
+    fetch(`${on.base}/${tenant}/auth/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const codeIn = (text: string) => /\b(\d{6})\b/.exec(text)?.[1] ?? "";
+  const mailTo = (to: string) => mail.filter((m) => m.to === to);
+  const project = (tenant: string, extra: Record<string, string> = {}) =>
+    seed(svc, tenant, {
+      posts: [],
+      config: { AUTH_ENABLED: "true", RESEND_API_KEY: "re_test_key", RESEND_FROM: "App <hi@app.test>", ...extra },
+    });
+  const INVALID = { error: "invalid or expired reset code" };
+
+  test("answers the same for an unknown email, and mails a code only to a real account", async () => {
+    await project("fp", { AUTH_RESET_URL: "https://app.test/reset" });
+    await signupAs("fp", "ada@test.co", PASSWORD, svc);
+
+    const ghost = await post("fp", "forgot-password", { email: "ghost@test.co" });
+    const real = await post("fp", "forgot-password", { email: "ADA@test.co" });
+    expect([ghost.status, real.status]).toEqual([202, 202]);
+    expect(await ghost.json()).toEqual(await real.json());
+
+    expect(mailTo("ghost@test.co")).toHaveLength(0);
+    const [sent, ...more] = mailTo("ada@test.co");
+    expect(more).toHaveLength(0);
+    expect(sent).toMatchObject({ from: "App <hi@app.test>", authorization: "Bearer re_test_key" });
+    const code = codeIn(sent.text);
+    expect(code).toMatch(/^\d{6}$/);
+    // The link carries email and code in the fragment, which never reaches a server log.
+    expect(sent.text).toContain(`https://app.test/reset#email=ada%40test.co&code=${code}`);
+    expect(sent.html).toContain(code);
+  }, 20_000);
+
+  test("a code resets the password once, and every earlier token stops working", async () => {
+    await project("rp");
+    const { token: before } = await signupAs("rp", "bo@test.co", PASSWORD, svc);
+    expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(before) })).status).toBe(200);
+
+    expect((await post("rp", "forgot-password", { email: "bo@test.co" })).status).toBe(202);
+    const code = codeIn(mailTo("bo@test.co").at(-1)!.text);
+    // No link without AUTH_RESET_URL: the code alone.
+    expect(mailTo("bo@test.co").at(-1)!.text).not.toContain("http");
+
+    const reset = await post("rp", "reset-password", { email: "bo@test.co", code, password: "a-brand-new-password" });
+    expect(reset.status).toBe(200);
+    const { token: after, user } = await reset.json();
+    expect(user).not.toHaveProperty("passwordHash");
+
+    expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(before) })).status).toBe(401);
+    expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(after) })).status).toBe(200);
+    expect((await post("rp", "login", { email: "bo@test.co", password: PASSWORD })).status).toBe(401);
+    expect((await post("rp", "login", { email: "bo@test.co", password: "a-brand-new-password" })).status).toBe(200);
+
+    const again = await post("rp", "reset-password", { email: "bo@test.co", code, password: "yet-another-password" });
+    expect(again.status).toBe(400);
+    expect(await again.json()).toEqual(INVALID);
+  }, 30_000);
+
+  test("every way a code is wrong reads alike, and five wrong guesses spend it", async () => {
+    await project("guess");
+    await signupAs("guess", "cy@test.co", PASSWORD, svc);
+    const attempt = (email: string, code: string) =>
+      post("guess", "reset-password", { email, code, password: "whatever-password" });
+
+    // Nothing issued yet, and an address with no account: the same answer.
+    expect(await (await attempt("cy@test.co", "123456")).json()).toEqual(INVALID);
+    expect(await (await attempt("ghost@test.co", "123456")).json()).toEqual(INVALID);
+
+    await post("guess", "forgot-password", { email: "cy@test.co" });
+    const code = codeIn(mailTo("cy@test.co").at(-1)!.text);
+    const wrong = code === "000000" ? "000001" : "000000";
+    for (let i = 0; i < 5; i++) expect(await (await attempt("cy@test.co", wrong)).json()).toEqual(INVALID);
+
+    // The right code, too late: the guesses spent it.
+    expect((await attempt("cy@test.co", code)).status).toBe(400);
+    expect((await post("guess", "login", { email: "cy@test.co", password: PASSWORD })).status).toBe(200);
+  }, 30_000);
+
+  test("codes are throttled per account, quietly, and eviction does not reset the count", async () => {
+    await project("throttle");
+    await signupAs("throttle", "di@test.co", PASSWORD, svc);
+    for (let i = 0; i < 6; i++)
+      expect((await post("throttle", "forgot-password", { email: "di@test.co" })).status).toBe(202);
+    expect(mailTo("di@test.co")).toHaveLength(5);
+
+    await fetch(`${svc.base}/throttle/_admin/flush`, { method: "POST", headers: adminAuth });
+    expect((await post("throttle", "forgot-password", { email: "di@test.co" })).status).toBe(202);
+    expect(mailTo("di@test.co")).toHaveLength(5);
+
+    // Each request replaced the code before it: only the newest one works.
+    const codes = mailTo("di@test.co").map((m) => codeIn(m.text));
+    const newest = codes.at(-1)!;
+    if (codes[0] !== newest)
+      expect((await post("throttle", "reset-password", { email: "di@test.co", code: codes[0], password: "new-password-2" })).status).toBe(400);
+    expect((await post("throttle", "reset-password", { email: "di@test.co", code: newest, password: "new-password-2" })).status).toBe(200);
+  }, 30_000);
+
+  test("a code is stored only as a keyed hash, and the system view shows neither hash", async () => {
+    await project("stored");
+    await signupAs("stored", "ed@test.co", PASSWORD, svc);
+    await post("stored", "forgot-password", { email: "ed@test.co" });
+    const code = codeIn(mailTo("ed@test.co").at(-1)!.text);
+
+    const [row] = await systemFile(svc, "stored", "reset-password");
+    expect(Object.values(row)).not.toContain(code);
+    expect(row.codeHash).toBeString();
+    expect(row.codeHash).not.toBe(new Bun.CryptoHasher("sha256").update(code).digest("base64url"));
+
+    const [shown] = await fetch(`${svc.base}/stored/_admin/system/reset-password`, { headers: adminAuth }).then((r) => r.json());
+    expect(shown).not.toHaveProperty("codeHash");
+    expect(shown).toMatchObject({ userId: row.userId, attempts: 0 });
+  }, 20_000);
+
+  test("a provider that refuses the email is reported, not swallowed", async () => {
+    await project("bounce");
+    await signupAs("bounce", "fay@test.co", PASSWORD, svc);
+    mailStatus = 500;
+    try {
+      const res = await post("bounce", "forgot-password", { email: "fay@test.co" });
+      expect(res.status).toBe(502);
+    } finally {
+      mailStatus = 200;
+    }
+  }, 20_000);
+
+  test("an account that signed up with OAuth can use a code to set its first password", async () => {
+    await project("oauthonly");
+    await seedSystemFile(svc, "oauthonly", "users", [{ id: "gh-1", email: "gus@test.co", role: "user", provider: "github" }]);
+    await post("oauthonly", "forgot-password", { email: "gus@test.co" });
+    const code = codeIn(mailTo("gus@test.co").at(-1)!.text);
+    expect((await post("oauthonly", "reset-password", { email: "gus@test.co", code, password: "first-password" })).status).toBe(200);
+    expect((await post("oauthonly", "login", { email: "gus@test.co", password: "first-password" })).status).toBe(200);
+  }, 20_000);
+
+  test("with no email provider it is not configured — unless the dev log flag is on", async () => {
+    await seed(svc, "nomail", { posts: [], config: { AUTH_ENABLED: "true" } });
+    await signupAs("nomail", "hana@test.co", PASSWORD, svc);
+    for (const email of ["hana@test.co", "ghost@test.co"]) {
+      const res = await post("nomail", "forgot-password", { email });
+      expect(res.status).toBe(404); // the same for every address
+      expect((await res.json()).error).toContain("RESEND_API_KEY");
+    }
+
+    const dev = await boot("reset-log", { AUTH_RESET_LOG_CODES: "true" });
+    await seed(dev, "t", { config: { AUTH_ENABLED: "true" } });
+    await signupAs("t", "ivy@test.co", PASSWORD, dev);
+    expect((await post("t", "forgot-password", { email: "ivy@test.co" }, dev)).status).toBe(202);
+    const pattern = /password reset code for ivy@test\.co is (\d{6})/;
+    await waitFor(() => pattern.test(dev.output.join("")));
+    const code = pattern.exec(dev.output.join(""))![1];
+    expect((await post("t", "reset-password", { email: "ivy@test.co", code, password: "logged-password" }, dev)).status).toBe(200);
+  }, 30_000);
+});
+
 // ── Virtual start / stop ───────────────────────────────────────────
 
 describe("virtual start/stop", () => {
@@ -892,6 +1221,7 @@ describe("virtual start/stop", () => {
       ["/stopped/posts/1", {}],
       ["/stopped/openapi.json", {}],
       ["/stopped/auth/login", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
+      ["/stopped/auth/forgot-password", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
       ["/stopped/_notify/email", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
     ];
     for (const [path, init] of surfaces) {
@@ -902,19 +1232,61 @@ describe("virtual start/stop", () => {
   });
 
   test("_admin stays reachable, or a stopped project could never restart", async () => {
-    const read = await fetch(`${core.base}/stopped/_admin/files/config`, { headers: adminAuth });
-    expect(read.status).toBe(200);
+    const read = await fetch(`${core.base}/stopped/_admin/status`, { headers: adminAuth });
+    expect(await read.json()).toEqual({ tenant: "stopped", status: "stopped" });
 
     // Restart it through the same plane the dashboard uses.
-    const write = await fetch(`${core.base}/stopped/_admin/files/config`, {
+    const write = await fetch(`${core.base}/stopped/_admin/status`, {
       method: "POST",
       headers: { ...adminAuth, "content-type": "application/json" },
-      body: JSON.stringify({ PROJECT_STATUS: "active" }),
+      body: JSON.stringify({ status: "active" }),
     });
-    expect(write.status).toBe(201);
+    expect(write.status).toBe(200);
 
     const revived = await fetch(`${core.base}/stopped/posts`);
     expect(revived.status).toBe(200);
+  });
+
+  test("status is its own file: neither config nor a deploy can start or stop an API", async () => {
+    const post = (path: string, body: unknown) =>
+      fetch(`${core.base}/own-status/_admin/${path}`, {
+        method: "POST",
+        headers: { ...adminAuth, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    // A PROJECT_STATUS key in config is only an unknown key now.
+    await seed(core, "own-status", { posts: [{ id: "1" }], config: { PROJECT_STATUS: "stopped" } });
+    expect((await fetch(`${core.base}/own-status/posts`)).status).toBe(200);
+
+    expect((await post("status", { status: "stopped" })).status).toBe(200);
+    expect(await Bun.file(join(core.dir, "own-status", "system", "status.json")).json()).toEqual({ status: "stopped" });
+    expect((await fetch(`${core.base}/own-status/posts`)).status).toBe(503);
+
+    // A staged config that says otherwise, and a stray status draft, both deployed: still stopped.
+    await post("files/draft_config", { PROJECT_STATUS: "active" });
+    await Bun.write(join(core.dir, "own-status", "system", "draft_status.json"), JSON.stringify({ status: "active" }));
+    const deploy = await post("deploy", {});
+    expect((await deploy.json()).promoted).toEqual(["config"]);
+    expect((await fetch(`${core.base}/own-status/posts`)).status).toBe(503);
+  });
+
+  test("the status plane validates, reads a missing file as active, and is admin-only", async () => {
+    await seed(core, "no-status", { posts: [] });
+    const url = `${core.base}/no-status/_admin/status`;
+    expect(await (await fetch(url, { headers: adminAuth })).json()).toEqual({ tenant: "no-status", status: "active" });
+
+    const bad = await fetch(url, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify({ status: "deleted" }),
+    });
+    expect(bad.status).toBe(400);
+    expect(await Bun.file(join(core.dir, "no-status", "system", "status.json")).exists()).toBe(false);
+
+    const anon = await fetch(url);
+    expect(anon.status).toBe(401);
+    expect(anon.headers.get("access-control-allow-origin")).toBeNull();
+    expect((await fetch(url, { method: "DELETE", headers: adminAuth })).status).toBe(405);
   });
 });
 
@@ -1307,7 +1679,8 @@ describe("request quota", () => {
         USAGE_SINK_URL: sink.url,
         USAGE_FLUSH_MS: "600000",
       });
-      await seed(metered, "off", { posts: [{ id: "1" }], config: { PROJECT_STATUS: "stopped" } });
+      await seed(metered, "off", { posts: [{ id: "1" }] });
+      await seedStatus(metered, "off", "stopped");
       await seed(metered, "side", { posts: [{ id: "1" }] });
 
       for (let i = 0; i < 3; i++) expect((await fetch(`${metered.base}/off/posts`)).status).toBe(503);
@@ -1621,13 +1994,17 @@ describe("MCP transport", () => {
         { id: "2", title: "second", userId: "u2", meta: { pinned: true }, score: 1.5 },
       ],
       users: [
-        { id: "u1", email: "a@x.com", passwordHash: "SECRET-HASH", role: "admin" },
-        { id: "u2", email: "b@x.com", passwordHash: "SECRET-HASH-2" },
+        { id: "u1", email: "a@x.com", role: "admin" },
+        { id: "u2", email: "b@x.com" },
       ],
       draft_posts: [{ id: "99", title: "staged" }],
-      config: { QA_MODE: "false" },
+      config: { QA_MODE: "false", AUTH_ENABLED: "true" },
       empties: [],
     });
+    // The sign-in accounts: a different table that happens to share the name.
+    await seedSystemFile(core, "mcp", "users", [
+      { id: "acct-1", email: "secret-account@x.com", passwordHash: "SECRET-HASH" },
+    ]);
   });
 
   test("the stream's first event is `endpoint`, naming this session's POST URL", async () => {
@@ -1694,22 +2071,21 @@ describe("MCP transport", () => {
     mcp.close();
   });
 
-  test("passwordHash is never mounted, so SELECT * cannot leak it", async () => {
+  test("the identity table is never mounted, so SELECT * cannot reach an account", async () => {
     const mcp = await openMcp(core, "mcp");
-    const all = await mcp.query("SELECT * FROM users");
-    expect(all.rows).toHaveLength(2);
-    for (const row of all.rows) expect(row).not.toHaveProperty("passwordHash");
-    // Not filtered on the way out — the column does not exist at all.
+    // `users` is data/users.json: the two rows the project wrote, and nothing from system/.
+    const all = await mcp.query("SELECT * FROM users ORDER BY id");
+    expect(all.rows.map((r: any) => r.email)).toEqual(["a@x.com", "b@x.com"]);
     const explicit = await mcp.call("SELECT passwordHash FROM users");
     expect(explicit.isError).toBe(true);
     expect(explicit.content[0].text).toContain("no such column");
     mcp.close();
   });
 
-  test("staged drafts and tenant config are not mounted", async () => {
+  test("staged drafts, tenant config and feature files are not mounted", async () => {
     const mcp = await openMcp(core, "mcp");
-    for (const table of ["draft_posts", "config"]) {
-      const result = await mcp.call(`SELECT * FROM ${table}`);
+    for (const table of ["draft_posts", "config", "reset-password"]) {
+      const result = await mcp.call(`SELECT * FROM "${table}"`);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("no such table");
     }

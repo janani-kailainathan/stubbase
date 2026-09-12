@@ -14,9 +14,9 @@
  * tests/starters.test.ts seeds this data into a real core and asserts exactly
  * that, plus that an `auth` starter really does reject unauthenticated writes.
  *
- * Note no starter seeds a `users` resource: with AUTH_ENABLED the core treats
- * users.json as the tenant's identity table, and signup creates it. Shipping
- * sample rows there would collide with real accounts.
+ * A `users` resource is fine to ship: the accounts signup creates live in the
+ * project's system/users.json, never in a resource, so sample rows in a
+ * data/users.json cannot collide with them.
  *
  * Data only — no React here, so the tests can import it directly.
  */
@@ -101,7 +101,7 @@ export const STARTERS: Starter[] = [
     example: '/orders?_expand=customers,products&status=shipped',
     // Anyone may read the catalogue and order history; creating or changing a
     // record needs a tenant JWT from /auth/signup or /auth/login. Signup is also
-    // what creates users.json, which is why no user rows are seeded below.
+    // what creates the account (in system/users.json, never a resource).
     config: {
       AUTH_ENABLED: 'true',
       AUTH_PUBLIC_ROUTES: 'products,orders,customers',

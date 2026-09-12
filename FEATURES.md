@@ -71,7 +71,7 @@ GET /<project>/posts?createdAt[gte]=2026-01-01         created this year or late
 Every condition you add has to match, and filters combine with sorting and
 pages. A plain `field=value` is case-sensitive; `contains` is not. If you use an
 operator we don't have — say `price[gtee]` — you get a 400 that names it, rather
-than every entry back. A user's password hash can never be filtered on.
+than every entry back.
 
 **Sort a list** with `_sort`, and choose the way with `_direction`:
 
@@ -143,14 +143,22 @@ If a record's `userId` points at something that no longer exists, `user` comes
 back as `null` — you get the row, not an error. If the record has no `userId` at
 all, nothing is added to it.
 
-Nothing to switch on: relations work on every project, and an expanded user
-record never includes their password.
+Nothing to switch on: relations work on every project.
 
 ### 1.3 Env settings
 
 Every feature below is off until you switch it on, and you do that yourself
 from the **.env editor** in your project. It reads like any `.env` file you have
 written before.
+
+**Your `.env` already lists every setting.** A new project's file has them all,
+grouped by feature with a note on what each one does, and every one of them
+commented out — so nothing is on until you say so. To switch a feature on,
+delete the `#` in front of its lines, put in your own values, Save and Deploy.
+Put the `#` back to switch it off again.
+
+Starting and stopping your API is not in the `.env` — that is the **Start /
+Stop** button, and it takes effect straight away, with no deploy.
 
 There are two kinds of key, and you normally write both:
 
@@ -183,12 +191,13 @@ with one table per feature: every key, an example value, and what it does.
 
 ### 1.4 Auth — sign-up and login for your users
 
-Give *your* users accounts, without building an auth service. Turn it on and a
-`users.json` in your project becomes your user table, and two endpoints appear:
+Give *your* users accounts, without building an auth service. Turn it on and
+these endpoints appear:
 
 ```
-POST   /<project>/auth/signup    { email, password }  → a token
-POST   /<project>/auth/login     { email, password }  → a token
+POST   /<project>/auth/signup            { email, password }             → a token
+POST   /<project>/auth/login             { email, password }             → a token
+POST   /<project>/auth/change-password   { currentPassword, password }   → a new token
 ```
 
 Your app sends that token back on every request:
@@ -200,12 +209,24 @@ Authorization: Bearer <token>
 With auth on, your whole API is private by default — every request needs a valid
 token. You choose which resources stay readable by anyone.
 
-Passwords are hashed, and no response from your API ever includes a password —
-not even reading the users resource directly.
+**Your users' accounts live in your project's `system` folder.** You can open it
+in the dashboard to see who has signed up, but you cannot edit it there — the
+accounts change only through these endpoints. Passwords are hashed and never
+appear in a response or in the dashboard. A `users.json` you add to your data is
+an ordinary resource like any other and has nothing to do with signing in.
+
+Every account is a standard user. There is no way to give one extra permissions
+yet.
+
+**Changing a password** takes the user's token *and* their current password, so
+a stolen token alone cannot lock anyone out. It signs the user out everywhere
+else: every token issued before the change stops working, and the response
+carries a fresh one so they stay signed in where they made it.
 
 This section is the base every login builds on. Google and GitHub sign-in are
-extra doors into the same feature — they need everything here switched on first,
-and they hand your users the same token.
+extra doors into the same feature, and password reset is a way back in — they
+all need everything here switched on first, and they hand your users the same
+token.
 
 ##### To enable this feature, add to your `.env`:
 
@@ -320,6 +341,67 @@ to your app with `#token=…` on the end for you to read.
 
 This key is shared with Google login: set it once and it applies to both.
 
+#### 1.4.3 Password reset
+
+Let your users back in when they forget their password. They ask for a code, we
+email it to them, and they trade it for a new password:
+
+```
+POST   /<project>/auth/forgot-password   { email }                   → a code is emailed
+POST   /<project>/auth/reset-password    { email, code, password }   → a token
+```
+
+The code is six digits, works once, and expires after 15 minutes.
+`forgot-password` answers exactly the same whether or not the email has an
+account, so nobody can use it to find out who has signed up. Resetting signs the
+user out everywhere, like changing a password does, and the response carries a
+fresh token so they are signed straight back in.
+
+Six digits stay safe because of the limits around them: five wrong tries use a
+code up, asking again replaces the code sent before, and each account gets at
+most five codes an hour. The codes are never shown in the dashboard.
+
+People who signed up with Google or GitHub can use this too, to set a password
+for the first time.
+
+##### To enable this, add to your `.env`:
+
+```
+AUTH_ENABLED=true
+RESEND_API_KEY=re_your_resend_key
+```
+
+The codes go out through your own [Resend](https://resend.com) account. Without
+a Resend key there is nothing to send with, so `forgot-password` answers `404`.
+And `AUTH_ENABLED=true` still has to be there: password reset is part of auth,
+not a separate service.
+
+This key is shared with email notifications.
+
+##### To send the email from your own address:
+
+```
+RESEND_FROM=Your App <no-reply@your-app.com>
+```
+
+Left out, the email comes from Resend's onboarding address — fine while you try
+it, but use an address on a domain you have verified with Resend before real
+users see it.
+
+##### To put a one-click link in the email:
+
+```
+AUTH_RESET_URL=https://your-app.com/reset-password
+```
+
+The email still shows the code, and adds a link to your page with the email and
+code attached after a `#`:
+`https://your-app.com/reset-password#email=…&code=…`. Read the two values in
+your page and send them to `reset-password` with the new password.
+
+Leave it out and the email carries the code alone — the right choice for a
+mobile app, or anything without a web page to land on.
+
 ### 1.5 Atomic operations
 
 _To be written — placeholder._
@@ -370,7 +452,7 @@ Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 
 | Key | Example | What it does |
 |---|---|---|
-| `AUTH_ENABLED` | `true` | **The switch.** Turns `users.json` into your user table, adds the signup/login endpoints, and makes every request need a token. Every key in this whole section does nothing without it — including the Google and GitHub ones. |
+| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login and change-password endpoints, keeps your users' accounts in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub and password reset ones. |
 | `AUTH_PUBLIC_ROUTES` | `posts,comments` | Resources anyone may `GET` without a token. Writes to them still need one. Comma-separated, no spaces. Left out, nothing is public. |
 | `AUTH_JWT_TTL_SECONDS` | `3600` | How long a token stays valid, in seconds. Defaults to `86400` (24 hours); the minimum is `60`. |
 
@@ -393,3 +475,13 @@ Register `<origin>/<project>/auth/google/callback` in the Google console.
 | `AUTH_OAUTH_REDIRECT` | `https://your-app.com/login` | Send the user here with `#token=…` attached instead of returning the token as JSON. Shared with the other provider — set it once, it applies to both. |
 
 Register `<origin>/<project>/auth/github/callback` in your GitHub OAuth app.
+
+#### 3.1.3 Password reset
+
+Feature: [1.4.3 Password reset](#143-password-reset)
+
+| Key | Example | What it does |
+|---|---|---|
+| `RESEND_API_KEY` | `re_your_resend_key` | **The switch.** Your Resend key — with it, `/<project>/auth/forgot-password` can email codes. Needs `AUTH_ENABLED=true` as well. Shared with email notifications. |
+| `RESEND_FROM` | `Your App <no-reply@your-app.com>` | Who the email is from. Left out, Resend's onboarding address. Shared with email notifications. |
+| `AUTH_RESET_URL` | `https://your-app.com/reset-password` | Adds a link to this page below the code, with `#email=…&code=…` attached. Must start with `http://` or `https://`. Left out, the email carries the code alone. |

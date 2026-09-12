@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 import { useDiagnostics, useEdgeProbe } from '@/hooks/diagnostics'
-import { useTenantConfig } from '@/hooks/config'
+import { useProjectStatus, useTenantConfig } from '@/hooks/config'
 import { useCurrentProject } from '@/hooks/projects'
 
 type Tone = 'error' | 'warn' | 'ok'
@@ -58,8 +58,8 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
 
   const syntaxErrors = diagnostics.data?.syntaxErrors ?? []
   const qaMode = String(config?.QA_MODE ?? '').toLowerCase() === 'true'
-  const status = config?.PROJECT_STATUS
-  const stopped = status === 'stopped' || status === 'maintenance'
+  const status = useProjectStatus(tenantId)
+  const stopped = status !== 'active'
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -105,7 +105,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
 
         <Section title="Configuration">
           {stopped && (
-            <Alert tone="warn" title={`PROJECT_STATUS=${status}`}>
+            <Alert tone="warn" title={`The API is ${status}`}>
               Every public endpoint answers 503 until you deploy or start the API again.
             </Alert>
           )}
@@ -158,7 +158,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
           ) : stopped && edge.data?.status === 503 ? (
             // Expected, not a fault: statusGuard 503s the whole public plane.
             <Alert tone="warn" title={`GET /${probeResource} returned 503`}>
-              Expected while PROJECT_STATUS={status} — deploy to bring the API back up.
+              Expected while the API is {status} — start it, or deploy, to bring it back up.
             </Alert>
           ) : edge.data && edge.data.status >= 500 ? (
             <Alert tone="error" title={`GET /${probeResource} returned ${edge.data.status}`}>

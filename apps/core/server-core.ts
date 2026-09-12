@@ -2,18 +2,21 @@
  * Stubbase Core Tenant Engine
  *
  * Scale-to-zero JSON-to-CRUD:
- *   - Tenant data lazy-loads from /tenants/<id>/*.json into RAM on first request.
+ *   - Tenant data lazy-loads from /tenants/<id>/data/*.json into RAM on first request.
  *   - Mutations update RAM and write-through to disk immediately.
  *   - After 5 idle minutes a tenant is evicted from RAM (disk stays authoritative).
  *
  * Routes:
  *   GET|POST         /<tenant>/<resource>
  *   GET|PUT|DELETE   /<tenant>/<resource>/<id>
- *   POST             /<tenant>/auth/signup | /<tenant>/auth/login   (when AUTH_ENABLED)
+ *   POST             /<tenant>/auth/signup | login | change-password
+ *                             | forgot-password | reset-password    (when AUTH_ENABLED)
  *   GET              /<tenant>/auth/google|github[/callback]        (OAuth, when configured)
  *   GET              /<tenant>/openapi.json
  *   POST             /<tenant>/_notify/email | sms                  (JWT-protected proxy)
  *   GET|POST|DELETE  /<tenant>/_admin/files/<resource>   (Bearer ADMIN_SECRET)
+ *   GET              /<tenant>/_admin/system[/<file>]    (Bearer ADMIN_SECRET, read-only)
+ *   GET|POST         /<tenant>/_admin/status             (Bearer ADMIN_SECRET)
  *   POST             /<tenant>/_admin/flush | deploy     (Bearer ADMIN_SECRET)
  *   GET              /<tenant>/_admin/sse-logs           (Bearer ADMIN_SECRET, SSE)
  *   GET              /<tenant>/_admin/logs               (Bearer ADMIN_SECRET, snapshot)
@@ -24,17 +27,43 @@
  * in-memory SQLite projection of the JSON files (see "In-memory SQLite
  * projection" below). The JSON arrays remain the store; SQL only reads.
  *
- * Per-tenant behavior is configured by an optional config.json in the tenant
- * folder (flat object of env-style keys, compiled from the dashboard's
- * simulated .env editor). CRUD requests flow through a middleware PIPELINE:
+ * On disk a tenant is two folders (see "Tenant layout"):
+ *   data/    <resource>.json, and any draft_<resource>.json staged over it
+ *   system/  config.json (+ draft_config.json), status.json, and the files a
+ *            feature owns — auth's users.json and reset-password.json. Never a
+ *            CRUD resource.
+ *
+ * Per-tenant behavior is configured by an optional system/config.json (flat
+ * object of env-style keys, compiled from the dashboard's simulated .env
+ * editor). CRUD requests flow through a middleware PIPELINE:
  * statusGuard → authGuard → chaosGuard → validationGuard →
  * beforeWebhookGuard → coreOperation → afterWebhookGuard.
+ *
+ * Features live in ./features/<name>/ and never import this file — it starts
+ * the server as it loads. Each is handed a host object instead, carrying the
+ * parts of a request only the core can serve (see "Features" below).
  */
 import { readdir, mkdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { dirname, join } from "node:path";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { Database } from "bun:sqlite"; // built into Bun — not an npm dependency
+import { err, json, serializedBody } from "./lib/http.ts";
+import { NAME_RE } from "./lib/names.ts";
+import { newTimestamps } from "./lib/timestamps.ts";
+import {
+  LOG_RESET_CODES,
+  SYSTEM_FILE_NAMES,
+  createAuth,
+  isSystemFileName,
+  parseAuthConfig,
+  readIdentity,
+  viewSystemFile,
+  type AuthConfig,
+  type Claims,
+  type EmailResult,
+  type Identity,
+} from "./features/auth/index.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const TENANTS_DIR = process.env.TENANTS_DIR ?? "./tenants";
@@ -70,8 +99,6 @@ if (!ADMIN_SECRET) {
   process.exit(1);
 }
 
-// tenant ids / resource names: path-traversal-safe by construction
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 // The tenant config is an object, not a record array — as is its staged draft.
 const isConfigFile = (resource: string) => resource === "config" || resource === "draft_config";
 
@@ -87,28 +114,14 @@ const isPrivateFile = (name: string) =>
 const isProtectedResource = (name: string) =>
   isPrivateFile(name) || name.startsWith("_") || name.startsWith(".");
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LEN = 8;
-// Same OWASP argon2id baseline as the dashboard API — 19 MiB transient per
-// hash keeps concurrent signups affordable on the 1GB box.
-const ARGON = { algorithm: "argon2id", memoryCost: 19_456, timeCost: 2 } as const;
-// Verified against when a login email is unknown, so response time can't enumerate users.
-const DUMMY_HASH = await Bun.password.hash("stubbase.invalid", ARGON);
-
 // ── Tenant config (config.json) ───────────────────────────────────
 // The dashboard UI edits a simulated .env; it lands on disk as config.json,
 // a flat object of env-style string keys. Every tenant feature toggle lives here.
 
 interface TenantConfig {
-  projectStatus: "active" | "stopped" | "maintenance";
   qaMode: boolean; // gates every x-stubbase-* simulation header
   schemas: Record<string, unknown>; // resource → JSON Schema for POST/PUT bodies
-  authEnabled: boolean;
-  publicRoutes: Set<string>; // resources that allow anonymous GET despite auth
-  jwtTtlSec: number;
-  oauthRedirect: string; // frontend URL that receives #token=... after OAuth
-  google?: { clientId: string; secret: string };
-  github?: { clientId: string; secret: string };
+  auth: AuthConfig; // the AUTH_* keys, parsed by the auth feature
   hooks: Record<string, string>; // HOOK_BEFORE_INSERT_POSTS etc → webhook URL
   resendKey: string;
   resendFrom: string;
@@ -118,13 +131,9 @@ interface TenantConfig {
 }
 
 const DEFAULT_CONFIG: TenantConfig = {
-  projectStatus: "active",
   qaMode: false,
   schemas: {},
-  authEnabled: false,
-  publicRoutes: new Set(),
-  jwtTtlSec: 86_400,
-  oauthRedirect: "",
+  auth: parseAuthConfig({}),
   hooks: {},
   resendKey: "",
   resendFrom: "",
@@ -137,18 +146,9 @@ function parseConfig(raw: unknown): TenantConfig {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_CONFIG;
   const env = raw as Record<string, unknown>;
   const str = (k: string) => (typeof env[k] === "string" ? (env[k] as string).trim() : "");
-  const publicRoutes = new Set(
-    str("AUTH_PUBLIC_ROUTES")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => NAME_RE.test(s)),
-  );
   const hooks: Record<string, string> = {};
   for (const [k, v] of Object.entries(env))
     if (k.startsWith("HOOK_") && typeof v === "string" && v.trim()) hooks[k] = v.trim();
-  const pair = (idKey: string, secretKey: string) =>
-    str(idKey) && str(secretKey) ? { clientId: str(idKey), secret: str(secretKey) } : undefined;
-  const statusRaw = str("PROJECT_STATUS").toLowerCase();
 
   // Schemas come either as SCHEMA_<RESOURCE>=<json> (the flat .env form) or as
   // a nested `resources: { <name>: { schema } }` object for API-written configs.
@@ -171,15 +171,9 @@ function parseConfig(raw: unknown): TenantConfig {
   }
 
   return {
-    projectStatus: statusRaw === "stopped" || statusRaw === "maintenance" ? statusRaw : "active",
     qaMode: str("QA_MODE").toLowerCase() === "true",
     schemas,
-    authEnabled: str("AUTH_ENABLED").toLowerCase() === "true",
-    publicRoutes,
-    jwtTtlSec: Math.max(60, Number(str("AUTH_JWT_TTL_SECONDS")) || DEFAULT_CONFIG.jwtTtlSec),
-    oauthRedirect: str("AUTH_OAUTH_REDIRECT"),
-    google: pair("AUTH_GOOGLE_CLIENT_ID", "AUTH_GOOGLE_SECRET"),
-    github: pair("AUTH_GITHUB_CLIENT_ID", "AUTH_GITHUB_SECRET"),
+    auth: parseAuthConfig(env),
     hooks,
     resendKey: str("RESEND_API_KEY"),
     resendFrom: str("RESEND_FROM"),
@@ -189,9 +183,31 @@ function parseConfig(raw: unknown): TenantConfig {
   };
 }
 
+// ── Project status (system/status.json) ───────────────────────────
+// Whether the public plane is serving. Not a config key, on purpose: config is
+// staged in the .env editor and goes live on Deploy, while status is runtime
+// state that Start/Stop changes immediately. Kept in one file with one writer
+// (`_admin/status`), neither a Save nor a Deploy can start or stop an API — as a
+// config key, a stale editor saved after Stop and then deployed restarted it.
+
+type ProjectStatus = "active" | "stopped" | "maintenance";
+const PROJECT_STATUSES = new Set<string>(["active", "stopped", "maintenance"]);
+
+/**
+ * `{ "status": … }`. Absent or unreadable reads as active: a tenant nobody has
+ * stopped is served, which is also how the landing site's demo, with no status
+ * file at all, stays up.
+ */
+function parseStatus(raw: unknown): ProjectStatus {
+  const status = (raw as { status?: unknown } | null)?.status;
+  return typeof status === "string" && PROJECT_STATUSES.has(status) ? (status as ProjectStatus) : "active";
+}
+
 interface TenantState {
-  db: Record<string, any[]>;
-  config: TenantConfig;
+  db: Record<string, any[]>; // data/ — the CRUD resources, and all the SQL projection ever sees
+  config: TenantConfig; // system/config.json
+  status: ProjectStatus; // system/status.json — set by Start/Stop, never staged or deployed
+  identity: Identity; // system/users.json + system/reset-password.json — never a resource
   timer: ReturnType<typeof setTimeout>;
   lastSeen: number;
   writeChain: Promise<unknown>; // serializes disk writes per tenant
@@ -199,30 +215,36 @@ interface TenantState {
 
 const activeTenants = new Map<string, TenantState>();
 
-// Already-serialized body text, keyed by the Response that carries it. Lets the
-// live logger record a response body without `res.clone().text()` buffering a
-// second copy — same reason `json()` sets content-length for usage metering.
-// Weak, so entries vanish with the Response itself.
-const serializedBody = new WeakMap<Response, string>();
-
-// Serializes once and declares content-length, so usage metering can read the
-// response size from the header instead of cloning every body.
-const json = (data: unknown, status = 200) => {
-  const body = JSON.stringify(data) ?? "null";
-  const res = new Response(body, {
-    status,
-    headers: {
-      "content-type": "application/json;charset=utf-8",
-      "content-length": String(Buffer.byteLength(body)),
-    },
-  });
-  serializedBody.set(res, body);
-  return res;
-};
-const err = (status: number, message: string) => json({ error: message }, status);
+// ── Tenant layout ─────────────────────────────────────────────────
+// data/ holds what the public plane serves: one <resource>.json per resource,
+// plus any draft_<resource>.json staged over it. system/ holds everything that
+// is not a resource: the tenant's settings (config.json and its draft), whether
+// it is serving (status.json), and the files a feature owns (auth's users.json
+// and reset-password.json). The split
+// is what lets a project keep a data/users.json of its own: the identity table
+// no longer shares a namespace with the resources, so neither can shadow the
+// other and no CRUD path needs to know which one it is serving.
 
 const tenantDir = (t: string) => join(TENANTS_DIR, t);
-const resourceFile = (t: string, r: string) => join(tenantDir(t), `${r}.json`);
+const dataDir = (t: string) => join(tenantDir(t), "data");
+const systemDir = (t: string) => join(tenantDir(t), "system");
+const resourceFile = (t: string, r: string) => join(dataDir(t), `${r}.json`);
+const systemFile = (t: string, name: string) => join(systemDir(t), `${name}.json`);
+
+/**
+ * Where `_admin/files/<name>` reads and writes. That plane addresses files by
+ * name, so the name picks the folder: config and its draft are settings,
+ * everything else is a resource. A feature's own files are unreachable from it
+ * on purpose — `users` there means data/users.json, an ordinary resource.
+ */
+const adminFile = (t: string, name: string) =>
+  isConfigFile(name) ? systemFile(t, name) : resourceFile(t, name);
+
+const isDirectory = (path: string) =>
+  stat(path).then(
+    (s) => s.isDirectory(),
+    () => false,
+  );
 
 // ── Usage metering ────────────────────────────────────────────────
 // Every public-plane request bumps an in-RAM counter; a timer (and tenant
@@ -469,38 +491,49 @@ function finishLog(
 
 // ── State management ──────────────────────────────────────────────
 
-async function loadTenant(tenantId: string): Promise<TenantState | null> {
-  let entries: string[];
-  try {
-    entries = await readdir(tenantDir(tenantId));
-  } catch {
-    return null; // tenant does not exist on disk
-  }
-  const db: Record<string, any[]> = {};
-  let config = DEFAULT_CONFIG;
-  let configFromCanonical = false; // config.json wins over the legacy stubbase.json
+/** The `*.json` files of one tenant folder that `wanted` names, parsed. Unreadable ones are skipped. */
+async function readFolder(
+  tenantId: string,
+  folder: "data" | "system",
+  wanted: (name: string) => boolean,
+): Promise<Map<string, unknown>> {
+  const dir = join(tenantDir(tenantId), folder);
+  const out = new Map<string, unknown>();
+  const entries = await readdir(dir).catch(() => [] as string[]); // either folder may not exist yet
   for (const f of entries) {
     if (!f.endsWith(".json")) continue;
     const name = f.slice(0, -5);
-    if (!NAME_RE.test(name)) continue;
-    // config/stubbase are settings, draft_* are staged: none may become a
-    // servable resource. Everything else in isPrivateFile is skipped outright.
-    const isSettings = name === "config" || name === "stubbase";
-    if (isPrivateFile(name) && !isSettings) continue;
+    if (!NAME_RE.test(name) || !wanted(name)) continue;
     try {
-      const data = await Bun.file(join(tenantDir(tenantId), f)).json();
-      if (isSettings) {
-        if (name === "config" || !configFromCanonical) config = parseConfig(data);
-        configFromCanonical ||= name === "config";
-      } else if (Array.isArray(data)) db[name] = data;
-      else console.warn(`[core] ${tenantId}/${f}: root is not an array, skipped`);
+      out.set(name, await Bun.file(join(dir, f)).json());
     } catch (e) {
-      console.warn(`[core] ${tenantId}/${f}: unreadable JSON, skipped (${e})`);
+      console.warn(`[core] ${tenantId}/${folder}/${f}: unreadable JSON, skipped (${e})`);
     }
   }
+  return out;
+}
+
+async function loadTenant(tenantId: string): Promise<TenantState | null> {
+  if (!(await isDirectory(tenantDir(tenantId)))) return null; // tenant does not exist on disk
+
+  // draft_* is staged, and the settings names are reserved: neither may become
+  // a servable resource, even if such a file turns up in data/.
+  const db: Record<string, any[]> = {};
+  for (const [name, data] of await readFolder(tenantId, "data", (n) => !isPrivateFile(n))) {
+    if (Array.isArray(data)) db[name] = data;
+    else console.warn(`[core] ${tenantId}/data/${name}.json: root is not an array, skipped`);
+  }
+
+  const system = await readFolder(
+    tenantId,
+    "system",
+    (n) => n === "config" || n === "status" || isSystemFileName(n),
+  );
   const state: TenantState = {
     db,
-    config,
+    config: system.has("config") ? parseConfig(system.get("config")) : DEFAULT_CONFIG,
+    identity: readIdentity(system.get("users"), system.get("reset-password")),
+    status: parseStatus(system.get("status")),
     timer: setTimeout(() => evict(tenantId), IDLE_TTL_MS),
     lastSeen: Date.now(),
     writeChain: Promise.resolve(),
@@ -553,12 +586,7 @@ async function getTenant(tenantId: string): Promise<TenantState | null> {
 
 /** Whether a tenant exists, without loading it: already in RAM, or a directory on disk. */
 async function tenantExists(tenantId: string): Promise<boolean> {
-  if (activeTenants.has(tenantId)) return true;
-  try {
-    return (await stat(tenantDir(tenantId))).isDirectory();
-  } catch {
-    return false;
-  }
+  return activeTenants.has(tenantId) || isDirectory(tenantDir(tenantId));
 }
 
 // Write-through, serialized per tenant so concurrent mutations can't interleave a file
@@ -572,6 +600,37 @@ function persist(state: TenantState, tenantId: string, resource: string) {
   );
   return state.writeChain;
 }
+
+/**
+ * Write-through for a feature's system file, on the same per-tenant chain as
+ * the resources. No projection to drop: system/ never reaches `state.db`.
+ */
+function persistSystem(state: TenantState, tenantId: string, name: "users" | "reset-password") {
+  const snapshot = JSON.stringify(name === "users" ? state.identity.users : state.identity.resets, null, 2);
+  state.writeChain = state.writeChain.then(() =>
+    Bun.write(systemFile(tenantId, name), snapshot).catch((e) =>
+      console.error(`[core] persist failed ${tenantId}/system/${name}: ${e}`),
+    ),
+  );
+  return state.writeChain;
+}
+
+// ── Features ──────────────────────────────────────────────────────
+// Each feature is built once, from a host carrying what only the core can do.
+// The pipeline and the router call into it; it never calls back into this
+// module except through the host.
+
+const auth = createAuth<TenantState>({
+  secret: ADMIN_SECRET!,
+  getTenant,
+  refused: (tenantId, state) => statusBlocked(state) ?? quotaBlocked(tenantId),
+  saveUsers: (tenantId, state) => persistSystem(state, tenantId, "users"),
+  saveResets: (tenantId, state) => persistSystem(state, tenantId, "reset-password"),
+  readJsonBody,
+  requestOrigin,
+  emailConfigured: (state) => state.config.resendKey !== "",
+  sendEmail: (state, message) => sendEmail(state.config, message),
+});
 
 // ── In-memory SQLite projection ───────────────────────────────────
 // A read-only `:memory:` database built lazily from the tenant's in-RAM arrays
@@ -645,9 +704,9 @@ function sqlValue(v: unknown): string | number | null {
 }
 
 /**
- * Union of keys across the whole table, capped. `passwordHash` is excluded at
- * mount time rather than filtered at read time: `SELECT *` is a response path
- * like any other, and a column that was never created cannot leak.
+ * Union of keys across the whole table, capped. Nothing is filtered out: only
+ * `state.db` is mounted, which is data/ alone. The identity table lives in
+ * system/ and never reaches it, so no credential column can exist to leak.
  */
 function projectColumns(rows: any[]): string[] {
   const keys: string[] = [];
@@ -655,7 +714,7 @@ function projectColumns(rows: any[]): string[] {
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) continue;
     for (const key of Object.keys(row)) {
-      if (key === "passwordHash" || key === "" || key.length > 128) continue;
+      if (key === "" || key.length > 128) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       keys.push(key);
@@ -928,256 +987,6 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-// ── JWT (HS256, zero-dependency) ──────────────────────────────────
-// Per-tenant signing keys are derived from ADMIN_SECRET, so they survive
-// restarts and evictions without ever being stored on disk.
-
-function jwtKey(tenantId: string): Buffer {
-  return createHmac("sha256", ADMIN_SECRET!).update(`jwt:${tenantId}`).digest();
-}
-
-interface JwtClaims {
-  sub: string;
-  email: string;
-  role: string;
-  iat: number;
-  exp: number;
-}
-
-function signJwt(tenantId: string, user: Record<string, any>, ttlSec: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const enc = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
-  const head = enc({ alg: "HS256", typ: "JWT" });
-  const body = enc({
-    sub: String(user.id),
-    email: String(user.email),
-    role: String(user.role ?? "user"),
-    iat: now,
-    exp: now + ttlSec,
-  } satisfies JwtClaims);
-  const sig = createHmac("sha256", jwtKey(tenantId)).update(`${head}.${body}`).digest("base64url");
-  return `${head}.${body}.${sig}`;
-}
-
-function verifyJwt(tenantId: string, token: string): JwtClaims | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const expected = createHmac("sha256", jwtKey(tenantId)).update(`${parts[0]}.${parts[1]}`).digest();
-  const given = Buffer.from(parts[2], "base64url");
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-  try {
-    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString()) as JwtClaims;
-    if (typeof claims.exp !== "number" || claims.exp * 1000 < Date.now()) return null;
-    return claims;
-  } catch {
-    return null;
-  }
-}
-
-// ── OAuth (Google / GitHub) ───────────────────────────────────────
-// Tenants bring their own OAuth app (client id/secret in config.json) and
-// register `<origin>/<tenant>/auth/<provider>/callback` with the provider
-// themselves. Endpoint bases are env-overridable so the local stack can
-// point them at mocks.
-
-interface OauthProvider {
-  authUrl: string;
-  tokenUrl: string;
-  userUrl: string;
-  emailsUrl?: string;
-  scope: string;
-}
-
-const OAUTH_PROVIDERS: Record<"google" | "github", OauthProvider> = {
-  google: {
-    authUrl: process.env.OAUTH_GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth",
-    tokenUrl: process.env.OAUTH_GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
-    userUrl: process.env.OAUTH_GOOGLE_USERINFO_URL ?? "https://openidconnect.googleapis.com/v1/userinfo",
-    scope: "openid email profile",
-  },
-  github: {
-    authUrl: process.env.OAUTH_GITHUB_AUTH_URL ?? "https://github.com/login/oauth/authorize",
-    tokenUrl: process.env.OAUTH_GITHUB_TOKEN_URL ?? "https://github.com/login/oauth/access_token",
-    userUrl: process.env.OAUTH_GITHUB_USER_URL ?? "https://api.github.com/user",
-    emailsUrl: process.env.OAUTH_GITHUB_EMAILS_URL ?? "https://api.github.com/user/emails",
-    scope: "read:user user:email",
-  },
-};
-type Provider = keyof typeof OAUTH_PROVIDERS;
-
-// CSRF state: HMAC-signed timestamp, verified on callback, valid 10 minutes
-function oauthState(tenantId: string): string {
-  const ts = Date.now().toString();
-  const sig = createHmac("sha256", jwtKey(tenantId)).update(`state:${ts}`).digest("base64url");
-  return `${ts}.${sig}`;
-}
-
-function oauthStateValid(tenantId: string, s: string): boolean {
-  const [ts, sig] = s.split(".");
-  if (!ts || !sig || !/^\d+$/.test(ts)) return false;
-  if (Date.now() - Number(ts) > 10 * 60_000) return false;
-  const expected = createHmac("sha256", jwtKey(tenantId)).update(`state:${ts}`).digest();
-  const given = Buffer.from(sig, "base64url");
-  return given.length === expected.length && timingSafeEqual(given, expected);
-}
-
-async function handleOauth(
-  req: Request,
-  tenantId: string,
-  state: TenantState,
-  provider: Provider,
-  isCallback: boolean,
-): Promise<Response> {
-  const cfg = state.config;
-  const creds = provider === "google" ? cfg.google : cfg.github;
-  if (!creds) return err(404, `${provider} oauth is not configured`);
-  const p = OAUTH_PROVIDERS[provider];
-  const redirectUri = `${requestOrigin(req)}/${tenantId}/auth/${provider}/callback`;
-
-  if (!isCallback) {
-    const q = new URLSearchParams({
-      client_id: creds.clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: p.scope,
-      state: oauthState(tenantId),
-    });
-    return new Response(null, { status: 302, headers: { location: `${p.authUrl}?${q}` } });
-  }
-
-  const url = new URL(req.url);
-  const code = url.searchParams.get("code");
-  const st = url.searchParams.get("state") ?? "";
-  if (!code || !oauthStateValid(tenantId, st)) return err(400, "missing or invalid oauth code/state");
-
-  const tokenRes = await fetch(p.tokenUrl, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    signal: AbortSignal.timeout(10_000),
-    body: new URLSearchParams({
-      code,
-      client_id: creds.clientId,
-      client_secret: creds.secret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }).toString(),
-  }).catch(() => null);
-  const tokenBody = tokenRes?.ok ? ((await tokenRes.json().catch(() => null)) as any) : null;
-  const accessToken = tokenBody?.access_token;
-  if (typeof accessToken !== "string") return err(502, "oauth code exchange failed");
-
-  const authHeaders = {
-    authorization: `Bearer ${accessToken}`,
-    accept: "application/json",
-    "user-agent": "stubbase-core", // GitHub's API requires a User-Agent
-  };
-  const profRes = await fetch(p.userUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) }).catch(
-    () => null,
-  );
-  const profile = profRes?.ok ? ((await profRes.json().catch(() => null)) as any) : null;
-  if (!profile) return err(502, "oauth profile fetch failed");
-
-  let email: unknown = profile.email;
-  if (provider === "github" && typeof email !== "string" && p.emailsUrl) {
-    const er = await fetch(p.emailsUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) }).catch(
-      () => null,
-    );
-    const list = er?.ok ? ((await er.json().catch(() => null)) as any[]) : null;
-    if (Array.isArray(list)) email = (list.find((e) => e?.primary && e?.verified) ?? list[0])?.email;
-  }
-  if (typeof email !== "string" || !EMAIL_RE.test(email)) return err(502, "oauth profile has no usable email");
-
-  const users = (state.db.users ??= []);
-  let user = users.find((u) => typeof u?.email === "string" && u.email.toLowerCase() === (email as string).toLowerCase());
-  if (!user) {
-    user = {
-      id: crypto.randomUUID(),
-      email,
-      ...(typeof profile.name === "string" && profile.name ? { name: profile.name } : {}),
-      role: "user",
-      provider,
-      ...newTimestamps(),
-    };
-    users.push(user);
-    await persist(state, tenantId, "users");
-  }
-  const token = signJwt(tenantId, user, cfg.jwtTtlSec);
-  if (cfg.oauthRedirect)
-    return new Response(null, { status: 302, headers: { location: `${cfg.oauthRedirect}#token=${token}` } });
-  return json({ token, user: safeUser(user) });
-}
-
-// ── Tenant auth: POST /<tenant>/auth/signup | login ───────────────
-// When AUTH_ENABLED, users.json is the tenant's identity table. Password
-// hashes live in its records but must never leave the server — every
-// response path goes through safeUser().
-
-const safeUser = (u: Record<string, any>) => {
-  const { passwordHash: _ph, ...rest } = u;
-  return rest;
-};
-
-/**
- * Server-owned timestamps for a record created on the public plane — a CRUD
- * POST, a signup, an OAuth first login. Spread last, so nothing a client sent
- * for them survives. The `_admin` plane never calls this.
- */
-function newTimestamps(): { createdAt: string; updatedAt: string } {
-  const now = new Date().toISOString();
-  return { createdAt: now, updatedAt: now };
-}
-
-async function handleAuth(req: Request, tenantId: string, segments: string[]): Promise<Response> {
-  const state = await getTenant(tenantId);
-  if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
-  if (blocked) return blocked;
-  if (!state.config.authEnabled) return err(404, "auth is not enabled for this tenant");
-
-  const [action, sub] = segments;
-  if (req.method === "GET" && (action === "google" || action === "github") && segments.length <= 2) {
-    if (sub !== undefined && sub !== "callback") return err(404, "unknown auth route");
-    return handleOauth(req, tenantId, state, action, sub === "callback");
-  }
-  if (req.method !== "POST" || segments.length !== 1 || (action !== "signup" && action !== "login"))
-    return err(404, "unknown auth route");
-
-  const body = await readJsonBody(req);
-  if (body instanceof Response) return body;
-  const { email, password, name } = ((body ?? {}) as Record<string, unknown>) || {};
-  if (typeof email !== "string" || !EMAIL_RE.test(email)) return err(400, "valid email required");
-  if (typeof password !== "string" || password.length < MIN_PASSWORD_LEN)
-    return err(400, `password must be at least ${MIN_PASSWORD_LEN} characters`);
-
-  const users = (state.db.users ??= []);
-  const findByEmail = () =>
-    users.find((u) => typeof u?.email === "string" && u.email.toLowerCase() === email.toLowerCase());
-
-  if (action === "signup") {
-    if (findByEmail()) return err(409, "email already registered");
-    const passwordHash = await Bun.password.hash(password, ARGON);
-    if (findByEmail()) return err(409, "email already registered"); // re-check: hashing yielded
-    const user = {
-      id: crypto.randomUUID(),
-      email,
-      ...(typeof name === "string" && name ? { name } : {}),
-      role: "user",
-      passwordHash,
-      ...newTimestamps(),
-    };
-    users.push(user);
-    await persist(state, tenantId, "users");
-    return json({ token: signJwt(tenantId, user, state.config.jwtTtlSec), user: safeUser(user) }, 201);
-  }
-
-  // login — always verify against some hash so unknown emails take the same time
-  const existing = findByEmail();
-  const hash = typeof existing?.passwordHash === "string" ? existing.passwordHash : DUMMY_HASH;
-  const ok = await Bun.password.verify(password, hash).catch(() => false);
-  if (!ok || !existing) return err(401, "invalid email or password");
-  return json({ token: signJwt(tenantId, existing, state.config.jwtTtlSec), user: safeUser(existing) });
-}
-
 // ── OpenAPI: GET /<tenant>/openapi.json ───────────────────────────
 // Schema is inferred from the keys of up to 20 in-RAM records per resource,
 // so LLMs / MCP clients can ingest the tenant API as a tool.
@@ -1187,7 +996,6 @@ function inferItemSchema(rows: any[]): object {
   for (const row of rows.slice(0, 20)) {
     if (!row || typeof row !== "object" || Array.isArray(row)) continue;
     for (const [k, v] of Object.entries(row)) {
-      if (k === "passwordHash") continue; // sanitized out of responses, keep it out of the spec
       const t = v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
       (seen[k] ??= new Set()).add(t);
     }
@@ -1216,7 +1024,7 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
   if (blocked) return blocked;
   const cfg = state.config;
   const secured = (resource: string, method: string) =>
-    cfg.authEnabled && !(method === "get" && cfg.publicRoutes.has(resource))
+    cfg.auth.enabled && !(method === "get" && cfg.auth.publicRoutes.has(resource))
       ? [{ bearerAuth: [] }]
       : [];
   const jsonOf = (schema: object) => ({ "application/json": { schema } });
@@ -1288,7 +1096,7 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
     paths,
     components: {
       schemas,
-      ...(cfg.authEnabled
+      ...(cfg.auth.enabled
         ? { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } } }
         : {}),
     },
@@ -1299,6 +1107,31 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
 // The tenant's frontend calls these with a user JWT; provider API keys stay
 // in config.json server-side and are never exposed to the browser.
 
+/**
+ * Sends through the tenant's own Resend account. Shared by `_notify/email` and
+ * the auth feature's reset emails, so there is one place that talks to Resend.
+ */
+async function sendEmail(
+  cfg: TenantConfig,
+  message: { to: string; subject: string; text?: string; html?: string },
+): Promise<EmailResult & { id?: string | null }> {
+  const upstream = await fetch(RESEND_API_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${cfg.resendKey}` },
+    signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({
+      from: cfg.resendFrom || "Stubbase <onboarding@resend.dev>",
+      to: message.to,
+      subject: message.subject,
+      ...(message.html !== undefined ? { html: message.html } : {}),
+      ...(message.text !== undefined ? { text: message.text } : {}),
+    }),
+  }).catch(() => null);
+  if (!upstream?.ok) return { ok: false, status: upstream?.status ?? null };
+  const out = (await upstream.json().catch(() => ({}))) as any;
+  return { ok: true, id: out?.id ?? null };
+}
+
 async function handleNotify(req: Request, tenantId: string, segments: string[]): Promise<Response> {
   const kind = segments[0];
   if (req.method !== "POST" || segments.length !== 1 || (kind !== "email" && kind !== "sms"))
@@ -1308,10 +1141,8 @@ async function handleNotify(req: Request, tenantId: string, segments: string[]):
   const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
   if (blocked) return blocked;
   const cfg = state.config;
-  if (!cfg.authEnabled) return err(404, "notifications require AUTH_ENABLED");
-  const header = req.headers.get("authorization") ?? "";
-  const claims = header.startsWith("Bearer ") ? verifyJwt(tenantId, header.slice(7)) : null;
-  if (!claims) return err(401, "valid bearer token required");
+  if (!cfg.auth.enabled) return err(404, "notifications require AUTH_ENABLED");
+  if (!auth.authenticate(tenantId, state, req)) return err(401, "valid bearer token required");
   const body = await readJsonBody(req);
   if (body instanceof Response) return body;
   const b = (body ?? {}) as Record<string, unknown>;
@@ -1320,22 +1151,14 @@ async function handleNotify(req: Request, tenantId: string, segments: string[]):
     if (!cfg.resendKey) return err(404, "email notifications not configured");
     if (typeof b.to !== "string" || typeof b.subject !== "string")
       return err(400, "`to` and `subject` are required");
-    const upstream = await fetch(RESEND_API_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${cfg.resendKey}` },
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify({
-        from: cfg.resendFrom || "Stubbase <onboarding@resend.dev>",
-        to: b.to,
-        subject: b.subject,
-        ...(typeof b.html === "string" ? { html: b.html } : {}),
-        ...(typeof b.text === "string" ? { text: b.text } : {}),
-      }),
-    }).catch(() => null);
-    if (!upstream?.ok)
-      return err(502, `email provider rejected the request (${upstream?.status ?? "unreachable"})`);
-    const out = (await upstream.json().catch(() => ({}))) as any;
-    return json({ ok: true, id: out?.id ?? null });
+    const sent = await sendEmail(cfg, {
+      to: b.to,
+      subject: b.subject,
+      ...(typeof b.html === "string" ? { html: b.html } : {}),
+      ...(typeof b.text === "string" ? { text: b.text } : {}),
+    });
+    if (!sent.ok) return err(502, `email provider rejected the request (${sent.status ?? "unreachable"})`);
+    return json({ ok: true, id: sent.id ?? null });
   }
 
   // sms
@@ -1571,8 +1394,8 @@ async function mcpListTools(tenantId: string) {
           "resources are mounted as tables in an in-memory SQLite database, so ordinary SQLite " +
           "syntax works: joins, aggregates, GROUP BY, ORDER BY, CTEs. The statement must start " +
           "with SELECT or WITH; writes are rejected. Nested objects and arrays are stored as " +
-          "JSON text, so use SQLite's json_extract() to read inside them. Password hashes are " +
-          `never mounted. At most ${SQL_MAX_ROWS} rows are returned per call.\n\n${schema}`,
+          "JSON text, so use SQLite's json_extract() to read inside them. The project's sign-in " +
+          `accounts are never mounted. At most ${SQL_MAX_ROWS} rows are returned per call.\n\n${schema}`,
         inputSchema: {
           type: "object",
           properties: {
@@ -1802,33 +1625,77 @@ async function handleAdmin(
   // last deploy" instead of "edited once, ever".
   if (segments[0] === "deploy" && segments.length === 1) {
     if (req.method !== "POST") return err(405, "method not allowed");
-    let entries: string[];
-    try {
-      entries = await readdir(tenantDir(tenantId));
-    } catch {
-      return err(404, "tenant not found");
-    }
+    if (!(await isDirectory(tenantDir(tenantId)))) return err(404, "tenant not found");
     const promoted: string[] = [];
-    for (const f of entries) {
-      if (!f.startsWith("draft_") || !f.endsWith(".json")) continue;
-      const target = f.slice("draft_".length, -".json".length);
-      if (!NAME_RE.test(target)) continue;
-      const draftPath = join(tenantDir(tenantId), f);
-      await Bun.write(resourceFile(tenantId, target), Bun.file(draftPath));
-      // Only after the copy has landed: a failed write must leave the draft
-      // alone, or the staged edit is gone with nothing live to show for it.
-      await rm(draftPath, { force: true });
-      promoted.push(target);
+    // Resources stage in data/ and settings in system/, each promoted within its
+    // own folder. system/ stages config and nothing else: a feature's files are
+    // written by that feature alone, never through a draft.
+    for (const folder of ["data", "system"] as const) {
+      const dir = join(tenantDir(tenantId), folder);
+      for (const f of await readdir(dir).catch(() => [] as string[])) {
+        if (!f.startsWith("draft_") || !f.endsWith(".json")) continue;
+        const target = f.slice("draft_".length, -".json".length);
+        if (!NAME_RE.test(target) || (folder === "system") !== isConfigFile(target)) continue;
+        const draftPath = join(dir, f);
+        await Bun.write(join(dir, `${target}.json`), Bun.file(draftPath));
+        // Only after the copy has landed: a failed write must leave the draft
+        // alone, or the staged edit is gone with nothing live to show for it.
+        await rm(draftPath, { force: true });
+        promoted.push(target);
+      }
     }
     evict(tenantId); // CRITICAL: flush cache so the promoted files go live now
     return json({ ok: true, tenant: tenantId, promoted });
+  }
+
+  // GET|POST /<tenant>/_admin/status — whether the public plane is serving.
+  // The only writer of system/status.json (see "Project status"). GET reads the
+  // file rather than loading the tenant, and a missing file answers active,
+  // exactly as the public plane treats it.
+  if (segments[0] === "status" && segments.length === 1) {
+    const file = systemFile(tenantId, "status");
+    if (req.method === "GET") {
+      const raw = await Bun.file(file).json().catch(() => null);
+      return json({ tenant: tenantId, status: parseStatus(raw) });
+    }
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const body = await readJsonBody(req);
+    if (body instanceof Response) return body;
+    const status = (body as { status?: unknown } | null)?.status;
+    if (typeof status !== "string" || !PROJECT_STATUSES.has(status))
+      return err(400, "status must be 'active', 'stopped' or 'maintenance'");
+    await Bun.write(file, JSON.stringify({ status }, null, 2));
+    evict(tenantId); // CRITICAL: flush cache so the new status applies on the next request
+    return json({ ok: true, tenant: tenantId, status });
+  }
+
+  // GET /<tenant>/_admin/system         — which feature-owned system files exist
+  // GET /<tenant>/_admin/system/<file>  — one of them, with its credentials stripped
+  // Read-only by construction: only the feature that owns a file may write it,
+  // so there is no POST or DELETE. Config is not listed here — it is edited
+  // through files/config like any staged file.
+  if (segments[0] === "system" && segments.length <= 2) {
+    if (req.method !== "GET") return err(405, "method not allowed");
+    if (segments.length === 1) {
+      const files: string[] = [];
+      for (const name of SYSTEM_FILE_NAMES)
+        if (await Bun.file(systemFile(tenantId, name)).exists()) files.push(name);
+      return json({ tenant: tenantId, files });
+    }
+    const name = segments[1];
+    if (!isSystemFileName(name)) return err(404, "unknown system file");
+    const f = Bun.file(systemFile(tenantId, name));
+    if (!(await f.exists())) return err(404, "system file not found");
+    const rows = await f.json().catch(() => null);
+    if (!Array.isArray(rows)) return err(500, "file is not a valid JSON array");
+    return json(viewSystemFile(name, rows));
   }
 
   if (segments[0] !== "files" || !segments[1] || segments.length > 2)
     return err(404, "unknown admin route");
   const resource = segments[1];
   if (!NAME_RE.test(resource)) return err(400, "invalid resource name");
-  const file = resourceFile(tenantId, resource);
+  const file = adminFile(tenantId, resource);
 
   // Read-only, disk is authoritative (write-through) — no evict needed.
   // Exists so the dashboard can read files the public plane hides (config).
@@ -1853,7 +1720,7 @@ async function handleAdmin(
     } else if (!Array.isArray(initial)) {
       return err(400, "initial data must be a JSON array");
     }
-    await mkdir(tenantDir(tenantId), { recursive: true });
+    await mkdir(dirname(file), { recursive: true });
     await Bun.write(file, JSON.stringify(initial, null, 2));
     evict(tenantId); // CRITICAL: flush cache; next request lazy-loads fresh disk state
     const records = Array.isArray(initial) ? initial.length : Object.keys(initial).length;
@@ -1915,11 +1782,9 @@ const foldText = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowe
  * language (`_sort`, `_page`, …) and are not filters.
  *
  * An operator nobody defined is a 400, never ignored: dropping a misspelt
- * `price[gtee]` would return everything and look like it worked. And
- * `passwordHash` on `users` can never be filtered — with an operator the
- * filter becomes an oracle that recovers the hash a few characters at a time.
+ * `price[gtee]` would return everything and look like it worked.
  */
-function parseFilters(params: URLSearchParams, resource: string): Filter[] | Response {
+function parseFilters(params: URLSearchParams): Filter[] | Response {
   const filters: Filter[] = [];
   for (const [key, value] of params) {
     if (key.startsWith("_")) continue;
@@ -1928,7 +1793,6 @@ function parseFilters(params: URLSearchParams, resource: string): Filter[] | Res
     const op = bracket ? bracket[2] : "eq";
     if (bracket && !FILTER_OPS.has(op))
       return err(400, `unknown filter operator '${op}' on '${field}' — use contains, gt, gte, lt or lte`);
-    if (resource === "users" && field === "passwordHash") return err(400, "passwordHash cannot be filtered");
     filters.push({ field, op: op as Filter["op"], value, needle: op === "contains" ? foldText(value) : "" });
   }
   return filters;
@@ -1994,9 +1858,7 @@ function expandRow(row: any, expansions: Expansion[], state: TenantState): any {
     if (fkValue === undefined || fkValue === null) continue;
     const match = state.db[resource]?.find((r) => String(r?.id) === String(fkValue));
     if (out === row) out = { ...row }; // copy-on-write: never mutate the cached record
-    // an expanded users record still carries passwordHash — strip it here too
-    out[key] =
-      match && resource === "users" && state.config.authEnabled ? safeUser(match) : (match ?? null);
+    out[key] = match ?? null;
   }
   return out;
 }
@@ -2015,7 +1877,7 @@ interface Ctx {
   id: string | undefined;
   state: TenantState;
   body?: unknown; // parsed once in handleCrud — webhooks and coreOperation both need it
-  user?: JwtClaims;
+  user?: Claims;
   result?: unknown; // record produced by coreOperation, for after-hooks
   response?: Response;
   log?: LogDraft; // lifecycle scratchpad; stages may push notes onto log.lifecycle
@@ -2030,7 +1892,7 @@ type Middleware = (ctx: Ctx) => Promise<MwResult> | MwResult;
 // stage) and by every non-CRUD tenant surface (auth, notify, openapi) — the
 // whole public plane goes dark together; only _admin stays reachable.
 function statusBlocked(state: TenantState): Response | null {
-  const s = state.config.projectStatus;
+  const s = state.status;
   if (s === "active") return null;
   const res = json({ error: "service unavailable", projectStatus: s }, 503);
   refusals.add(res); // logged, not metered — see `refusals`
@@ -2068,11 +1930,11 @@ function quotaBlocked(tenantId: string): Response | null {
 const quotaGuard: Middleware = (ctx) => quotaBlocked(ctx.tenantId) ?? undefined;
 
 const authGuard: Middleware = (ctx) => {
-  const cfg = ctx.state.config;
-  if (!cfg.authEnabled) return;
+  const cfg = ctx.state.config.auth;
+  if (!cfg.enabled) return;
   if (ctx.req.method === "GET" && cfg.publicRoutes.has(ctx.resource)) return;
-  const header = ctx.req.headers.get("authorization") ?? "";
-  const claims = header.startsWith("Bearer ") ? verifyJwt(ctx.tenantId, header.slice(7)) : null;
+  // Signature, expiry, and whether a password change has since revoked it.
+  const claims = auth.authenticate(ctx.tenantId, ctx.state, ctx.req);
   if (!claims) return err(401, "valid bearer token required");
   ctx.user = claims; // claims.role === "admin" lets later middleware bypass ownership checks
 };
@@ -2179,20 +2041,15 @@ const coreOperation: Middleware = async (ctx) => {
   const { req, url, state, tenantId, resource, id } = ctx;
   const rows = state.db[resource];
   if (!rows) return err(404, "resource not found");
-  // identity-table records carry passwordHash — it must never leave the server
-  const sanitize =
-    resource === "users" && state.config.authEnabled
-      ? (r: any) => (r && typeof r === "object" ? safeUser(r) : r)
-      : (r: any) => r;
 
   // Ownership (RBAC): a record with a userId belongs to that user. Admins
   // bypass; records without userId (uploaded datasets) stay open to any
-  // authenticated user. On `users`, your own row is the one you may mutate.
+  // authenticated user. Every resource is treated alike — a data/users.json
+  // included, since the identity table is not a resource.
   const isAdmin = ctx.user?.role === "admin";
   const mayMutate = (row: any) => {
     const u = ctx.user;
-    if (!state.config.authEnabled || !u || isAdmin) return true;
-    if (resource === "users") return String(row?.id) === u.sub;
+    if (!state.config.auth.enabled || !u || isAdmin) return true;
     const owner = row && typeof row === "object" && "userId" in row ? String(row.userId) : null;
     return owner === null || owner === u.sub;
   };
@@ -2203,7 +2060,7 @@ const coreOperation: Middleware = async (ctx) => {
 
     if (id === undefined) {
       // 1. filter — `field=value` exact, `field[op]=value` an operator; all must hold
-      const filters = parseFilters(params, resource);
+      const filters = parseFilters(params);
       if (filters instanceof Response) return filters;
       let out = rows;
       for (const filter of filters) out = out.filter((row) => matchesFilter(row, filter));
@@ -2259,8 +2116,8 @@ const coreOperation: Middleware = async (ctx) => {
       }
       out = out.slice(start, start + count);
 
-      // 4. expand relations, then sanitize
-      const body = out.map((row) => sanitize(expandRow(row, expansions, state)));
+      // 4. expand relations
+      const body = out.map((row) => expandRow(row, expansions, state));
       const res = json(body);
       res.headers.set("x-total-count", String(total));
       ctx.response = res;
@@ -2269,7 +2126,7 @@ const coreOperation: Middleware = async (ctx) => {
 
     const row = rows.find((r) => String(r?.id) === id);
     if (!row) return err(404, "record not found");
-    ctx.response = json(sanitize(expandRow(row, expansions, state)));
+    ctx.response = json(expandRow(row, expansions, state));
     return;
   }
 
@@ -2283,14 +2140,14 @@ const coreOperation: Middleware = async (ctx) => {
       ...(body as object),
       ...newTimestamps(),
     };
-    if (state.config.authEnabled && ctx.user && resource !== "users" && !("userId" in record))
+    if (state.config.auth.enabled && ctx.user && !("userId" in record))
       record.userId = ctx.user.sub; // stamp ownership
     if (rows.some((r) => String(r?.id) === String(record.id)))
       return err(409, "record with this id already exists");
     rows.push(record);
     await persist(state, tenantId, resource);
     ctx.result = record;
-    ctx.response = json(sanitize(record), 201);
+    ctx.response = json(record, 201);
     return;
   }
 
@@ -2304,15 +2161,8 @@ const coreOperation: Middleware = async (ctx) => {
     if (!mayMutate(prev)) return err(403, "forbidden: not the record owner");
     const record: Record<string, any> = { ...(body as object), id: prev.id };
     const prevObj = prev && typeof prev === "object" ? (prev as Record<string, any>) : null;
-    if (prevObj && !isAdmin && state.config.authEnabled) {
-      if (resource === "users") {
-        record.role = prevObj.role; // non-admins cannot grant themselves roles
-        if (!("passwordHash" in record) && "passwordHash" in prevObj)
-          record.passwordHash = prevObj.passwordHash;
-      } else if ("userId" in prevObj) {
-        record.userId = prevObj.userId; // ownership cannot be reassigned
-      }
-    }
+    if (prevObj && !isAdmin && state.config.auth.enabled && "userId" in prevObj)
+      record.userId = prevObj.userId; // ownership cannot be reassigned
     // Server-owned timestamps: keep when the record was created — or leave it
     // unset if that was never recorded, rather than inventing a date — and
     // stamp this write. A PUT that echoes a fetched record would otherwise
@@ -2323,7 +2173,7 @@ const coreOperation: Middleware = async (ctx) => {
     rows[idx] = record;
     await persist(state, tenantId, resource);
     ctx.result = record;
-    ctx.response = json(sanitize(record));
+    ctx.response = json(record);
     return;
   }
 
@@ -2334,7 +2184,7 @@ const coreOperation: Middleware = async (ctx) => {
     const [removed] = rows.splice(idx, 1);
     await persist(state, tenantId, resource);
     ctx.result = removed;
-    ctx.response = json(sanitize(removed));
+    ctx.response = json(removed);
     return;
   }
 
@@ -2461,7 +2311,7 @@ const server = Bun.serve({
       return done(res);
     };
 
-    if (second === "auth") return single("auth", await handleAuth(req, tenantId, rest));
+    if (second === "auth") return single("auth", await auth.handle(req, tenantId, rest));
     if (second === "_notify") return single("notify", await handleNotify(req, tenantId, rest));
     if (second === "openapi.json" && rest.length === 0)
       return single("openapi", await handleOpenApi(req, tenantId));
@@ -2479,6 +2329,9 @@ const server = Bun.serve({
     return cors(err(500, "internal error"));
   },
 });
+
+if (LOG_RESET_CODES)
+  console.warn("[core] AUTH_RESET_LOG_CODES=true: password reset codes are written to this log — local dev and tests only");
 
 console.log(
   `[core] listening on :${server.port} — tenants dir: ${TENANTS_DIR}, idle TTL: ${IDLE_TTL_MS}ms`,

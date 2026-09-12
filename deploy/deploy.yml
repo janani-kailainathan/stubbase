@@ -106,6 +106,20 @@
       loop: [server-core.ts, package.json]
       notify: Restart stubbase-core
 
+    # The core's shared lib and its feature modules (features/auth, …) are
+    # directories — trailing slashes copy their contents. Anything server-core.ts
+    # imports has to ship, or production starts on a broken import.
+    - name: Deploy Core Tenant Engine modules
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../apps/core/{{ item }}/"
+        dest: /opt/stubbase/core/{{ item }}/
+        owner: stubbase
+        group: stubbase
+        mode: "0644"
+        directory_mode: "0755"
+      loop: [lib, features]
+      notify: Restart stubbase-core
+
     - name: Deploy Dashboard Backend
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../apps/dashboard-api/{{ item }}"

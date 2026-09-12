@@ -53,6 +53,10 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
+        text: 'Password reset and change-password for the users of your API: a six-digit code sent through your own Resend account, and either change signs that user out of every other session.',
+      },
+      {
+        kind: 'added',
         text: 'The AI Co-Pilot: describe a schema in plain English and it stages the resources for you to review and deploy.',
         href: '/features/ai-rest-api-generation',
       },

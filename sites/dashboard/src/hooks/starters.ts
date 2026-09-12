@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ApiError, createProject, fetchTenantConfig, saveTenantConfig } from '@/lib/api'
+import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
 
 /**
@@ -17,15 +18,16 @@ export function useCreateProjectFromStarter() {
     mutationFn: async (starter: Starter) => {
       const created = await createProject(starter.title, starter.resources)
       if (starter.config) {
-        // Merge, never replace: the project was just created stopped, and that
-        // has to survive the starter turning auth on.
+        // Merge, never replace: the .env the project was created with has to
+        // survive the starter turning auth on. mergeEnv also writes the
+        // settings into that text, uncommenting the template's lines.
         let current: Record<string, string> = {}
         try {
           current = (await fetchTenantConfig(created.tenantId)) as Record<string, string>
         } catch (e) {
           if (!(e instanceof ApiError && e.status === 404)) throw e
         }
-        await saveTenantConfig(created.tenantId, { ...current, ...starter.config })
+        await saveTenantConfig(created.tenantId, mergeEnv(current, starter.config))
       }
       return created
     },

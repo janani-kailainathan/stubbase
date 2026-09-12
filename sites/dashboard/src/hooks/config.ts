@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiError,
   fetchLiveTenantConfig,
+  fetchProjectStatus,
   fetchTenantConfig,
   saveTenantConfig,
   setProjectStatus,
@@ -62,11 +63,18 @@ export function useSaveTenantConfig(tenantId: string | undefined) {
   })
 }
 
-/** Whether the tenant's API is serving traffic (PROJECT_STATUS). */
+/**
+ * Whether the tenant's API is serving traffic. Read from its own route rather
+ * than from config: status is not a setting, so it is never staged or deployed
+ * and nothing in the .env can say otherwise. Reads as active until it loads.
+ */
 export function useProjectStatus(tenantId: string | undefined): ProjectStatus {
-  const { data } = useTenantConfig(tenantId)
-  const raw = data?.PROJECT_STATUS
-  return raw === 'stopped' || raw === 'maintenance' ? raw : 'active'
+  const { data } = useQuery({
+    queryKey: ['status', tenantId],
+    queryFn: async () => (await fetchProjectStatus(tenantId!)).status,
+    enabled: Boolean(tenantId),
+  })
+  return data === 'stopped' || data === 'maintenance' ? data : 'active'
 }
 
 /** Start/stop the tenant's API. Applies immediately on the core. */
@@ -74,6 +82,6 @@ export function useSetProjectStatus(tenantId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (status: ProjectStatus) => setProjectStatus(tenantId!, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['config', tenantId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['status', tenantId] }),
   })
 }
