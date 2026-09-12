@@ -70,7 +70,11 @@ interface WorkspaceState {
   logView: LogView
   paneMode: PaneMode
   dataExpanded: boolean
-  systemExpanded: boolean
+  /**
+   * The system folder's open state once someone has clicked it. Null until
+   * then, and the folder follows whether it has anything inside.
+   */
+  systemExpanded: boolean | null
   newProjectOpen: boolean
   /**
    * Playground edits, keyed by `playgroundKey` (tenant + method + path — the
@@ -137,7 +141,7 @@ interface WorkspaceState {
   setLogView: (view: LogView) => void
   setPaneMode: (mode: PaneMode) => void
   toggleData: () => void
-  toggleSystem: () => void
+  setSystemExpanded: (expanded: boolean) => void
   setNewProjectOpen: (open: boolean) => void
   startEdit: (initial: string) => void
   changeDraft: (draft: string) => void
@@ -166,7 +170,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   logView: 'pretty',
   paneMode: 'editor',
   dataExpanded: true,
-  systemExpanded: true,
+  systemExpanded: null,
   newProjectOpen: false,
   playgroundInputs: {},
   playgroundRuns: {},
@@ -181,7 +185,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   // Dismissing is scoped to one visit of one project, so leaving clears it.
   leaveProject: () =>
-    set({ selection: null, editing: false, stagedDismissed: false }),
+    // The system folder goes back to following its own contents, per project.
+    set({ selection: null, editing: false, stagedDismissed: false, systemExpanded: null }),
 
   dismissStaged: () => set({ stagedDismissed: true }),
 
@@ -218,7 +223,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   toggleData: () => set((s) => ({ dataExpanded: !s.dataExpanded })),
 
-  toggleSystem: () => set((s) => ({ systemExpanded: !s.systemExpanded })),
+  setSystemExpanded: (expanded) => set({ systemExpanded: expanded }),
 
   setNewProjectOpen: (open) => set({ newProjectOpen: open }),
 

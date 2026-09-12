@@ -96,10 +96,10 @@ export function FilesSidebar() {
   const project = useCurrentProject()
   const selection = useWorkspaceStore((s) => s.selection)
   const dataExpanded = useWorkspaceStore((s) => s.dataExpanded)
-  const systemExpanded = useWorkspaceStore((s) => s.systemExpanded)
+  const systemChoice = useWorkspaceStore((s) => s.systemExpanded)
   const select = useWorkspaceStore((s) => s.select)
   const toggleData = useWorkspaceStore((s) => s.toggleData)
-  const toggleSystem = useWorkspaceStore((s) => s.toggleSystem)
+  const setSystemExpanded = useWorkspaceStore((s) => s.setSystemExpanded)
   const collapsed = useWorkspaceStore((s) => s.filesCollapsed)
   const setCollapsed = useWorkspaceStore((s) => s.setFilesCollapsed)
   const [newOpen, setNewOpen] = useState(false)
@@ -110,6 +110,9 @@ export function FilesSidebar() {
   // edited — the settings it will be deployed alongside.
   const { data: config } = useTenantConfig(project?.tenantId)
   const rbacOn = rbacEnabled(config)
+  // Collapsed while there is nothing inside and open once there is, until
+  // someone clicks it — then their choice holds.
+  const systemExpanded = systemChoice ?? (rbacOn || systemFiles.length > 0)
 
   // Folded to a strip, like the playground's response pane: the editor takes
   // the width, and the way back stays exactly where the rail was.
@@ -203,12 +206,12 @@ export function FilesSidebar() {
         {project && (
           <div
             className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 hover:bg-card"
-            onClick={toggleSystem}
+            onClick={() => setSystemExpanded(!systemExpanded)}
           >
             <ChevronDown
               className={`h-3.5 w-3.5 text-subtle transition-transform ${systemExpanded ? '' : '-rotate-90'}`}
             />
-            <Folder className="h-3.5 w-3.5 shrink-0 text-subtle" />
+            <Database className="h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="font-mono text-xs text-body">system</span>
           </div>
         )}
