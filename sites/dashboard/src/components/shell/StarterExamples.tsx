@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import { StarterGrid } from '@/components/shell/StarterGrid'
 import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
+import { useSaveRbac } from '@/hooks/rbac'
 import { useCreateResources } from '@/hooks/resources'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
@@ -16,9 +17,10 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
   const create = useCreateResources(tenantId)
   const { data: config } = useTenantConfig(tenantId)
   const saveConfig = useSaveTenantConfig(tenantId)
+  const saveRules = useSaveRbac(tenantId)
   const select = useWorkspaceStore((s) => s.select)
 
-  const busy = create.isPending || saveConfig.isPending
+  const busy = create.isPending || saveConfig.isPending || saveRules.isPending
 
   const pick = async (starter: Starter) => {
     if (busy) return
@@ -29,6 +31,8 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
       // survive the starter turning auth on; and into the .env text as well,
       // so the editor shows those lines switched on.
       if (starter.config) await saveConfig.mutateAsync(mergeEnv(config ?? {}, starter.config))
+      // After the config: rbac.json is refused until RBAC_ENABLED is staged.
+      if (starter.rbac) await saveRules.mutateAsync(starter.rbac)
       select({ kind: 'resource', resource: names[0] })
       toast.success(`Added ${names.join(', ')} — Deploy, then try ${starter.example}`)
     } catch (e) {

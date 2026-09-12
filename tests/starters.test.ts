@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
 import { RAW_KEY, mergeEnv, parseEnvText } from "../sites/dashboard/src/lib/env.ts";
-import { seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
+import { adminAuth, seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
 let ROOT = "";
 let core: Service;
@@ -33,6 +33,7 @@ beforeAll(async () => {
     const files = {
       ...starter.resources,
       ...(starter.config ? { config: starter.config } : {}),
+      ...(starter.rbac ? { rbac: starter.rbac } : {}),
     };
     await seedTenant(core, starter.id, files);
     await seedTenant(core, `${starter.id}-w`, files);
@@ -52,8 +53,8 @@ afterAll(async () => {
 describe("a starter's config merged into a templated .env", () => {
   const TEMPLATE = [
     "# ── Auth ──",
-    "# How long a login lasts — already set by the owner, and it must survive.",
-    "AUTH_JWT_TTL_SECONDS=3600",
+    "# Who emails come from — already set by the owner, and it must survive.",
+    "RESEND_FROM=Owner <owner@example.com>",
     "",
     "# The switch.",
     "# AUTH_ENABLED=true",
@@ -68,11 +69,11 @@ describe("a starter's config merged into a templated .env", () => {
     expect(configured.length).toBeGreaterThan(0);
     for (const starter of configured) {
       const { [RAW_KEY]: raw, ...keys } = mergeEnv(
-        { AUTH_JWT_TTL_SECONDS: "3600", [RAW_KEY]: TEMPLATE },
+        { RESEND_FROM: "Owner <owner@example.com>", [RAW_KEY]: TEMPLATE },
         starter.config!,
       );
       expect(parseEnvText(raw).env).toEqual(keys);
-      expect(keys.AUTH_JWT_TTL_SECONDS).toBe("3600");
+      expect(keys.RESEND_FROM).toBe("Owner <owner@example.com>");
       for (const [key, value] of Object.entries(starter.config!)) {
         // Set once, where the template documents it — not appended as a second copy.
         expect(raw.match(new RegExp(`^#?\\s*${key}=.*$`, "gm"))).toEqual([`${key}=${value}`]);
@@ -95,11 +96,17 @@ const singularize = (n: string) =>
   n.endsWith("ies") ? `${n.slice(0, -3)}y` : n.endsWith("ss") || !n.endsWith("s") ? n : n.slice(0, -1);
 
 describe("starter examples", () => {
-  test("the list really does escalate: plain, then relations, then auth", () => {
+  test("the list really does escalate: plain, then relations, then auth, then roles", () => {
     // The order is the pitch — a card claiming `relations` must have foreign
     // keys, and one claiming neither must be a single flat resource.
-    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "blog", "storefront"]);
-    expect(STARTERS.map((s) => s.features)).toEqual([[], ["relations"], ["relations", "auth"]]);
+    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "blog", "storefront", "recipes", "helpdesk"]);
+    expect(STARTERS.map((s) => s.features)).toEqual([
+      [],
+      ["relations"],
+      ["relations", "auth"],
+      ["relations", "auth"],
+      ["relations", "auth", "rbac"],
+    ]);
 
     for (const starter of STARTERS) {
       const names = Object.keys(starter.resources);
@@ -118,11 +125,18 @@ describe("starter examples", () => {
       // Only an `auth` starter ships config, and it must actually enable auth.
       if (starter.features.includes("auth")) expect(starter.config?.AUTH_ENABLED).toBe("true");
       else expect(starter.config).toBeUndefined();
+      // Only an `rbac` starter ships rules, and it must switch them on.
+      if (starter.features.includes("rbac")) {
+        expect(starter.config?.RBAC_ENABLED).toBe("true");
+        expect(starter.rbac).toBeDefined();
+      } else {
+        expect(starter.rbac).toBeUndefined();
+      }
     }
   });
 
   test("the placeholders stay placeholders, and stay distinguishable", () => {
-    // Nine cards on the empty state: three real, six not written yet. The grid
+    // Nine cards on the empty state: five real, four not written yet. The grid
     // renders both lists, so a placeholder that drifted into looking real —
     // duplicate id, empty resource list — would be a card promising an example
     // that cannot be seeded. Moving one into STARTERS is what makes the rest of
@@ -217,37 +231,95 @@ describe("starter examples", () => {
     }, 15_000);
   }
 
-  test("the auth starter reads publicly but refuses an unauthenticated write", async () => {
-    const starter = STARTERS.find((s) => s.features.includes("auth"))!;
-    const resource = Object.keys(starter.resources)[0];
+  test("each auth starter reads publicly but refuses an unauthenticated write", async () => {
+    const authOnly = STARTERS.filter((s) => s.features.includes("auth") && !s.features.includes("rbac"));
+    expect(authOnly.map((s) => s.id)).toEqual(["storefront", "recipes"]);
+    for (const starter of authOnly) {
+      const resource = Object.keys(starter.resources)[0];
 
-    // AUTH_PUBLIC_ROUTES keeps reads open, so the example query still works…
-    expect((await fetch(`${core.base}/${starter.id}-w/${resource}`)).status).toBe(200);
+      // AUTH_PUBLIC_ROUTES keeps reads open, so the example query still works…
+      expect((await fetch(`${core.base}/${starter.id}-w/${resource}`)).status).toBe(200);
 
-    // …but a write with no token is rejected, which is the point of the example.
-    const anonymous = await fetch(`${core.base}/${starter.id}-w/${resource}`, {
+      // …but a write with no token is rejected, which is the point of the example.
+      const anonymous = await fetch(`${core.base}/${starter.id}-w/${resource}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "pending" }),
+      });
+      expect(anonymous.status).toBe(401);
+
+      // And the auth plane is live, so a caller can get themselves a token.
+      const signup = await fetch(`${core.base}/${starter.id}-w/auth/signup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: `someone@${starter.id}.example`, password: "password123" }),
+      });
+      expect(signup.status).toBe(201);
+      const { token } = (await signup.json()) as { token: string };
+
+      const authorised = await fetch(`${core.base}/${starter.id}-w/${resource}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "pending" }),
+      });
+      expect(authorised.status).toBe(201);
+    }
+  }, 30_000);
+
+  test("Forkful keeps its non-public resources behind sign-in", async () => {
+    const starter = STARTERS.find((s) => s.id === "recipes")!;
+    // Everything but collections is on AUTH_PUBLIC_ROUTES — and every one of those names a real resource.
+    const publicRoutes = starter.config!.AUTH_PUBLIC_ROUTES.split(",");
+    for (const name of publicRoutes) expect(Object.keys(starter.resources)).toContain(name);
+    expect((await fetch(`${core.base}/recipes-w/collections`)).status).toBe(401);
+  });
+
+  test("the rbac starter's rules pass the core, and customers and agents see different queues", async () => {
+    const starter = STARTERS.find((s) => s.features.includes("rbac"))!;
+    const base = `${core.base}/${starter.id}-w`;
+    const admin = { ...adminAuth, "content-type": "application/json" };
+
+    // The rules are accepted by the core's own validation, not merely written to disk.
+    const valid = await fetch(`${base}/_admin/files/draft_rbac`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify(starter.rbac),
+    });
+    expect(valid.status).toBe(201);
+
+    // Visitors get the help centre and nothing else.
+    expect((await fetch(`${base}/articles`)).status).toBe(200);
+    expect((await fetch(`${base}/tickets`)).status).toBe(401);
+
+    // A new account is a customer, and sees only the tickets it opens.
+    const signup = await fetch(`${base}/auth/signup`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: "pending" }),
-    });
-    expect(anonymous.status).toBe(401);
-
-    // And the auth plane is live, so a caller can get themselves a token.
-    const signup = await fetch(`${core.base}/${starter.id}-w/auth/signup`, {
+      body: JSON.stringify({ email: "customer@deskline.example", password: "password123" }),
+    }).then((r) => r.json());
+    expect(signup.user.role).toBe(starter.rbac!.defaultRole);
+    const as = { authorization: `Bearer ${signup.token}`, "content-type": "application/json" };
+    expect(await fetch(`${base}/tickets`, { headers: as }).then((r) => r.json())).toEqual([]);
+    const opened = await fetch(`${base}/tickets`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "shopper@example.com", password: "password123" }),
+      headers: as,
+      body: JSON.stringify({ subject: "Cannot log in", topicId: "2", status: "open" }),
     });
-    expect(signup.status).toBe(201);
-    const { token } = (await signup.json()) as { token: string };
+    expect(opened.status).toBe(201);
+    expect(await fetch(`${base}/tickets`, { headers: as }).then((r) => r.json())).toHaveLength(1);
+    expect((await fetch(`${base}/macros`, { headers: as })).status).toBe(403);
 
-    const authorised = await fetch(`${core.base}/${starter.id}-w/${resource}`, {
+    // Made an agent from the admin plane, the same token sees the whole queue.
+    const promoted = await fetch(`${base}/_admin/users/${signup.user.id}/role`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status: "pending" }),
+      headers: admin,
+      body: JSON.stringify({ role: "agent" }),
     });
-    expect(authorised.status).toBe(201);
-  }, 20_000);
+    expect(promoted.status).toBe(200);
+    const queue = await fetch(`${base}/tickets`, { headers: as }).then((r) => r.json());
+    expect(queue).toHaveLength(starter.resources.tickets.length + 1);
+    expect((await fetch(`${base}/macros`, { headers: as })).status).toBe(200);
+  }, 30_000);
 
   test("a starter without the auth feature needs no token at all", async () => {
     for (const starter of STARTERS.filter((s) => !s.features.includes("auth"))) {

@@ -1905,6 +1905,7 @@ interface Expansion {
   resource: string; // the array to look in (users)
   key: string; // where the record is nested (user)
   fk: string; // the field holding the id (userId)
+  ownOnly?: boolean; // with rules and "read own" on the related resource: nest only the caller's records
 }
 
 /** `?_expand=users` (or `user`) → nest users.json[userId] under `user`. */
@@ -1926,15 +1927,20 @@ function parseExpansions(params: URLSearchParams, state: TenantState): Expansion
   return out;
 }
 
-function expandRow(row: any, expansions: Expansion[], state: TenantState): any {
+function expandRow(
+  row: any,
+  expansions: Expansion[],
+  state: TenantState,
+  isMine: (record: any) => boolean,
+): any {
   if (!row || typeof row !== "object" || Array.isArray(row) || expansions.length === 0) return row;
   let out = row;
-  for (const { resource, key, fk } of expansions) {
+  for (const { resource, key, fk, ownOnly } of expansions) {
     const fkValue = row[fk];
     if (fkValue === undefined || fkValue === null) continue;
     const match = state.db[resource]?.find((r) => String(r?.id) === String(fkValue));
     if (out === row) out = { ...row }; // copy-on-write: never mutate the cached record
-    out[key] = match ?? null;
+    out[key] = match && (!ownOnly || isMine(match)) ? match : null;
   }
   return out;
 }
@@ -2181,7 +2187,15 @@ const coreOperation: Middleware = async (ctx) => {
 
   if (req.method === "GET") {
     const params = url.searchParams;
-    const expansions = parseExpansions(params, state);
+    // With rules, a relation is nested only as far as the caller could read it
+    // directly — not at all without read permission, only their own records
+    // under "read own" — or _expand would be a way around rbac.json.
+    const rules = rulesOf(state);
+    const expansions = parseExpansions(params, state).flatMap((expansion) => {
+      if (!rules) return [expansion];
+      const read = decide(rules, ctx.user?.role, expansion.resource, "read");
+      return read.allowed ? [{ ...expansion, ownOnly: read.scope === "own" }] : [];
+    });
 
     if (id === undefined) {
       // 1. filter — `field=value` exact, `field[op]=value` an operator; all must hold
@@ -2243,7 +2257,7 @@ const coreOperation: Middleware = async (ctx) => {
       out = out.slice(start, start + count);
 
       // 4. expand relations
-      const body = out.map((row) => expandRow(row, expansions, state));
+      const body = out.map((row) => expandRow(row, expansions, state, isMine));
       const res = json(body);
       res.headers.set("x-total-count", String(total));
       ctx.response = res;
@@ -2252,7 +2266,7 @@ const coreOperation: Middleware = async (ctx) => {
 
     const row = rows.find((r) => String(r?.id) === id);
     if (!row || !inScope(row)) return err(404, "record not found");
-    ctx.response = json(expandRow(row, expansions, state));
+    ctx.response = json(expandRow(row, expansions, state, isMine));
     return;
   }
 

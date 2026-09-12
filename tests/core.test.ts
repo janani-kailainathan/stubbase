@@ -1027,6 +1027,22 @@ describe("roles and permissions (rbac.json)", () => {
     expect((await call("DELETE", `/orders/${order.id}`, admin.token)).status).toBe(200); // "*"
   });
 
+  test("_expand nests only what the caller could read directly", async () => {
+    const theirs = await call("POST", "/orders", bea.token, { item: "p1" }).then((r) => r.json());
+    const review = await call("POST", "/reviews", ada.token, { stars: 4, orderId: theirs.id, ledgerId: "l1" }).then(
+      (r) => r.json(),
+    );
+    // Reviews are read-all for customers, orders read-own, and the ledger not readable at all.
+    const asAda = await call("GET", `/reviews/${review.id}?_expand=orders,ledger`, ada.token).then((r) => r.json());
+    expect(asAda.order).toBeNull();
+    expect(asAda).not.toHaveProperty("ledger");
+    const listed = await call("GET", "/reviews?_expand=orders", ada.token).then((r) => r.json());
+    expect(listed.find((r: any) => r.id === review.id).order).toBeNull();
+    // The owner of that order sees it nested.
+    const asBea = await call("GET", `/reviews/${review.id}?_expand=orders`, bea.token).then((r) => r.json());
+    expect(asBea.order).toMatchObject({ id: theirs.id });
+  });
+
   test("a role change applies from the next request, on the same token", async () => {
     expect((await call("GET", "/ledger", bea.token)).status).toBe(403);
     await assign(bea.user.id, "admin");

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError, createProject, fetchTenantConfig, saveTenantConfig } from '@/lib/api'
+import { ApiError, createProject, fetchTenantConfig, saveRbac, saveTenantConfig } from '@/lib/api'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
 
@@ -29,6 +29,9 @@ export function useCreateProjectFromStarter() {
         }
         await saveTenantConfig(created.tenantId, mergeEnv(current, starter.config))
       }
+      // After the config, never before: rbac.json is refused until the
+      // RBAC_ENABLED it depends on has been staged.
+      if (starter.rbac) await saveRbac(created.tenantId, starter.rbac)
       return created
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),

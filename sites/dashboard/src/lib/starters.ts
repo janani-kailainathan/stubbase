@@ -2,11 +2,15 @@
  * Starter APIs offered on a project's empty state.
  *
  * Ordered simplest to richest, so the list doubles as a tour of what the engine
- * does: plain CRUD, then relations, then relations behind auth.
+ * does: plain CRUD, then relations, then relations behind auth, then roles.
  *
  *   tracker     one flat resource — filtering, sorting, pagination
  *   blog        `<singular>Id` foreign keys, so ?_expand= nests records
  *   storefront  the same, with AUTH_ENABLED: public reads, authenticated writes
+ *   recipes     Forkful, a recipe community: every auth setting that works
+ *               without credentials, and a whole product's worth of resources
+ *   helpdesk    Deskline, a support desk: rbac.json roles — customers see their
+ *               own tickets, agents the whole queue, a lead can promote agents
  *
  * Foreign keys follow the core's convention exactly — `?_expand=authors`
  * singularizes to `author`, reads `authorId`, and nests the match under
@@ -18,21 +22,34 @@
  * project's system/users.json, never in a resource, so sample rows in a
  * data/users.json cannot collide with them.
  *
+ * Seed records carry no `userId`: accounts only exist once someone signs up, so
+ * seeded rows are nobody's. Under an "own" permission they are invisible to a
+ * customer and fully visible to a role with "all", which is what the example
+ * shows.
+ *
  * Data only — no React here, so the tests can import it directly.
  */
+import type { RbacRules } from './rbac'
+
 export interface Starter {
-  id: 'tracker' | 'blog' | 'storefront'
+  id: 'tracker' | 'blog' | 'storefront' | 'recipes' | 'helpdesk'
   title: string
   blurb: string
   /** Capabilities this example demonstrates, beyond plain CRUD. */
-  features: ('relations' | 'auth')[]
+  features: ('relations' | 'auth' | 'rbac')[]
   /**
    * A query worth running once deployed. Not shown on the card — it is in the
-   * confirmation toast, and the tests assert the data can answer it.
+   * confirmation toast, and the tests assert the data can answer it without a
+   * token.
    */
   example: string
   /** Staged into the tenant's config.json, merged over what is already there. */
   config?: Record<string, string>
+  /**
+   * Staged as the project's rbac.json. Written after `config`, because the
+   * files proxy refuses rbac.json until RBAC_ENABLED is staged alongside it.
+   */
+  rbac?: RbacRules
   /** Written in order; the first is opened afterwards. */
   resources: Record<string, Record<string, unknown>[]>
 }
@@ -133,6 +150,157 @@ export const STARTERS: Starter[] = [
       ],
     },
   },
+  {
+    id: 'recipes',
+    title: 'Forkful recipes',
+    blurb: 'Browse recipes freely; sign in to review and save.',
+    features: ['relations', 'auth'],
+    example: '/recipes?_expand=cuisines&difficulty=easy&_sort=publishedAt&_direction=desc',
+    // Every auth setting that works without a credential. Anyone may browse the
+    // cookbook; reviewing, posting and saving collections needs an account from
+    // /auth/signup (or /auth/login), and a signed-in user edits only what they
+    // wrote. A login lasts a week, as a phone app would want. The redirect and
+    // reset page are real Forkful URLs; Google, GitHub and email sending need
+    // the owner's own keys, which stay commented in the .env to fill in.
+    config: {
+      AUTH_ENABLED: 'true',
+      AUTH_PUBLIC_ROUTES: 'recipes,cuisines,ingredients,steps,reviews',
+      AUTH_JWT_TTL_SECONDS: '604800',
+      AUTH_OAUTH_REDIRECT: 'https://forkful.app/auth/callback',
+      AUTH_RESET_URL: 'https://forkful.app/reset-password',
+    },
+    resources: {
+      recipes: [
+        { id: '1', cuisineId: '1', title: 'Weeknight cacio e pepe', slug: 'cacio-e-pepe', difficulty: 'easy', prepMinutes: 20, servings: 2, tags: ['pasta', 'vegetarian'], publishedAt: '2026-02-03', rating: 4.7 },
+        { id: '2', cuisineId: '2', title: 'Miso-glazed salmon', slug: 'miso-salmon', difficulty: 'medium', prepMinutes: 30, servings: 2, tags: ['fish', 'high-protein'], publishedAt: '2026-02-17', rating: 4.8 },
+        { id: '3', cuisineId: '3', title: 'Charred corn tacos', slug: 'charred-corn-tacos', difficulty: 'easy', prepMinutes: 25, servings: 4, tags: ['vegetarian', 'street-food'], publishedAt: '2026-03-01', rating: 4.5 },
+        { id: '4', cuisineId: '4', title: 'One-pot chana masala', slug: 'chana-masala', difficulty: 'easy', prepMinutes: 40, servings: 4, tags: ['vegan', 'one-pot'], publishedAt: '2026-03-12', rating: 4.9 },
+        { id: '5', cuisineId: '1', title: 'Wild mushroom risotto', slug: 'mushroom-risotto', difficulty: 'medium', prepMinutes: 45, servings: 4, tags: ['vegetarian', 'comfort'], publishedAt: '2026-03-26', rating: 4.6 },
+        { id: '6', cuisineId: '2', title: 'Tonkotsu ramen from scratch', slug: 'tonkotsu-ramen', difficulty: 'hard', prepMinutes: 720, servings: 6, tags: ['pork', 'weekend-project'], publishedAt: '2026-04-09', rating: 4.4 },
+      ],
+      cuisines: [
+        { id: '1', name: 'Italian', region: 'Southern Europe' },
+        { id: '2', name: 'Japanese', region: 'East Asia' },
+        { id: '3', name: 'Mexican', region: 'Latin America' },
+        { id: '4', name: 'Indian', region: 'South Asia' },
+      ],
+      ingredients: [
+        { id: '1', recipeId: '1', name: 'Spaghetti', quantity: 200, unit: 'g' },
+        { id: '2', recipeId: '1', name: 'Pecorino Romano', quantity: 80, unit: 'g' },
+        { id: '3', recipeId: '1', name: 'Black pepper, freshly cracked', quantity: 2, unit: 'tsp' },
+        { id: '4', recipeId: '2', name: 'Salmon fillets', quantity: 2, unit: 'pieces' },
+        { id: '5', recipeId: '2', name: 'White miso', quantity: 2, unit: 'tbsp' },
+        { id: '6', recipeId: '2', name: 'Mirin', quantity: 1, unit: 'tbsp' },
+        { id: '7', recipeId: '3', name: 'Sweet corn kernels', quantity: 3, unit: 'cups' },
+        { id: '8', recipeId: '3', name: 'Corn tortillas', quantity: 8, unit: 'pieces' },
+        { id: '9', recipeId: '4', name: 'Chickpeas, cooked', quantity: 800, unit: 'g' },
+        { id: '10', recipeId: '4', name: 'Garam masala', quantity: 2, unit: 'tsp' },
+      ],
+      steps: [
+        { id: '1', recipeId: '1', position: 1, text: 'Boil the pasta in well-salted water until just shy of al dente.' },
+        { id: '2', recipeId: '1', position: 2, text: 'Toast the pepper in a dry pan, then add a ladle of pasta water.' },
+        { id: '3', recipeId: '1', position: 3, text: 'Toss the pasta in the pan and stir in the cheese off the heat.' },
+        { id: '4', recipeId: '2', position: 1, text: 'Brush the fillets with miso and mirin and rest for 10 minutes.' },
+        { id: '5', recipeId: '2', position: 2, text: 'Grill skin-side down until the glaze caramelises.' },
+        { id: '6', recipeId: '4', position: 1, text: 'Soften onion, garlic and ginger, then bloom the spices.' },
+        { id: '7', recipeId: '4', position: 2, text: 'Add tomatoes and chickpeas and simmer for 25 minutes.' },
+      ],
+      reviews: [
+        { id: '1', recipeId: '1', stars: 5, reviewer: 'Giulia', body: 'Finally no clumps. The pan-water trick works.', createdOn: '2026-02-08' },
+        { id: '2', recipeId: '4', stars: 5, reviewer: 'Arjun', body: 'Tastes like home. Doubled the ginger.', createdOn: '2026-03-15' },
+        { id: '3', recipeId: '2', stars: 4, reviewer: 'Mei', body: 'Great glaze; watch the grill closely.', createdOn: '2026-02-21' },
+        { id: '4', recipeId: '3', stars: 4, reviewer: 'Diego', body: 'Add lime and cotija at the end.', createdOn: '2026-03-04' },
+        { id: '5', recipeId: '6', stars: 3, reviewer: 'Kenji', body: 'Worth it, but it really does take all day.', createdOn: '2026-04-14' },
+      ],
+      collections: [
+        { id: '1', name: 'Weeknight dinners', description: 'On the table in under 45 minutes.', recipeIds: ['1', '3', '4'] },
+        { id: '2', name: 'Meat-free Mondays', description: 'Vegetarian and vegan favourites.', recipeIds: ['1', '3', '4', '5'] },
+        { id: '3', name: 'Weekend projects', description: 'Slow cooking for a free afternoon.', recipeIds: ['6'] },
+      ],
+    },
+  },
+  {
+    id: 'helpdesk',
+    title: 'Deskline helpdesk',
+    blurb: 'Customers see their own tickets; agents see them all.',
+    features: ['relations', 'auth', 'rbac'],
+    example: '/articles?_expand=topics&published=true',
+    // Roles and permissions: the help centre is public, a customer opens and
+    // follows only their own tickets, an agent works the whole queue and owns
+    // the canned replies, a lead can also promote agents, an admin does
+    // anything. New accounts are customers; make the first agent from the
+    // dashboard's system/users.json.
+    config: {
+      AUTH_ENABLED: 'true',
+      RBAC_ENABLED: 'true',
+    },
+    rbac: {
+      defaultRole: 'customer',
+      roles: {
+        guest: { articles: ['read'], topics: ['read'] },
+        customer: {
+          articles: ['read'],
+          topics: ['read'],
+          tickets: { create: 'own', read: 'own', update: 'own' },
+          ratings: { create: 'own', read: 'own' },
+        },
+        agent: {
+          articles: ['read', 'create', 'update'],
+          topics: ['read'],
+          tickets: { read: 'all', update: 'all' },
+          macros: ['read', 'create', 'update', 'delete'],
+          ratings: { read: 'all' },
+          _users: ['read'],
+        },
+        lead: {
+          articles: '*',
+          topics: '*',
+          tickets: '*',
+          macros: '*',
+          ratings: { read: 'all' },
+          _users: ['read', 'update'],
+        },
+        admin: '*',
+      },
+    },
+    resources: {
+      articles: [
+        { id: '1', topicId: '1', title: 'Update your payment method', slug: 'update-payment-method', published: true, helpfulVotes: 128, revisedOn: '2026-03-02' },
+        { id: '2', topicId: '2', title: 'Reset two-factor authentication', slug: 'reset-2fa', published: true, helpfulVotes: 342, revisedOn: '2026-02-18' },
+        { id: '3', topicId: '3', title: 'Connect Deskline to Slack', slug: 'slack-integration', published: true, helpfulVotes: 97, revisedOn: '2026-03-20' },
+        { id: '4', topicId: '1', title: 'Understanding prorated charges', slug: 'prorated-charges', published: true, helpfulVotes: 61, revisedOn: '2026-01-29' },
+        { id: '5', topicId: '4', title: 'Report a bug we can reproduce', slug: 'reporting-bugs', published: true, helpfulVotes: 45, revisedOn: '2026-03-11' },
+        { id: '6', topicId: '3', title: 'Webhooks for ticket events', slug: 'ticket-webhooks', published: false, helpfulVotes: 0, revisedOn: '2026-04-02' },
+      ],
+      topics: [
+        { id: '1', name: 'Billing' },
+        { id: '2', name: 'Account & login' },
+        { id: '3', name: 'Integrations' },
+        { id: '4', name: 'Bug reports' },
+      ],
+      tickets: [
+        { id: '1', topicId: '2', subject: 'Locked out after changing phones', status: 'open', priority: 'urgent', channel: 'email', requester: 'Priya Nair', openedOn: '2026-04-01', messages: [{ from: 'customer', body: 'My authenticator app was on my old phone.', at: '2026-04-01T09:12:00Z' }] },
+        { id: '2', topicId: '1', subject: 'Charged twice this month', status: 'pending', priority: 'high', channel: 'chat', requester: 'Tom Becker', openedOn: '2026-04-02', messages: [{ from: 'customer', body: 'Two charges on the 1st.', at: '2026-04-02T14:03:00Z' }, { from: 'agent', body: 'Refund issued for the duplicate — 3 to 5 days.', at: '2026-04-02T14:20:00Z' }] },
+        { id: '3', topicId: '3', subject: 'Slack notifications stopped', status: 'open', priority: 'normal', channel: 'web', requester: 'Lucía Romero', openedOn: '2026-04-03', messages: [{ from: 'customer', body: 'Nothing posted since yesterday.', at: '2026-04-03T08:45:00Z' }] },
+        { id: '4', topicId: '4', subject: 'Export to CSV drops accents', status: 'solved', priority: 'normal', channel: 'email', requester: 'Émile Durand', openedOn: '2026-03-28', messages: [{ from: 'customer', body: 'Names like Zoë come out garbled.', at: '2026-03-28T11:30:00Z' }, { from: 'agent', body: 'Fixed in today’s release — exports are UTF-8 now.', at: '2026-03-30T16:10:00Z' }] },
+        { id: '5', topicId: '1', subject: 'Need an invoice with our VAT number', status: 'solved', priority: 'low', channel: 'email', requester: 'Anders Holm', openedOn: '2026-03-25', messages: [{ from: 'customer', body: 'Our accountant needs the VAT ID on it.', at: '2026-03-25T10:00:00Z' }] },
+        { id: '6', topicId: '2', subject: 'SSO login loops back to sign-in', status: 'open', priority: 'high', channel: 'chat', requester: 'Grace Liu', openedOn: '2026-04-04', messages: [{ from: 'customer', body: 'Okta sends me straight back to the login page.', at: '2026-04-04T07:55:00Z' }] },
+        { id: '7', topicId: '3', subject: 'Zapier trigger fires twice', status: 'pending', priority: 'normal', channel: 'web', requester: 'Samuel Okafor', openedOn: '2026-04-04', messages: [{ from: 'customer', body: 'Every new ticket creates two Trello cards.', at: '2026-04-04T13:22:00Z' }] },
+        { id: '8', topicId: '4', subject: 'Dark mode hides the reply button', status: 'open', priority: 'low', channel: 'web', requester: 'Noor Haddad', openedOn: '2026-04-05', messages: [{ from: 'customer', body: 'The send button is black on black.', at: '2026-04-05T19:40:00Z' }] },
+      ],
+      macros: [
+        { id: '1', topicId: '1', title: 'Duplicate charge refunded', body: 'We have refunded the duplicate charge. It usually appears within 3–5 business days.' },
+        { id: '2', topicId: '2', title: 'Two-factor reset steps', body: 'For your security we need to verify your identity first — please reply with your account email.' },
+        { id: '3', topicId: '3', title: 'Reconnect an integration', body: 'Please disconnect and reconnect the integration from Settings → Integrations.' },
+        { id: '4', topicId: '4', title: 'Bug logged', body: 'Thanks — our engineers can reproduce this and it is now on the roadmap.' },
+      ],
+      ratings: [
+        { id: '1', ticketId: '2', score: 5, comment: 'Refunded within minutes.', ratedOn: '2026-04-02' },
+        { id: '2', ticketId: '4', score: 4, comment: 'Took two days, but fixed properly.', ratedOn: '2026-03-31' },
+        { id: '3', ticketId: '5', score: 3, comment: 'Had to ask twice.', ratedOn: '2026-03-27' },
+      ],
+    },
+  },
 ]
 
 export const countRecords = (s: Starter) =>
@@ -183,20 +351,6 @@ export const PLANNED_STARTERS: PlannedStarter[] = [
     blurb: 'One wide table, thousands of rows.',
     features: [],
     resources: ['readings'],
-  },
-  {
-    id: 'bookings',
-    title: 'Bookings',
-    blurb: 'Slots you have to be signed in to claim.',
-    features: ['relations', 'auth'],
-    resources: ['venues', 'slots', 'reservations'],
-  },
-  {
-    id: 'courses',
-    title: 'Course catalog',
-    blurb: 'Lessons, and who is enrolled in them.',
-    features: ['relations', 'auth'],
-    resources: ['courses', 'lessons', 'enrollments'],
   },
   {
     id: 'flags',

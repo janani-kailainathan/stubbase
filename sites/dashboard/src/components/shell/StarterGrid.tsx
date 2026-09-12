@@ -1,15 +1,16 @@
 import {
   Blocks,
-  CalendarCheck,
+  ChefHat,
   ClipboardList,
   FilePlus2,
   Flag,
-  GraduationCap,
   KeyRound,
+  LifeBuoy,
   Link2,
   MessagesSquare,
   Newspaper,
   Radio,
+  ShieldCheck,
   ShoppingCart,
   Users,
   type LucideIcon,
@@ -32,7 +33,7 @@ import {
  * file: adding or removing a starter there changes both places, and the card
  * itself has one definition rather than two that drift.
  *
- * Nine cards, of which three are real and six are placeholders for examples not
+ * Nine cards, of which five are real and four are placeholders for examples not
  * written yet (PLANNED_STARTERS). Showing the planned ones greyed out is a
  * deliberate choice over hiding them: the grid reads as a set someone is filling
  * in rather than as three options and a shrug, and the layout stops moving every
@@ -49,17 +50,18 @@ const ICONS: Record<string, LucideIcon> = {
   tracker: ClipboardList,
   blog: Newspaper,
   storefront: ShoppingCart,
+  recipes: ChefHat,
+  helpdesk: LifeBuoy,
   chat: MessagesSquare,
   crm: Users,
   telemetry: Radio,
-  bookings: CalendarCheck,
-  courses: GraduationCap,
   flags: Flag,
 }
 
 const FEATURES: Record<Starter['features'][number], { Icon: LucideIcon; label: string }> = {
   relations: { Icon: Link2, label: 'relations' },
   auth: { Icon: KeyRound, label: 'auth' },
+  rbac: { Icon: ShieldCheck, label: 'roles' },
 }
 
 const cardBase = 'flex flex-col gap-2 rounded-md border p-3 text-left transition-colors'
