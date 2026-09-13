@@ -1,5 +1,6 @@
 import {
   Blocks,
+  Check,
   ChefHat,
   ClipboardList,
   FilePlus2,
@@ -24,9 +25,9 @@ import {
 } from '@/lib/starters'
 
 /**
- * The starter cards, rendered once for both screens that offer them: the
- * account-level empty state (no projects at all) and a project's own empty
- * state (no resources yet).
+ * The starter cards, rendered once for every place that offers them: the New
+ * project form (the project menu's dialog, and the screen shown with no
+ * projects at all) and a project's own empty state (no resources yet).
  *
  * Presentation only — the starter data itself lives in lib/starters.ts, and
  * every starter in it is offered on both screens. That is the point of this
@@ -40,9 +41,9 @@ import {
  * time one lands. They are `disabled` buttons, not divs, so keyboard focus and
  * the disabled cursor behave without any extra handling.
  *
- * The two screens differ in exactly one way, which is what `onBlank` selects:
- * with no projects yet there is also a "start blank" card, since naming an
- * empty project is a real way in. Inside a project that rung is already taken.
+ * The two uses differ in exactly one way, which is what `onBlank` selects:
+ * creating a project also offers a "start blank" card, since naming an empty
+ * project is a real way in. Inside a project that rung is already taken.
  * It spans the full row rather than taking a cell, so the nine examples keep a
  * clean 3×3 and a card is the same width on both screens.
  */
@@ -67,6 +68,12 @@ const FEATURES: Record<Starter['features'][number], { Icon: LucideIcon; label: s
 const cardBase = 'flex flex-col gap-2 rounded-md border p-3 text-left transition-colors'
 
 const cardClass = `${cardBase} cursor-pointer border-border bg-panel hover:border-primary-soft-border-strong hover:bg-card disabled:cursor-not-allowed disabled:opacity-60`
+
+// Selected is the tint and a check, never a green border — the same rule as a
+// selected file, route or tab. The border stays so the card keeps its box.
+const selectedCardClass = `${cardBase} cursor-pointer border-border bg-primary-soft disabled:cursor-not-allowed disabled:opacity-60`
+
+const checkClass = 'ml-auto h-3.5 w-3.5 shrink-0 text-primary-accent'
 
 // Placeholders read as unavailable rather than merely disabled: a dashed edge
 // says "nothing here yet" the way a dimmed solid card cannot, since the real
@@ -106,39 +113,56 @@ export function StarterGrid({
   busy,
   onPick,
   onBlank,
+  selectedId,
 }: {
   busy: boolean
   onPick: (starter: Starter) => void
   /** Renders the leading "Empty project" card when given. */
   onBlank?: () => void
+  /**
+   * Makes the cards a choice rather than an action: the named card is shown
+   * selected, and every card reports aria-pressed. Leave it out where a click
+   * acts straight away.
+   */
+  selectedId?: Starter['id'] | 'blank'
 }) {
+  const choosing = selectedId !== undefined
   return (
     <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {onBlank && (
         <button
+          // type="button" throughout: these can sit inside a <form>, where a
+          // bare button would submit it.
+          type="button"
           onClick={onBlank}
           disabled={busy}
-          className={`${cardClass} sm:col-span-2 lg:col-span-3 flex-row items-center gap-3`}
+          aria-pressed={choosing ? selectedId === 'blank' : undefined}
+          className={`${selectedId === 'blank' ? selectedCardClass : cardClass} sm:col-span-2 lg:col-span-3 flex-row items-center gap-3`}
         >
           <FilePlus2 className={iconClass} />
           <span className={titleClass}>Empty project</span>
           <span className={blurbClass}>Name it and add resources yourself.</span>
           <span className="ml-auto font-mono text-[10px] text-faintest">no resources</span>
+          {selectedId === 'blank' && <Check className="h-3.5 w-3.5 shrink-0 text-primary-accent" />}
         </button>
       )}
 
       {STARTERS.map((starter) => {
         const Icon = ICONS[starter.id] ?? Blocks
+        const selected = selectedId === starter.id
         return (
           <button
+            type="button"
             key={starter.id}
             onClick={() => onPick(starter)}
             disabled={busy}
-            className={cardClass}
+            aria-pressed={choosing ? selected : undefined}
+            className={selected ? selectedCardClass : cardClass}
           >
             <span className="flex items-center gap-2">
               <Icon className={iconClass} />
               <span className={titleClass}>{starter.title}</span>
+              {selected && <Check className={checkClass} />}
             </span>
             <span className={blurbClass}>{starter.blurb}</span>
             <span className="font-mono text-[10px] break-words text-muted-foreground">
@@ -155,7 +179,7 @@ export function StarterGrid({
       {PLANNED_STARTERS.map((planned: PlannedStarter) => {
         const Icon = ICONS[planned.id] ?? Blocks
         return (
-          <button key={planned.id} disabled aria-disabled className={plannedClass}>
+          <button type="button" key={planned.id} disabled aria-disabled className={plannedClass}>
             <span className="flex items-center gap-2">
               <Icon className="h-3.5 w-3.5 shrink-0 text-faint" />
               <span className="truncate text-xs font-medium text-muted-foreground">

@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ApiError, createProject, fetchTenantConfig, saveRbac, saveTenantConfig } from '@/lib/api'
+import { CREATE_PROJECT_KEY } from '@/hooks/projects'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
 
 /**
- * Provision a brand-new project straight from a starter, for the screen shown
- * when the account has no projects at all.
+ * Provision a brand-new project straight from a starter, for the New project
+ * form (the project menu's dialog, and the screen shown when the account has
+ * no projects at all). `name` falls back to the starter's title.
  *
  * The resources ride along on the create call, so the API writes them as it
  * provisions the tenant and rolls the whole thing back if any one of them
@@ -15,8 +17,9 @@ import type { Starter } from '@/lib/starters'
 export function useCreateProjectFromStarter() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (starter: Starter) => {
-      const created = await createProject(starter.title, starter.resources)
+    mutationKey: CREATE_PROJECT_KEY,
+    mutationFn: async ({ starter, name }: { starter: Starter; name?: string }) => {
+      const created = await createProject(name ?? starter.title, starter.resources)
       if (starter.config) {
         // Merge, never replace: the .env the project was created with has to
         // survive the starter turning auth on. mergeEnv also writes the

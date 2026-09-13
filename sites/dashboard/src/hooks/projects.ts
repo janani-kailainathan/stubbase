@@ -89,9 +89,13 @@ export function useOpenProject(): (tenantId: string) => void {
   return useCallback((tenantId: string) => navigate(`/p/${tenantId}`), [navigate])
 }
 
+/** Shared by both ways of creating a project, so a dialog can tell one is in flight. */
+export const CREATE_PROJECT_KEY = ['projects', 'create']
+
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: CREATE_PROJECT_KEY,
     mutationFn: ({ name, resources }: { name: string; resources?: Record<string, unknown[]> }) =>
       createProject(name, resources),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
