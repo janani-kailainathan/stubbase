@@ -123,11 +123,9 @@ export function NewProjectForm({
             }}
             className="w-full rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-heading placeholder-faint focus:border-primary focus:outline-none disabled:opacity-60 aria-invalid:border-danger-fill"
           />
-          <span
-            className={`font-mono text-[10px] ${needsName ? 'text-danger-ink' : 'text-subtle'}`}
-          >
-            {needsName ? 'Give the project a name.' : 'Picking a starter fills this in.'}
-          </span>
+          {needsName && (
+            <span className="font-mono text-[10px] text-danger-ink">Give the project a name.</span>
+          )}
         </label>
 
         <StarterGrid

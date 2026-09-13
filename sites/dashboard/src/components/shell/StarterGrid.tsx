@@ -42,10 +42,11 @@ import {
  * the disabled cursor behave without any extra handling.
  *
  * The two uses differ in exactly one way, which is what `onBlank` selects:
- * creating a project also offers a "start blank" card, since naming an empty
- * project is a real way in. Inside a project that rung is already taken.
- * It spans the full row rather than taking a cell, so the nine examples keep a
- * clean 3×3 and a card is the same width on both screens.
+ * creating a project also offers an "Empty project" card, since naming an
+ * empty project is a real way in. Inside a project that rung is already taken.
+ * It is one more card, first in the grid and shaped like the starters, so
+ * starting empty reads as one of the choices rather than a separate path —
+ * and it takes the last placeholder's cell, so both screens stay at nine.
  */
 const ICONS: Record<string, LucideIcon> = {
   tracker: ClipboardList,
@@ -64,6 +65,9 @@ const FEATURES: Record<Starter['features'][number], { Icon: LucideIcon; label: s
   auth: { Icon: KeyRound, label: 'auth' },
   rbac: { Icon: ShieldCheck, label: 'roles' },
 }
+
+/** A full 3×3: the grid is filled out to this many cards and no further. */
+const GRID_CARDS = 9
 
 const cardBase = 'flex flex-col gap-2 rounded-md border p-3 text-left transition-colors'
 
@@ -127,6 +131,12 @@ export function StarterGrid({
   selectedId?: Starter['id'] | 'blank'
 }) {
   const choosing = selectedId !== undefined
+  // Placeholders only fill the grid out to nine, so where Empty project takes
+  // a cell the last one gives it up.
+  const planned = PLANNED_STARTERS.slice(
+    0,
+    Math.max(0, GRID_CARDS - STARTERS.length - (onBlank ? 1 : 0)),
+  )
   return (
     <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {onBlank && (
@@ -137,13 +147,15 @@ export function StarterGrid({
           onClick={onBlank}
           disabled={busy}
           aria-pressed={choosing ? selectedId === 'blank' : undefined}
-          className={`${selectedId === 'blank' ? selectedCardClass : cardClass} sm:col-span-2 lg:col-span-3 flex-row items-center gap-3`}
+          className={selectedId === 'blank' ? selectedCardClass : cardClass}
         >
-          <FilePlus2 className={iconClass} />
-          <span className={titleClass}>Empty project</span>
+          <span className="flex items-center gap-2">
+            <FilePlus2 className={iconClass} />
+            <span className={titleClass}>Empty project</span>
+            {selectedId === 'blank' && <Check className={checkClass} />}
+          </span>
           <span className={blurbClass}>Name it and add resources yourself.</span>
-          <span className="ml-auto font-mono text-[10px] text-faintest">no resources</span>
-          {selectedId === 'blank' && <Check className="h-3.5 w-3.5 shrink-0 text-primary-accent" />}
+          <span className={footClass}>no resources</span>
         </button>
       )}
 
@@ -176,7 +188,7 @@ export function StarterGrid({
         )
       })}
 
-      {PLANNED_STARTERS.map((planned: PlannedStarter) => {
+      {planned.map((planned: PlannedStarter) => {
         const Icon = ICONS[planned.id] ?? Blocks
         return (
           <button type="button" key={planned.id} disabled aria-disabled className={plannedClass}>
