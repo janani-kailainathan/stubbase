@@ -13,9 +13,9 @@ import type { LogEntry } from './api'
  * hook that calls this is mounted by that pane alone.
  *
  * Three rules, each held by tests/log-storage.test.ts:
- *   - no credential is stored. A signup or login response carries the
- *     project's user token, which the dashboard otherwise keeps in memory
- *     only, so `/auth/*` entries are written without their bodies.
+ *   - no credential is stored. A sign-in response carries the project's user
+ *     tokens; the core already logs them as "[redacted]", but this copy does
+ *     not rely on that, so `/auth/*` entries are written without their bodies.
  *   - Clear sticks. The core replays its whole ring on every connect, so a
  *     cleared copy records `clearedAt` and older entries stay out.
  *   - logout forgets every project's copy, and a store opened before the

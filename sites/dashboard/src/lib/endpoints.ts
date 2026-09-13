@@ -66,6 +66,27 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
   {
     resource: 'auth',
     method: 'POST',
+    path: '/auth/refresh',
+    needsId: false,
+    kind: 'auth',
+    sample: {
+      request: { refreshToken: 'the refreshToken from signup or login' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/logout',
+    needsId: false,
+    kind: 'auth',
+    // The bearer token names the session to end; a refreshToken here does too.
+    sample: {
+      request: {},
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
     path: '/auth/change-password',
     needsId: false,
     kind: 'auth',

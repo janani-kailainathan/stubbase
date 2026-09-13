@@ -1,16 +1,18 @@
 /**
  * The identity table and what may be done with it.
  *
- * `system/users.json` and `system/reset-password.json` are the auth feature's
- * own files. They are never mounted as CRUD resources and never reach the SQL
- * projection, so the only ways out of the server are the auth routes (through
- * `safeUser`) and the dashboard's read-only system view (through
- * `viewSystemFile`). A project can still have a `data/users.json`: that is an
- * ordinary resource and has nothing to do with sign-in.
+ * `system/users.json`, `system/reset-password.json` and `system/sessions.json`
+ * are the auth feature's own files. They are never mounted as CRUD resources
+ * and never reach the SQL projection, so the only ways out of the server are
+ * the auth routes (through `safeUser`) and the dashboard's read-only system
+ * view (through `viewSystemFile`). A project can still have a
+ * `data/users.json`: that is an ordinary resource and has nothing to do with
+ * sign-in.
  */
 import { json } from "../../lib/http.ts";
 import type { Jwt } from "./jwt.ts";
-import type { AuthHost, AuthTenant, Claims, Identity, ResetEntry, UserRecord } from "./types.ts";
+import { closeUserSessions, openSession } from "./sessions.ts";
+import type { AuthHost, AuthTenant, Claims, Identity, ResetEntry, SessionEntry, UserRecord } from "./types.ts";
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const MIN_PASSWORD_LEN = 8;
@@ -46,19 +48,31 @@ export const findByEmail = (identity: Identity, email: string) =>
 export const findById = (identity: Identity, id: string) =>
   identity.users.find((u) => String(u.id) === id);
 
-/** A fresh token and the user it speaks for — the answer to every successful sign-in. */
-export const signedIn = <T extends AuthTenant>(ctx: AuthContext<T>, user: UserRecord, status = 200) =>
-  json(
-    { token: ctx.jwt.sign(ctx.tenantId, user, ctx.tenant.config.auth.jwtTtlSec), user: safeUser(user) },
-    status,
-  );
+/**
+ * Opens a session for someone who has just proved who they are, and returns
+ * its tokens. Every sign-in comes through here — password, reset code or OAuth.
+ */
+export async function issueTokens<T extends AuthTenant>(ctx: AuthContext<T>, user: UserRecord) {
+  const { tenantId, tenant, host, jwt } = ctx;
+  const { jwtTtlSec, refreshTtlSec } = tenant.config.auth;
+  const { session, refreshToken } = openSession(host.secret, tenantId, tenant.identity, String(user.id), refreshTtlSec);
+  const token = jwt.sign(tenantId, user, session.id, jwtTtlSec);
+  await host.saveSessions(tenantId, tenant);
+  return { token, refreshToken, expiresIn: jwtTtlSec };
+}
+
+/** A fresh session and the user it speaks for — the answer to every successful sign-in. */
+export const signedIn = async <T extends AuthTenant>(ctx: AuthContext<T>, user: UserRecord, status = 200) =>
+  json({ ...(await issueTokens(ctx, user)), user: safeUser(user) }, status);
 
 /**
- * Sets a new password and revokes every token issued before it.
+ * Sets a new password and signs the user out everywhere.
  *
- * Revocation rides `passwordChangedAt`: each token carries the value it was
- * signed under, and `authenticate` refuses one that no longer matches. Any reset
+ * Two things end: every session the user had, so no refresh token outlives the
+ * change, and — through `passwordChangedAt`, which each token carries and
+ * `authenticate` compares — every access token signed before it. Any reset
  * code still outstanding is spent too, or it could undo the change just made.
+ * The caller then opens a fresh session with `signedIn`.
  */
 export async function setPassword<T extends AuthTenant>(ctx: AuthContext<T>, user: UserRecord, password: string) {
   const passwordHash = await Bun.password.hash(password, ARGON);
@@ -67,8 +81,10 @@ export async function setPassword<T extends AuthTenant>(ctx: AuthContext<T>, use
   user.passwordChangedAt = now;
   user.updatedAt = now;
   const spent = spendResetCode(ctx.tenant.identity, String(user.id));
+  const closed = closeUserSessions(ctx.tenant.identity, String(user.id));
   await ctx.host.saveUsers(ctx.tenantId, ctx.tenant);
   if (spent) await ctx.host.saveResets(ctx.tenantId, ctx.tenant);
+  if (closed) await ctx.host.saveSessions(ctx.tenantId, ctx.tenant);
 }
 
 /** Burns a user's outstanding code, keeping the row for its issue history. True if one was live. */
@@ -83,12 +99,14 @@ export function spendResetCode(identity: Identity, userId: string): boolean {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
 
+const text = (v: unknown) => (typeof v === "string" ? v : "");
+
 /**
- * Builds the in-RAM identity from the two system files as read off disk. Rows
- * that are not the right shape are dropped rather than trusted: nothing else
- * about this table is allowed to be surprising.
+ * Builds the in-RAM identity from the three system files as read off disk.
+ * Rows that are not the right shape are dropped rather than trusted: nothing
+ * else about this table is allowed to be surprising.
  */
-export function readIdentity(usersRaw: unknown, resetsRaw: unknown): Identity {
+export function readIdentity(usersRaw: unknown, resetsRaw: unknown, sessionsRaw: unknown): Identity {
   const users = (Array.isArray(usersRaw) ? usersRaw : []).filter(
     (u): u is UserRecord => isObject(u) && (typeof u.id === "string" || typeof u.id === "number") && typeof u.email === "string",
   );
@@ -103,14 +121,28 @@ export function readIdentity(usersRaw: unknown, resetsRaw: unknown): Identity {
       issuedAt: Array.isArray(r.issuedAt) ? r.issuedAt.filter((t): t is string => typeof t === "string") : [],
     });
   }
-  return { users, resets };
+  const sessions: SessionEntry[] = [];
+  for (const s of Array.isArray(sessionsRaw) ? sessionsRaw : []) {
+    if (!isObject(s) || typeof s.id !== "string" || typeof s.userId !== "string") continue;
+    if (typeof s.tokenHash !== "string" || typeof s.expiresAt !== "string") continue;
+    sessions.push({
+      id: s.id,
+      userId: s.userId,
+      tokenHash: s.tokenHash,
+      previousHash: text(s.previousHash),
+      createdAt: text(s.createdAt),
+      refreshedAt: text(s.refreshedAt),
+      expiresAt: s.expiresAt,
+    });
+  }
+  return { users, resets, sessions };
 }
 
 /**
- * The system files the dashboard may look at, and how each is shown. Neither
- * view carries a credential: a password hash is stripped, and so is a reset
- * code's HMAC, since six digits are recoverable from their hash by anyone who
- * could also get at the key.
+ * The system files the dashboard may look at, and how each is shown. No view
+ * carries a credential: a password hash is stripped, and so is a reset code's
+ * HMAC, since six digits are recoverable from their hash by anyone who could
+ * also get at the key — and so are a session's refresh-token hashes.
  */
 const SYSTEM_VIEWS = {
   users: (row: Record<string, unknown>) => {
@@ -119,6 +151,10 @@ const SYSTEM_VIEWS = {
   },
   "reset-password": (row: Record<string, unknown>) => {
     const { codeHash: _ch, ...rest } = row;
+    return rest;
+  },
+  sessions: (row: Record<string, unknown>) => {
+    const { tokenHash: _th, previousHash: _ph, ...rest } = row;
     return rest;
   },
 };
@@ -132,3 +168,25 @@ export const isSystemFileName = (name: string): name is SystemFileName =>
 
 export const viewSystemFile = (name: SystemFileName, rows: unknown[]) =>
   rows.filter(isObject).map(SYSTEM_VIEWS[name]);
+
+const TOKEN_FIELDS = ["token", "refreshToken"];
+
+/**
+ * An auth response body as the request log may keep it. The tokens a sign-in
+ * hands out are replaced; the user and any error stay readable. The log
+ * streams to the project owner's dashboard, and a refresh token there would be
+ * a month-long credential for somebody else's account. A body that is not JSON
+ * is dropped rather than kept unexamined.
+ */
+export function redactAuthBody(body: string | null): string | null {
+  if (body === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!isObject(parsed) || !TOKEN_FIELDS.some((f) => f in parsed)) return body;
+    const copy: Record<string, unknown> = { ...parsed };
+    for (const f of TOKEN_FIELDS) if (f in copy) copy[f] = "[redacted]";
+    return JSON.stringify(copy);
+  } catch {
+    return null;
+  }
+}

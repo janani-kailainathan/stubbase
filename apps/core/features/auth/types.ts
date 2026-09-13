@@ -20,8 +20,11 @@ export interface AuthConfig {
   enabled: boolean;
   /** Resources that allow anonymous GET despite auth. */
   publicRoutes: Set<string>;
+  /** How long an access token lasts. */
   jwtTtlSec: number;
-  /** Frontend URL that receives `#token=…` after OAuth. */
+  /** How long a session lasts without a refresh; every refresh starts it again. Never shorter than `jwtTtlSec`. */
+  refreshTtlSec: number;
+  /** Frontend URL that receives `#token=…&refreshToken=…&expiresIn=…` after OAuth. */
   oauthRedirect: string;
   /** Frontend page a reset email links to with `#email=…&code=…`. Empty: the email carries the code alone. */
   resetUrl: string;
@@ -59,9 +62,30 @@ export interface ResetEntry {
   issuedAt: string[];
 }
 
+/**
+ * One row of `system/sessions.json`: a sign-in that is still going.
+ *
+ * The refresh token is `<id>.<secret>`, and only keyed hashes of the secret are
+ * kept (see sessions.ts). `previousHash` is the secret the last refresh spent:
+ * presenting it again means the token was copied, and ends the session.
+ */
+export interface SessionEntry {
+  id: string;
+  userId: string;
+  /** HMAC of the current refresh secret. */
+  tokenHash: string;
+  /** HMAC of the secret the last refresh spent. `""` until the first refresh. */
+  previousHash: string;
+  createdAt: string;
+  refreshedAt: string;
+  /** Pushed out again by every refresh. */
+  expiresAt: string;
+}
+
 export interface Identity {
   users: UserRecord[];
   resets: ResetEntry[];
+  sessions: SessionEntry[];
 }
 
 /** What the feature needs to see of a loaded tenant. */
@@ -89,6 +113,8 @@ export interface AuthHost<T extends AuthTenant> {
   saveUsers(tenantId: string, tenant: T): Promise<unknown>;
   /** Write-through for `system/reset-password.json`. */
   saveResets(tenantId: string, tenant: T): Promise<unknown>;
+  /** Write-through for `system/sessions.json`. */
+  saveSessions(tenantId: string, tenant: T): Promise<unknown>;
   readJsonBody(req: Request): Promise<unknown | Response>;
   /** Public origin as the browser sees it. */
   requestOrigin(req: Request): string;
@@ -108,6 +134,8 @@ export interface Claims {
   sub: string;
   email: string;
   role: string;
+  /** The session the token was issued for. Once that session is closed the token is refused. */
+  sid: string;
   iat: number;
   exp: number;
   /** The user's `passwordChangedAt` when the token was signed. A mismatch revokes the token. */

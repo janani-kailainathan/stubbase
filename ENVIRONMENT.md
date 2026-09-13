@@ -20,7 +20,7 @@ distinct layers — don't confuse them:
 |---|---|---|
 | `ADMIN_SECRET` | — **(required, exits if unset)** | Bearer token for the `_admin` plane; also the root key from which per-tenant JWT signing keys are derived (`HMAC(ADMIN_SECRET, "jwt:" + tenantId)`). Rotating it invalidates every tenant's JWTs. Must match the Dashboard API's value. **Never reaches a browser.** |
 | `PORT` | `3000` | Listen port. |
-| `TENANTS_DIR` | `./tenants` | Root of tenant folders: `<tenant>/data/<resource>.json` (and drafts) for resources, `<tenant>/system/` for `config.json`, `status.json` and feature-owned files (`users.json`, `reset-password.json`). The only writable path in the sandboxed systemd unit. |
+| `TENANTS_DIR` | `./tenants` | Root of tenant folders: `<tenant>/data/<resource>.json` (and drafts) for resources, `<tenant>/system/` for `config.json`, `status.json` and feature-owned files (`users.json`, `reset-password.json`, `sessions.json`). The only writable path in the sandboxed systemd unit. |
 | `IDLE_TTL_MS` | `300000` (5 min) | Idle time before a tenant is evicted from RAM (scale-to-zero). Set low to test eviction. |
 | `MAX_ACTIVE_TENANTS` | `500` | RAM cap; past it, the least-recently-seen tenant is evicted early. |
 | `MAX_BODY_BYTES` | `1048576` (1 MiB) | Request-body size limit. |
@@ -29,7 +29,7 @@ distinct layers — don't confuse them:
 | `USAGE_SINK_URL` | *(unset = metering off)* | Where aggregated usage counters are POSTed, i.e. the Dashboard API's `/_internal/usage`. The core cannot write the SQLite file itself (sandbox), so that service is the only writer to `api_usage`. |
 | `USAGE_FLUSH_MS` | `60000` | How often counters flush. They also flush on tenant eviction and on SIGTERM/SIGINT; a failed flush retains its counters for the next attempt. |
 | `LOG_CAP` | `50` | Live request-log ring size per tenant (in RAM, never written to disk). Past it the oldest entry is dropped. |
-| `LOG_BODY_CHARS` | `500` | Request/response bodies in the log are truncated to this many characters, so one fat payload can't pin memory in the ring. |
+| `LOG_BODY_CHARS` | `500` | Request/response bodies in the log are truncated to this many characters, so one fat payload can't pin memory in the ring. An `/auth/*` response is logged with its `token` and `refreshToken` replaced by `"[redacted]"`, so the log never holds a credential. |
 | `SQL_IDLE_MS` | `300000` (5 min) | Idle time before a tenant's in-memory SQLite projection (the MCP query surface) is destroyed and its RAM freed. Independent of `IDLE_TTL_MS`: an MCP session can stay open for hours while querying rarely, and the next query transparently re-mounts. |
 | `SQL_MAX_ROWS` | `500` | Row ceiling per `execute_sql_query` call. Rows are pulled lazily, so a runaway join stops early rather than materialising. The result reports `truncated: true`. |
 | `SQL_MAX_COLUMNS` | `200` | Column ceiling per mounted table, so one pathological record shape can't blow up the projection. |
@@ -175,10 +175,11 @@ backends take no npm dependencies).
 
 | Key | Example | Purpose |
 |---|---|---|
-| `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` (never a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
+| `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/refresh`, `/logout`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` and open sessions in `system/sessions.json` (neither a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
 | `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). Ignored while roles are on (`RBAC_ENABLED=true` with a `system/rbac.json`) — the `guest` role decides what visitors may do. |
-| `AUTH_JWT_TTL_SECONDS` | `"3600"` | JWT lifetime (default 86400 = 24 h, min 60). |
-| `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>` instead of returning JSON. |
+| `AUTH_JWT_TTL_SECONDS` | `"3600"` | Access token (JWT) lifetime (default 86400 = 24 h, min 60). Every sign-in answers with it as `expiresIn`. |
+| `AUTH_REFRESH_TTL_SECONDS` | `"604800"` | How long a session lasts without a refresh (default 2592000 = 30 days, min 3600, and never shorter than `AUTH_JWT_TTL_SECONDS`). Sliding: every `POST /auth/refresh` starts it again. A session that runs out takes its access tokens with it. |
+| `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>&refreshToken=<token>&expiresIn=<seconds>` instead of returning JSON. |
 | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_SECRET` | — | Tenant's own Google OAuth app. Both present ⇒ `GET /<tenant>/auth/google` (+ `/callback`) go live. The tenant registers `<origin>/<tenant>/auth/google/callback` in their Google console. |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_SECRET` | — | Same for GitHub (`/auth/github`). |
 | `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself needs `RESEND_API_KEY` (§ Notifications) — or the core's `AUTH_RESET_LOG_CODES` locally — and answers `404` without either. |
@@ -189,15 +190,31 @@ re-read on every request, so a change applies from the next one. Without an
 `rbac.json` in force, `"admin"` bypasses the ownership rules and every signup is
 `user`. With one (and `RBAC_ENABLED=true`), signups get its `defaultRole`, and a role is changed from the
 dashboard or by a role holding `_users: update`. JWTs carry
-`sub`/`email`/`role`/`pwdAt` claims signed with the derived per-tenant key
+`sub`/`email`/`role`/`sid`/`pwdAt` claims signed with the derived per-tenant key
 (nothing stored on disk).
+
+**Sessions and refresh tokens** (not keys — fixed behaviour): every sign-in —
+signup, login, change or reset password, OAuth — opens a session in
+`system/sessions.json` and answers `{ token, refreshToken, expiresIn, user }`.
+The JWT names its session (`sid`) and is refused once that session is closed,
+so `POST /auth/logout` (a Bearer token and/or `{ refreshToken }`, always `204`)
+takes effect at once. The refresh token is `<session id>.<secret>`, carried in
+the JSON body — never a cookie, since the public plane answers
+`Access-Control-Allow-Origin: *` — and stored only as an HMAC keyed off
+`ADMIN_SECRET` and bound to the project and the session. `POST /auth/refresh`
+spends it and returns the next pair. Presenting the secret a refresh already
+spent closes the session (someone holds a copy); a secret that matches nothing
+closes nothing. Rotation is strict, so a client must never run two refreshes at
+once with the same token — the loser closes the session. Each account keeps at
+most 10 sessions, and signing in past that closes the one refreshed longest ago.
 
 **Password reset and revocation** (not keys — fixed behaviour): a reset code is
 six digits, lives 15 minutes, works once, is spent by five wrong guesses, and is
 replaced by the next request; each account gets at most five codes an hour. Codes
 are stored in `system/reset-password.json` as an HMAC keyed off `ADMIN_SECRET`.
-Changing or resetting a password stamps `passwordChangedAt`, and every token
-signed before it stops verifying.
+Changing or resetting a password stamps `passwordChangedAt` and closes every
+session the account has, so every token and refresh token issued before it
+stops working; the answer opens a fresh session for the caller.
 
 ### Roles and permissions (`<tenant>/system/rbac.json`)
 

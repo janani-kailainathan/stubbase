@@ -292,6 +292,46 @@ describe("starter examples", () => {
     }
   }, 30_000);
 
+  test("each auth starter's sessions last what its .env says, and a refresh keeps one going", async () => {
+    const withAuth = STARTERS.filter((s) => s.config?.AUTH_ENABLED === "true");
+    expect(withAuth.map((s) => s.id)).toEqual(["storefront", "recipes", "helpdesk", "accounts"]);
+    for (const starter of withAuth) {
+      const base = `${core.base}/${starter.id}-w`;
+      const json = { "content-type": "application/json" };
+      // The core's defaults stand in for a key the starter leaves out.
+      const tokenTtl = Number(starter.config!.AUTH_JWT_TTL_SECONDS ?? 86_400);
+      const sessionTtl = Number(starter.config!.AUTH_REFRESH_TTL_SECONDS ?? 2_592_000);
+
+      const signup = await fetch(`${base}/auth/signup`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ email: `sessions@${starter.id}.example`, password: "password123" }),
+      });
+      expect(signup.status).toBe(201);
+      const issued = (await signup.json()) as { expiresIn: number; refreshToken: string; user: { id: string } };
+      expect({ starter: starter.id, expiresIn: issued.expiresIn }).toEqual({ starter: starter.id, expiresIn: tokenTtl });
+
+      const refreshed = await fetch(`${base}/auth/refresh`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ refreshToken: issued.refreshToken }),
+      });
+      expect(refreshed.status).toBe(200);
+
+      // The session now ends what the starter promises after that refresh.
+      const sessions = (await fetch(`${base}/_admin/system/sessions`, { headers: adminAuth }).then((r) => r.json())) as {
+        userId: string;
+        expiresAt: string;
+      }[];
+      const mine = sessions.find((s) => s.userId === String(issued.user.id))!;
+      const lasts = (Date.parse(mine.expiresAt) - Date.now()) / 1000;
+      expect({ starter: starter.id, offBySeconds: Math.abs(lasts - sessionTtl) < 60 }).toEqual({
+        starter: starter.id,
+        offBySeconds: true,
+      });
+    }
+  }, 30_000);
+
   test("Forkful keeps its non-public resources behind sign-in", async () => {
     const starter = STARTERS.find((s) => s.id === "recipes")!;
     // Everything but collections is on AUTH_PUBLIC_ROUTES — and every one of those names a real resource.
@@ -406,8 +446,18 @@ describe("starter examples", () => {
     const changed = await post("/auth/change-password", { currentPassword: "password123", password: "password456" }, asAda);
     expect(changed.status).toBe(200);
     expect((await fetch(`${base}/profiles`, { headers: asAda })).status).toBe(401);
-    const { token } = (await changed.json()) as { token: string };
+    const { token, refreshToken } = (await changed.json()) as { token: string; refreshToken: string };
     expect((await fetch(`${base}/profiles`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+
+    // Its short token is kept going by the refresh token, and logout ends the session at once.
+    const refreshed = await post("/auth/refresh", { refreshToken });
+    expect(refreshed.status).toBe(200);
+    const next = (await refreshed.json()) as { token: string };
+    const asNext = { authorization: `Bearer ${next.token}` };
+    expect((await fetch(`${base}/profiles`, { headers: asNext })).status).toBe(200);
+    expect((await post("/auth/logout", {}, asNext)).status).toBe(204);
+    expect((await fetch(`${base}/profiles`, { headers: asNext })).status).toBe(401);
+    expect((await post("/auth/refresh", { refreshToken })).status).toBe(401);
 
     // Social sign-in and reset emails wait on credentials only the owner has,
     // which is exactly what the starter's next step tells them.

@@ -318,6 +318,7 @@ describe("project provisioning", () => {
     "AUTH_ENABLED",
     "AUTH_PUBLIC_ROUTES",
     "AUTH_JWT_TTL_SECONDS",
+    "AUTH_REFRESH_TTL_SECONDS",
     "AUTH_OAUTH_REDIRECT",
     "AUTH_RESET_URL",
     "RBAC_ENABLED",
@@ -2240,13 +2241,22 @@ describe("system files", () => {
     });
     expect(signed.status).toBe(201);
 
-    expect(await list()).toEqual({ files: ["users"] });
+    // The signup opened a session as well as an account.
+    expect(await list()).toEqual({ files: ["users", "sessions"] });
     const users = await fetch(`${app.base}/projects/${tenantId}/system/users`, { headers: as(owner.token) });
     expect(users.status).toBe(200);
     const rows = await users.json();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ email: "end-user@test.co", role: "user" });
     expect(rows[0]).not.toHaveProperty("passwordHash");
+
+    const sessions = await fetch(`${app.base}/projects/${tenantId}/system/sessions`, { headers: as(owner.token) });
+    expect(sessions.status).toBe(200);
+    const [session, ...more] = await sessions.json();
+    expect(more).toHaveLength(0);
+    expect(session).toMatchObject({ userId: rows[0].id });
+    expect(session).not.toHaveProperty("tokenHash");
+    expect(session).not.toHaveProperty("previousHash");
 
     // No write route exists, and the files proxy cannot reach it either: `users` there is data/.
     for (const method of ["PUT", "DELETE"]) {

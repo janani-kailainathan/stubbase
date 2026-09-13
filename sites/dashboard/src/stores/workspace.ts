@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ChatTurn, RunResult } from '@/lib/api'
-import type { PlaygroundInputs } from '@/lib/playground'
+import { REFRESH_ROUTE, playgroundKey, refreshBody, type PlaygroundInputs } from '@/lib/playground'
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
@@ -91,6 +91,8 @@ interface WorkspaceState {
    * drops it on logout so it cannot outlive the account that obtained it.
    */
   testTokens: Record<string, string>
+  /** The refresh token that came with it, per project — memory only, for the same reasons. */
+  testRefreshTokens: Record<string, string>
   /**
    * The playground's layout — request pane height as a percentage, and whether
    * the response pane is folded away. A preference, not per-endpoint state, so
@@ -152,6 +154,10 @@ interface WorkspaceState {
   setChatInput: (text: string) => void
   setPlaygroundInputs: (key: string, inputs: PlaygroundInputs) => void
   setTestToken: (tenantId: string, token: string) => void
+  /** Hold a new refresh token, and put it in the refresh route's body if that route has been opened. */
+  adoptRefreshToken: (tenantId: string, refreshToken: string) => void
+  /** Forget both tokens once a logout has ended their session. */
+  endTestSession: (tenantId: string) => void
   /** Record a playground request under `key` while `send` runs, and resolve with its result. */
   runPlayground: (key: string, send: () => Promise<RunResult>) => Promise<RunResult>
   setPlaygroundSplit: (split: number) => void
@@ -175,6 +181,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   playgroundInputs: {},
   playgroundRuns: {},
   testTokens: {},
+  testRefreshTokens: {},
   playgroundSplit: 55,
   playgroundCollapsed: false,
   filesCollapsed: false,
@@ -202,6 +209,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       playgroundInputs: {},
       playgroundRuns: {},
       testTokens: {},
+      testRefreshTokens: {},
       chat: {}, // prompts and generated data must not leak between users
       chatInput: '',
       stagedDismissed: false,
@@ -254,6 +262,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setTestToken: (tenantId, token) =>
     set((s) => ({ testTokens: { ...s.testTokens, [tenantId]: token } })),
+
+  adoptRefreshToken: (tenantId, refreshToken) =>
+    set((s) => {
+      // A refresh route the user has opened keeps everything they typed but the
+      // body, which would otherwise still hold the token this one just replaced.
+      const key = playgroundKey(tenantId, REFRESH_ROUTE)
+      const opened = s.playgroundInputs[key]
+      return {
+        testRefreshTokens: { ...s.testRefreshTokens, [tenantId]: refreshToken },
+        ...(opened && {
+          playgroundInputs: { ...s.playgroundInputs, [key]: { ...opened, body: refreshBody(refreshToken) } },
+        }),
+      }
+    }),
+
+  endTestSession: (tenantId) =>
+    set((s) => {
+      const { [tenantId]: _token, ...testTokens } = s.testTokens
+      const { [tenantId]: _refresh, ...testRefreshTokens } = s.testRefreshTokens
+      return { testTokens, testRefreshTokens }
+    }),
 
   runPlayground: async (key, send) => {
     set((s) => ({

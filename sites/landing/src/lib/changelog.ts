@@ -57,6 +57,11 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
+        text: 'Refresh tokens and logout for the users of your API. Every sign-in returns a refresh token that renews a short-lived access token, rotates on every use and ends the session if a copy is ever replayed; logout ends one device at once.',
+        href: '/features/google-github-social-login',
+      },
+      {
+        kind: 'added',
         text: 'The AI Co-Pilot: describe a schema in plain English and it stages the resources for you to review and deploy.',
         href: '/features/ai-rest-api-generation',
       },

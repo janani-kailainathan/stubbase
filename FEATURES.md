@@ -178,8 +178,8 @@ AUTH_JWT_TTL_SECONDS=3600
 ```
 
 Hit **Deploy** and that is live: your API now needs a token, anyone can still
-read `/posts` and `/comments` without one, and a token lasts an hour before the
-user signs in again. Change a value, deploy again, and the new setting applies
+read `/posts` and `/comments` without one, and a token lasts an hour before your
+app has to renew it. Change a value, deploy again, and the new setting applies
 to the very next request.
 
 Set `AUTH_ENABLED=false` and the feature is off — but the two settings stay in
@@ -195,9 +195,11 @@ Give *your* users accounts, without building an auth service. Turn it on and
 these endpoints appear:
 
 ```
-POST   /<project>/auth/signup            { email, password }             → a token
-POST   /<project>/auth/login             { email, password }             → a token
-POST   /<project>/auth/change-password   { currentPassword, password }   → a new token
+POST   /<project>/auth/signup            { email, password }               → a token and a refresh token
+POST   /<project>/auth/login             { email, password }               → a token and a refresh token
+POST   /<project>/auth/refresh           { refreshToken }                  → a new token and refresh token
+POST   /<project>/auth/logout            your token, or { refreshToken }   → signed out
+POST   /<project>/auth/change-password   { currentPassword, password }     → a new token and refresh token
 ```
 
 Your app sends that token back on every request:
@@ -208,6 +210,22 @@ Authorization: Bearer <token>
 
 With auth on, your whole API is private by default — every request needs a valid
 token. You choose which resources stay readable by anyone.
+
+**Staying signed in.** Every sign-in hands back two things: the `token` your app
+sends on each request, and a `refreshToken` your app keeps to itself. When the
+token runs out — `expiresIn` says after how many seconds — send the refresh
+token to `/auth/refresh` and you get a new pair, with no password needed. Each
+refresh token works once, so always keep the newest one. It travels in the
+request body, never in a cookie, so store it wherever your app keeps secrets.
+
+If a refresh token that was already used turns up again, somebody has a copy of
+it, and that sign-in is ended on the spot — for them and for your user. So never
+let your app send two refreshes at the same time with the same token.
+
+**Signing out** ends one sign-in straight away: send `/auth/logout` your token —
+or the refresh token, if the token has already run out — and both stop working
+at once. Your user stays signed in on their other devices. Each account keeps up
+to ten sign-ins; signing in on an eleventh ends the one used longest ago.
 
 **Your users' accounts live in your project's `system` folder.** You can open it
 in the dashboard to see who has signed up, but you cannot edit it there — the
@@ -220,13 +238,13 @@ Every account is a standard user until you add roles — see
 
 **Changing a password** takes the user's token *and* their current password, so
 a stolen token alone cannot lock anyone out. It signs the user out everywhere
-else: every token issued before the change stops working, and the response
-carries a fresh one so they stay signed in where they made it.
+else: every token and refresh token issued before the change stops working, and
+the response carries a fresh pair so they stay signed in where they made it.
 
 This section is the base every login builds on. Google and GitHub sign-in are
 extra doors into the same feature, and password reset is a way back in — they
 all need everything here switched on first, and they hand your users the same
-token.
+tokens.
 
 ##### To enable this feature, add to your `.env`:
 
@@ -252,24 +270,44 @@ app, the wrong one for a public blog with a signed-in comment box.
 Once roles are on (`RBAC_ENABLED=true` with an `rbac.json`), this key is
 ignored: the `guest` role decides what visitors can do (see 1.4.4).
 
-##### To control how long a login lasts:
+##### To control how long a token lasts:
 
 ```
-AUTH_JWT_TTL_SECONDS=3600
+AUTH_JWT_TTL_SECONDS=900
 ```
 
-A token stays valid for this many seconds — here, one hour. When it expires,
-your user's next request is rejected and your app sends them back to log in.
+A token stays valid for this many seconds — here, fifteen minutes. When it
+expires, your user's next request is rejected, and your app either trades its
+refresh token for a new pair or sends them back to log in.
 
 | Value | A token lasts | Good for |
 |---|---|---|
-| *(left out)* | 24 hours | most apps — the default |
-| `3600` | 1 hour | anything holding data you would not want left open on a shared laptop |
-| `604800` | 7 days | a mobile app or a tool people keep open all week |
+| *(left out)* | 24 hours | the default — an app that never refreshes still keeps its users signed in for a day |
+| `3600` | 1 hour | an app that refreshes and holds data you would not want left open on a shared laptop |
+| `900` | 15 minutes | an app that refreshes, when a stolen token should be worth as little as possible |
 
-The minimum is `60`. Shorter is safer but means signing in more often, and
-there is no refresh flow — so pick the longest span you are comfortable with
-rather than the shortest one you can bear.
+The minimum is `60`. A shorter token is safer, and once your app refreshes it
+costs your users nothing: they stay signed in for as long as the next setting
+allows.
+
+##### To control how long a user stays signed in:
+
+```
+AUTH_REFRESH_TTL_SECONDS=604800
+```
+
+A sign-in lasts this many seconds without a refresh — here, a week. Every
+refresh starts the clock again, so someone who opens your app at least once a
+week never has to log in again, and someone who stays away longer does.
+
+| Value | Stays signed in | Good for |
+|---|---|---|
+| *(left out)* | 30 days after the last refresh | most apps — the default |
+| `86400` | 1 day | admin tools and anything sensitive |
+| `7776000` | 90 days | a mobile app people open now and then |
+
+The minimum is `3600`, and it is never shorter than `AUTH_JWT_TTL_SECONDS`: a
+sign-in that ended first would cut its token short.
 
 #### 1.4.1 Google login
 
@@ -304,9 +342,10 @@ In the Google console, register the callback as
 AUTH_OAUTH_REDIRECT=https://your-app.com/login
 ```
 
-Without it the token comes back as JSON — fine when you are calling the endpoint
+Without it the tokens come back as JSON — fine when you are calling the endpoint
 yourself, no use when a browser is doing the redirecting. Set it and we redirect
-to your app with `#token=…` on the end for you to read.
+to your app with `#token=…&refreshToken=…&expiresIn=…` on the end for you to
+read.
 
 This key is shared with GitHub login: set it once and it applies to both.
 
@@ -338,9 +377,10 @@ You can run Google and GitHub side by side — set both pairs and your users pic
 AUTH_OAUTH_REDIRECT=https://your-app.com/login
 ```
 
-Without it the token comes back as JSON — fine when you are calling the endpoint
+Without it the tokens come back as JSON — fine when you are calling the endpoint
 yourself, no use when a browser is doing the redirecting. Set it and we redirect
-to your app with `#token=…` on the end for you to read.
+to your app with `#token=…&refreshToken=…&expiresIn=…` on the end for you to
+read.
 
 This key is shared with Google login: set it once and it applies to both.
 
@@ -351,14 +391,14 @@ email it to them, and they trade it for a new password:
 
 ```
 POST   /<project>/auth/forgot-password   { email }                   → a code is emailed
-POST   /<project>/auth/reset-password    { email, code, password }   → a token
+POST   /<project>/auth/reset-password    { email, code, password }   → a token and a refresh token
 ```
 
 The code is six digits, works once, and expires after 15 minutes.
 `forgot-password` answers exactly the same whether or not the email has an
 account, so nobody can use it to find out who has signed up. Resetting signs the
 user out everywhere, like changing a password does, and the response carries a
-fresh token so they are signed straight back in.
+fresh pair of tokens so they are signed straight back in.
 
 Six digits stay safe because of the limits around them: five wrong tries use a
 code up, asking again replaces the code sent before, and each account gets at
@@ -535,9 +575,10 @@ Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 
 | Key | Example | What it does |
 |---|---|---|
-| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login and change-password endpoints, keeps your users' accounts in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub, password reset and roles ones. |
+| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login, refresh, logout and change-password endpoints, keeps your users' accounts and sessions in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub, password reset and roles ones. |
 | `AUTH_PUBLIC_ROUTES` | `posts,comments` | Resources anyone may `GET` without a token. Writes to them still need one. Comma-separated, no spaces. Left out, nothing is public. |
 | `AUTH_JWT_TTL_SECONDS` | `3600` | How long a token stays valid, in seconds. Defaults to `86400` (24 hours); the minimum is `60`. |
+| `AUTH_REFRESH_TTL_SECONDS` | `604800` | How long a user stays signed in without using their refresh token, in seconds. Every refresh starts the clock again. Defaults to `2592000` (30 days); the minimum is `3600`, and it is never shorter than `AUTH_JWT_TTL_SECONDS`. |
 
 #### 3.1.1 Google login
 
@@ -545,7 +586,7 @@ Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 |---|---|---|
 | `AUTH_GOOGLE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | **The switch, first half.** Set this *and* the secret and `/<project>/auth/google` goes live. Needs `AUTH_ENABLED=true` as well. |
 | `AUTH_GOOGLE_SECRET` | `GOCSPX-your-secret` | The other half. With only one of the pair set, the route stays off. |
-| `AUTH_OAUTH_REDIRECT` | `https://your-app.com/login` | Send the user here with `#token=…` attached instead of returning the token as JSON. Shared with the other provider — set it once, it applies to both. |
+| `AUTH_OAUTH_REDIRECT` | `https://your-app.com/login` | Send the user here with `#token=…&refreshToken=…&expiresIn=…` attached instead of returning them as JSON. Shared with the other provider — set it once, it applies to both. |
 
 Register `<origin>/<project>/auth/google/callback` in the Google console.
 
@@ -555,7 +596,7 @@ Register `<origin>/<project>/auth/google/callback` in the Google console.
 |---|---|---|
 | `AUTH_GITHUB_CLIENT_ID` | `Iv1.a1b2c3d4e5f6` | **The switch, first half.** Set this *and* the secret and `/<project>/auth/github` goes live. Needs `AUTH_ENABLED=true` as well. |
 | `AUTH_GITHUB_SECRET` | `your-github-secret` | The other half. With only one of the pair set, the route stays off. |
-| `AUTH_OAUTH_REDIRECT` | `https://your-app.com/login` | Send the user here with `#token=…` attached instead of returning the token as JSON. Shared with the other provider — set it once, it applies to both. |
+| `AUTH_OAUTH_REDIRECT` | `https://your-app.com/login` | Send the user here with `#token=…&refreshToken=…&expiresIn=…` attached instead of returning them as JSON. Shared with the other provider — set it once, it applies to both. |
 
 Register `<origin>/<project>/auth/github/callback` in your GitHub OAuth app.
 

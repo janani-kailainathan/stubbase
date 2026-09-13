@@ -1,18 +1,23 @@
 /**
- * Auth — sign-up, login and password recovery for a tenant's end users.
+ * Auth — sign-up, login, sessions and password recovery for a tenant's end users.
  *
- *   POST /<tenant>/auth/signup            { email, password, name? }         → 201 { token, user }
- *   POST /<tenant>/auth/login             { email, password }                → { token, user }
- *   POST /<tenant>/auth/change-password   { currentPassword, password } + JWT → { token, user }
- *   POST /<tenant>/auth/forgot-password   { email }                          → 202
- *   POST /<tenant>/auth/reset-password    { email, code, password }          → { token, user }
- *   GET  /<tenant>/auth/google|github[/callback]                             (when configured)
- *   GET  /<tenant>/auth/users                                                (role with _users: read)
- *   PUT  /<tenant>/auth/users/<id>/role   { role }                           (role with _users: update)
+ *   POST /<tenant>/auth/signup            { email, password, name? }          → 201 { ...tokens, user }
+ *   POST /<tenant>/auth/login             { email, password }                 → { ...tokens, user }
+ *   POST /<tenant>/auth/refresh           { refreshToken }                    → { ...tokens, user }
+ *   POST /<tenant>/auth/logout            JWT and/or { refreshToken }         → 204
+ *   POST /<tenant>/auth/change-password   { currentPassword, password } + JWT → { ...tokens, user }
+ *   POST /<tenant>/auth/forgot-password   { email }                           → 202
+ *   POST /<tenant>/auth/reset-password    { email, code, password }           → { ...tokens, user }
+ *   GET  /<tenant>/auth/google|github[/callback]                              (when configured)
+ *   GET  /<tenant>/auth/users                                                 (role with _users: read)
+ *   PUT  /<tenant>/auth/users/<id>/role   { role }                            (role with _users: update)
  *
- * Every route needs AUTH_ENABLED. The identity table is `system/users.json` and
- * outstanding reset codes are `system/reset-password.json`; neither is a CRUD
- * resource (see identity.ts).
+ * `tokens` is `{ token, refreshToken, expiresIn }`: every sign-in opens a
+ * session (sessions.ts), and the refresh token keeps it going.
+ *
+ * Every route needs AUTH_ENABLED. The identity table is `system/users.json`,
+ * outstanding reset codes are `system/reset-password.json` and open sessions
+ * are `system/sessions.json`; none of them is a CRUD resource (see identity.ts).
  *
  * The core builds one instance with `createAuth(host)` and calls `handle` for
  * the auth routes and `authenticate` wherever a request's bearer token matters
@@ -24,6 +29,8 @@ import { createJwt } from "./jwt.ts";
 import { handleOauth } from "./oauth.ts";
 import { changePassword, login, signup } from "./password.ts";
 import { forgotPassword, resetPassword } from "./password-reset.ts";
+import { sessionOpen } from "./sessions.ts";
+import { logout, refresh } from "./tokens.ts";
 import type { AuthHost, AuthTenant, Claims } from "./types.ts";
 import { changeRole, listUsers, setRole } from "./users.ts";
 
@@ -37,6 +44,7 @@ export {
   SYSTEM_FILE_NAMES,
   isSystemFileName,
   readIdentity,
+  redactAuthBody,
   viewSystemFile,
   type SystemFileName,
 } from "./identity.ts";
@@ -49,10 +57,12 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
    * The claims of the request's bearer token, or null.
    *
    * A valid signature is not enough on its own. The user it names has to still
-   * exist, and the token has to have been signed under their current
+   * exist; the token has to have been signed under their current
    * `passwordChangedAt`, which is how changing or resetting a password signs
-   * that user out everywhere else. The role comes from the user record rather
-   * than from the token, so it can never be staler than the table.
+   * that user out everywhere else; and the session it was issued for has to
+   * still be open, which is how logout ends a token at once instead of when it
+   * expires. The role comes from the user record rather than from the token,
+   * so it can never be staler than the table.
    */
   function authenticate(tenantId: string, tenant: T, req: Request): Claims | null {
     const header = req.headers.get("authorization") ?? "";
@@ -63,6 +73,7 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
     if (!user) return null;
     const changedAt = typeof user.passwordChangedAt === "string" ? user.passwordChangedAt : undefined;
     if (claims.pwdAt !== changedAt) return null;
+    if (!sessionOpen(tenant.identity, claims.sid, claims.sub)) return null;
     return { ...claims, email: String(user.email), role: String(user.role ?? "user") };
   }
 
@@ -70,6 +81,8 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
   const POST_ROUTES = new Map<string, (ctx: AuthContext<T>, body: Fields) => Promise<Response>>([
     ["signup", signup],
     ["login", login],
+    ["refresh", refresh],
+    ["logout", logout],
     ["change-password", changePassword],
     ["forgot-password", forgotPassword],
     ["reset-password", resetPassword],

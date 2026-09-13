@@ -202,6 +202,8 @@ const SYSTEM_FILE_NOTES: Record<string, string> = {
     'The accounts that sign in to your API, created by /auth/signup and the login providers. You can change an account’s role here; password hashes are never shown.',
   'reset-password':
     'Password reset codes that are outstanding or were sent in the last hour. Codes themselves are never shown.',
+  sessions:
+    'Every sign-in that is still going, one row per device, kept going by /auth/refresh and ended by /auth/logout or a password change. Refresh tokens are never shown.',
 }
 
 interface AccountRow {

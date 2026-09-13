@@ -138,23 +138,49 @@ export function requestHeaders(
   return headers
 }
 
-/**
- * The tenant token a successful signup or login answered with. The playground
- * adopts it so the protected routes can be tried next without copying it
- * across by hand.
- */
-export function tokenFrom(endpoint: Endpoint, status: number, body: string): string | null {
+/** A non-empty string field of a successful auth response, or null. */
+function issued(endpoint: Endpoint, status: number, body: string, field: 'token' | 'refreshToken') {
   if (endpoint.kind !== 'auth' || status < 200 || status >= 300) return null
   try {
     const parsed: unknown = JSON.parse(body)
-    const token = parsed && typeof parsed === 'object' ? (parsed as { token?: unknown }).token : null
-    return typeof token === 'string' && token ? token : null
+    const value = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>)[field] : null
+    return typeof value === 'string' && value ? value : null
   } catch {
     return null
   }
 }
 
+/**
+ * The tenant token a successful sign-in or refresh answered with. The
+ * playground adopts it so the protected routes can be tried next without
+ * copying it across by hand.
+ */
+export const tokenFrom = (endpoint: Endpoint, status: number, body: string): string | null =>
+  issued(endpoint, status, body, 'token')
+
+/**
+ * The refresh token that came with it. Adopted into the refresh route's body,
+ * and kept in memory only like the token — it is a month-long credential for
+ * the project's API.
+ */
+export const refreshTokenFrom = (endpoint: Endpoint, status: number, body: string): string | null =>
+  issued(endpoint, status, body, 'refreshToken')
+
+/** The route that trades a refresh token for a new pair. */
+export const REFRESH_ROUTE = { method: 'POST', path: '/auth/refresh' } as const
+
+/**
+ * Whether this answer ended the playground's session, so both of its tokens are
+ * dead. A playground logout always carries the adopted bearer token, which is
+ * what names the session the core ends.
+ */
+export const endsSession = (endpoint: Pick<Endpoint, 'method' | 'path'>, status: number) =>
+  endpoint.method === 'POST' && endpoint.path === '/auth/logout' && status >= 200 && status < 300
+
 const stringify = (data: unknown) => JSON.stringify(data, null, 2) ?? ''
+
+/** The refresh route's body, carrying the refresh token the playground holds. */
+export const refreshBody = (refreshToken: string) => stringify({ refreshToken })
 
 /** A request body modelled on the resource's first record, minus its id. */
 export function sampleRecordBody(records: unknown[] | undefined | null): string {
@@ -180,19 +206,24 @@ export function recordIds(records: unknown[] | undefined | null, cap = 100): str
 /**
  * Starting values for an endpoint nobody has edited yet: the first deployed
  * record's id, and a body shaped like the deployed records (or the documented
- * shape, for an auth route).
+ * shape, for an auth route — the refresh route opens with the refresh token
+ * the playground holds, when it holds one).
  */
 export function initialInputs(
   endpoint: Endpoint,
   records: unknown[] | undefined | null,
+  refreshToken = '',
 ): PlaygroundInputs {
+  const refreshing = endpoint.method === REFRESH_ROUTE.method && endpoint.path === REFRESH_ROUTE.path
   return {
     id: endpoint.needsId ? (recordIds(records, 1)[0] ?? '') : '',
     query: [],
     body: hasBody(endpoint)
-      ? endpoint.sample?.request
-        ? stringify(endpoint.sample.request)
-        : sampleRecordBody(records)
+      ? refreshing && refreshToken
+        ? refreshBody(refreshToken)
+        : endpoint.sample?.request
+          ? stringify(endpoint.sample.request)
+          : sampleRecordBody(records)
       : '',
     chaos: {},
   }

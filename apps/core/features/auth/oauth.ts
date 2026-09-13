@@ -9,7 +9,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { err, json } from "../../lib/http.ts";
 import { newTimestamps } from "../../lib/timestamps.ts";
-import { EMAIL_RE, findByEmail, safeUser, type AuthContext } from "./identity.ts";
+import { EMAIL_RE, findByEmail, issueTokens, safeUser, type AuthContext } from "./identity.ts";
 import type { AuthTenant, UserRecord } from "./types.ts";
 
 interface OauthProvider {
@@ -133,8 +133,11 @@ export async function handleOauth<T extends AuthTenant>(
     await host.saveUsers(tenantId, tenant);
     user = created;
   }
-  const token = jwt.sign(tenantId, user, cfg.jwtTtlSec);
-  if (cfg.oauthRedirect)
-    return new Response(null, { status: 302, headers: { location: `${cfg.oauthRedirect}#token=${token}` } });
-  return json({ token, user: safeUser(user) });
+  const tokens = await issueTokens(ctx, user);
+  if (cfg.oauthRedirect) {
+    // In the fragment, which the browser never sends to a server or writes to a log.
+    const fragment = new URLSearchParams({ ...tokens, expiresIn: String(tokens.expiresIn) });
+    return new Response(null, { status: 302, headers: { location: `${cfg.oauthRedirect}#${fragment}` } });
+  }
+  return json({ ...tokens, user: safeUser(user) });
 }

@@ -51,7 +51,7 @@ async function signupAs(tenant: string, email: string, password = "password123",
     body: JSON.stringify({ email, password }),
   });
   expect(res.status).toBe(201);
-  return (await res.json()) as { token: string; user: { id: string; email: string } };
+  return (await res.json()) as { token: string; refreshToken: string; expiresIn: number; user: { id: string; email: string } };
 }
 
 // ── Shared server ──────────────────────────────────────────────────
@@ -1260,11 +1260,26 @@ describe("the admin system plane", () => {
     await seedSystemFile(core, "sysview", "reset-password", [
       { userId: "1", codeHash: "CODEHASH", expiresAt: "2099-01-01T00:00:00.000Z", attempts: 2, issuedAt: [] },
     ]);
+    await seedSystemFile(core, "sysview", "sessions", [SESSION_ROW]);
   });
+
+  const SESSION_ROW = {
+    id: "s1",
+    userId: "1",
+    tokenHash: "TOKENHASH",
+    previousHash: "PREVIOUSHASH",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    refreshedAt: "2026-01-02T00:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
 
   test("lists a tenant's feature files and shows each without its credentials", async () => {
     const list = await fetch(`${core.base}/sysview/_admin/system`, { headers: adminAuth });
-    expect(await list.json()).toEqual({ tenant: "sysview", files: ["users", "reset-password"] });
+    expect(await list.json()).toEqual({ tenant: "sysview", files: ["users", "reset-password", "sessions"] });
+
+    const sessions = await fetch(`${core.base}/sysview/_admin/system/sessions`, { headers: adminAuth });
+    const { tokenHash: _t, previousHash: _p, ...shown } = SESSION_ROW;
+    expect(await sessions.json()).toEqual([shown]);
 
     const users = await fetch(`${core.base}/sysview/_admin/system/users`, { headers: adminAuth });
     expect(await users.json()).toEqual([{ id: "1", email: "a@b.co", role: "user" }]);
@@ -1291,6 +1306,252 @@ describe("the admin system plane", () => {
   });
 });
 
+// ── Sessions and refresh tokens ────────────────────────────────────
+
+describe("sessions and refresh tokens", () => {
+  const INVALID = { error: "invalid or expired refresh token" };
+  const project = (tenant: string, extra: Record<string, string> = {}, on = core) =>
+    seed(on, tenant, { posts: [], config: { AUTH_ENABLED: "true", ...extra } });
+  const post = (tenant: string, route: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${core.base}/${tenant}/auth/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  const refresh = (tenant: string, refreshToken: string, on = core) =>
+    fetch(`${on.base}/${tenant}/auth/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+  const read = (tenant: string, token: string, on = core) => fetch(`${on.base}/${tenant}/posts`, { headers: bearer(token) });
+  const login = async (tenant: string, email: string) => {
+    const res = await post(tenant, "login", { email, password: "password123" });
+    expect(res.status).toBe(200);
+    return (await res.json()) as { token: string; refreshToken: string };
+  };
+  /** A refresh token is `<session id>.<secret>`. */
+  const sessionOf = (refreshToken: string) => refreshToken.slice(0, refreshToken.indexOf("."));
+
+  test("every sign-in answers with a refresh token, and only a keyed hash of it reaches disk", async () => {
+    await project("sess", { AUTH_JWT_TTL_SECONDS: "900" });
+    const signup = await signupAs("sess", "ada@test.co");
+    expect(signup.expiresIn).toBe(900);
+    expect(signup.refreshToken).toMatch(/^[^.]+\.[A-Za-z0-9_-]{43}$/);
+    const again = await login("sess", "ada@test.co");
+    expect(again.refreshToken).not.toBe(signup.refreshToken);
+
+    const rows = await systemFile(core, "sess", "sessions");
+    expect(rows.map((r: any) => r.id).sort()).toEqual([sessionOf(signup.refreshToken), sessionOf(again.refreshToken)].sort());
+    expect(rows.every((r: any) => r.userId === signup.user.id)).toBe(true);
+    const onDisk = JSON.stringify(rows);
+    for (const { refreshToken } of [signup, again]) expect(onDisk).not.toContain(refreshToken.split(".")[1]);
+  }, 15_000);
+
+  test("a refresh rotates the pair: the old refresh token is spent, the new one carries on", async () => {
+    await project("rotate");
+    const first = await signupAs("rotate", "bo@test.co");
+
+    const res = await refresh("rotate", first.refreshToken);
+    expect(res.status).toBe(200);
+    const next = await res.json();
+    expect(next).toMatchObject({ expiresIn: 86400, user: { id: first.user.id } });
+    expect(next.user).not.toHaveProperty("passwordHash");
+    expect(next.refreshToken).not.toBe(first.refreshToken);
+    expect(sessionOf(next.refreshToken)).toBe(sessionOf(first.refreshToken)); // the same session, carried on
+    expect((await read("rotate", next.token)).status).toBe(200);
+    expect((await read("rotate", first.token)).status).toBe(200); // its session is still open
+
+    expect((await refresh("rotate", next.refreshToken)).status).toBe(200);
+  }, 15_000);
+
+  test("a malformed or made-up refresh token is refused, and a guess ends nothing", async () => {
+    await project("guessrt");
+    const { token, refreshToken } = await signupAs("guessrt", "cy@test.co");
+    expect((await post("guessrt", "refresh", {})).status).toBe(400);
+    const sid = sessionOf(refreshToken);
+    for (const bad of ["nodot", ".secret", "no-such-session.secret", `${sid}.not-the-secret`, `${sid}.`]) {
+      const res = await refresh("guessrt", bad);
+      expect({ bad, status: res.status }).toEqual({ bad, status: 401 });
+      expect(await res.json()).toEqual(INVALID);
+    }
+    // The session id can be read out of any access token, so knowing it must not be enough to end the session.
+    expect((await read("guessrt", token)).status).toBe(200);
+    expect((await refresh("guessrt", refreshToken)).status).toBe(200);
+  }, 15_000);
+
+  test("a spent refresh token coming back ends its whole session", async () => {
+    await project("replay");
+    const stolen = await signupAs("replay", "di@test.co");
+    const elsewhere = await login("replay", "di@test.co");
+    // Whoever refreshes first — here the thief — gets a working pair…
+    const thief = await (await refresh("replay", stolen.refreshToken)).json();
+    expect((await read("replay", thief.token)).status).toBe(200);
+    // …until the spent token comes back from its rightful holder.
+    const replayed = await refresh("replay", stolen.refreshToken);
+    expect(replayed.status).toBe(401);
+    expect(await replayed.json()).toEqual(INVALID);
+
+    expect((await refresh("replay", thief.refreshToken)).status).toBe(401);
+    for (const token of [thief.token, stolen.token]) expect((await read("replay", token)).status).toBe(401);
+    // Another device's session is its own.
+    expect((await read("replay", elsewhere.token)).status).toBe(200);
+    expect((await refresh("replay", elsewhere.refreshToken)).status).toBe(200);
+  }, 20_000);
+
+  test("refreshes racing with one token: exactly one gets a new pair", async () => {
+    await project("race");
+    const { refreshToken } = await signupAs("race", "ed@test.co");
+    const statuses = await Promise.all(
+      Array.from({ length: 4 }, () => refresh("race", refreshToken).then((r) => r.status)),
+    );
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(3);
+  }, 15_000);
+
+  test("logout ends one session at once, named by its access token or its refresh token", async () => {
+    await project("logout");
+    const a = await signupAs("logout", "fe@test.co");
+    const b = await login("logout", "fe@test.co");
+    const c = await login("logout", "fe@test.co");
+
+    // The bearer token alone, no body.
+    const byToken = await fetch(`${core.base}/logout/auth/logout`, { method: "POST", headers: bearer(a.token) });
+    expect(byToken.status).toBe(204);
+    expect((await read("logout", a.token)).status).toBe(401); // at once, not when the token expires
+    expect((await refresh("logout", a.refreshToken)).status).toBe(401);
+    expect((await read("logout", b.token)).status).toBe(200);
+
+    // An access token that has run out cannot name its session; the refresh token still can.
+    expect((await post("logout", "logout", { refreshToken: b.refreshToken })).status).toBe(204);
+    expect((await read("logout", b.token)).status).toBe(401);
+    expect((await refresh("logout", b.refreshToken)).status).toBe(401);
+
+    // Always 204 — and a spent token, a wrong secret or no credential at all ends nothing else.
+    for (const body of [{ refreshToken: b.refreshToken }, { refreshToken: `${sessionOf(c.refreshToken)}.wrong` }, {}])
+      expect((await post("logout", "logout", body)).status).toBe(204);
+    expect((await read("logout", c.token)).status).toBe(200);
+    expect((await refresh("logout", c.refreshToken)).status).toBe(200);
+  }, 20_000);
+
+  test("a session that runs out is refused, and takes its access tokens with it", async () => {
+    await project("expiry");
+    const { token, refreshToken } = await signupAs("expiry", "gi@test.co");
+    const rows = await systemFile(core, "expiry", "sessions");
+    rows[0].expiresAt = new Date(Date.now() - 1000).toISOString();
+    await seedSystemFile(core, "expiry", "sessions", rows);
+    // Deploy evicts, so the next request reads the edited file.
+    expect((await fetch(`${core.base}/expiry/_admin/deploy`, { method: "POST", headers: adminAuth })).status).toBe(200);
+
+    expect((await read("expiry", token)).status).toBe(401);
+    const res = await refresh("expiry", refreshToken);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual(INVALID);
+  }, 15_000);
+
+  test("an account keeps at most ten sessions: signing in past that ends the oldest", async () => {
+    await project("capped");
+    const first = await signupAs("capped", "hu@test.co");
+    const later: { token: string; refreshToken: string }[] = [];
+    for (let i = 0; i < 10; i++) later.push(await login("capped", "hu@test.co"));
+
+    expect((await read("capped", first.token)).status).toBe(401);
+    expect((await refresh("capped", first.refreshToken)).status).toBe(401);
+    for (const { token } of later) expect((await read("capped", token)).status).toBe(200);
+    expect(await systemFile(core, "capped", "sessions")).toHaveLength(10);
+  }, 60_000);
+
+  test("a refresh token works only at the project that issued it, even with its rows copied", async () => {
+    await project("issuer");
+    const { refreshToken } = await signupAs("issuer", "iv@test.co");
+    await project("copycat");
+    await seedSystemFile(core, "copycat", "users", await systemFile(core, "issuer", "users"));
+    await seedSystemFile(core, "copycat", "sessions", await systemFile(core, "issuer", "sessions"));
+
+    expect((await refresh("copycat", refreshToken)).status).toBe(401);
+    expect((await refresh("issuer", refreshToken)).status).toBe(200);
+  }, 15_000);
+
+  test("the request log never holds a token, and keeps the rest of the answer", async () => {
+    await project("logged");
+    const stream = await openLogStream(core, "logged");
+    const signup = await signupAs("logged", "jo@test.co");
+    const res = await refresh("logged", signup.refreshToken);
+    const next = await res.json();
+    const cid = res.headers.get("x-correlation-id");
+    await stream.waitForEntry((e) => e.correlationId === cid);
+
+    const entries = stream.entries.filter((e) => e.path.startsWith("/logged/auth/"));
+    expect(entries.map((e) => e.path)).toEqual(["/logged/auth/signup", "/logged/auth/refresh"]);
+    for (const entry of entries) {
+      for (const secret of [signup.token, signup.refreshToken, next.token, next.refreshToken])
+        expect(entry.responseBody).not.toContain(secret);
+      expect(JSON.parse(entry.responseBody)).toMatchObject({
+        token: "[redacted]",
+        refreshToken: "[redacted]",
+        user: { email: "jo@test.co" },
+      });
+    }
+    stream.close();
+  }, 15_000);
+
+  describe("through OAuth", () => {
+    let provider: ReturnType<typeof Bun.serve>;
+    let svc: Service;
+    const GITHUB = { AUTH_GITHUB_CLIENT_ID: "Iv1.test", AUTH_GITHUB_SECRET: "gh-secret" };
+
+    beforeAll(async () => {
+      // Stands in for GitHub: every code is good, and it is always the same account.
+      provider = Bun.serve({
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/token") return Response.json({ access_token: "gh-access" });
+          if (pathname === "/user") return Response.json({ login: "octo", name: "Octo", email: "octo@test.co" });
+          return new Response("not found", { status: 404 });
+        },
+      });
+      const base = `http://127.0.0.1:${provider.port}`;
+      svc = await boot("oauth", {
+        OAUTH_GITHUB_AUTH_URL: `${base}/authorize`,
+        OAUTH_GITHUB_TOKEN_URL: `${base}/token`,
+        OAUTH_GITHUB_USER_URL: `${base}/user`,
+        OAUTH_GITHUB_EMAILS_URL: `${base}/emails`,
+      });
+    }, 30_000);
+
+    afterAll(() => provider.stop(true));
+
+    const signInWithGithub = async (tenant: string) => {
+      const start = await fetch(`${svc.base}/${tenant}/auth/github`, { redirect: "manual" });
+      const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+      return fetch(`${svc.base}/${tenant}/auth/github/callback?code=any&state=${encodeURIComponent(state)}`, {
+        redirect: "manual",
+      });
+    };
+
+    test("hands over the same pair, as JSON or in the redirect's fragment", async () => {
+      await project("ghjson", GITHUB, svc);
+      const answered = await signInWithGithub("ghjson");
+      expect(answered.status).toBe(200);
+      const pair = await answered.json();
+      expect(pair).toMatchObject({ expiresIn: 86400, user: { email: "octo@test.co" } });
+      expect((await read("ghjson", pair.token, svc)).status).toBe(200);
+      expect((await refresh("ghjson", pair.refreshToken, svc)).status).toBe(200);
+
+      await project("ghredirect", { ...GITHUB, AUTH_OAUTH_REDIRECT: "https://app.test/login" }, svc);
+      const redirected = await signInWithGithub("ghredirect");
+      expect(redirected.status).toBe(302);
+      const location = new URL(redirected.headers.get("location")!);
+      expect(`${location.origin}${location.pathname}`).toBe("https://app.test/login");
+      const fragment = new URLSearchParams(location.hash.slice(1));
+      expect(fragment.get("expiresIn")).toBe("86400");
+      expect((await read("ghredirect", fragment.get("token")!, svc)).status).toBe(200);
+      expect((await refresh("ghredirect", fragment.get("refreshToken")!, svc)).status).toBe(200);
+    }, 20_000);
+  });
+});
+
 // ── Password: change, forgot, reset ────────────────────────────────
 
 describe("change password", () => {
@@ -1311,7 +1572,14 @@ describe("change password", () => {
   test("takes the token and the current password, and signs every other session out", async () => {
     await seed(core, "chpw", { posts: [], config: { AUTH_ENABLED: "true" } });
     const first = await signupAs("chpw", "hal@test.co");
-    const second = (await (await login("password123")).json()).token as string;
+    const secondPair = (await (await login("password123")).json()) as { token: string; refreshToken: string };
+    const second = secondPair.token;
+    const refresh = (refreshToken: string) =>
+      fetch(`${core.base}/chpw/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
 
     expect((await change(undefined, { currentPassword: "password123", password: "new-password-1" })).status).toBe(401);
     const wrong = await change(first.token, { currentPassword: "not-my-password", password: "new-password-1" });
@@ -1321,11 +1589,14 @@ describe("change password", () => {
 
     const ok = await change(first.token, { currentPassword: "password123", password: "new-password-1" });
     expect(ok.status).toBe(200);
-    const { token: fresh, user } = await ok.json();
+    const { token: fresh, refreshToken: freshRefresh, user } = await ok.json();
     expect(user).not.toHaveProperty("passwordHash");
 
     for (const stale of [first.token, second]) expect((await read(stale)).status).toBe(401);
+    // …and no session survives it: every refresh token from before is dead too.
+    for (const spent of [first.refreshToken, secondPair.refreshToken]) expect((await refresh(spent)).status).toBe(401);
     expect((await read(fresh)).status).toBe(200);
+    expect((await refresh(freshRefresh)).status).toBe(200);
     expect((await login("password123")).status).toBe(401);
     expect((await login("new-password-1")).status).toBe(200);
   }, 30_000);
@@ -1391,7 +1662,7 @@ describe("forgot and reset password", () => {
 
   test("a code resets the password once, and every earlier token stops working", async () => {
     await project("rp");
-    const { token: before } = await signupAs("rp", "bo@test.co", PASSWORD, svc);
+    const { token: before, refreshToken: beforeRefresh } = await signupAs("rp", "bo@test.co", PASSWORD, svc);
     expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(before) })).status).toBe(200);
 
     expect((await post("rp", "forgot-password", { email: "bo@test.co" })).status).toBe(202);
@@ -1405,6 +1676,7 @@ describe("forgot and reset password", () => {
     expect(user).not.toHaveProperty("passwordHash");
 
     expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(before) })).status).toBe(401);
+    expect((await post("rp", "refresh", { refreshToken: beforeRefresh })).status).toBe(401);
     expect((await fetch(`${svc.base}/rp/posts`, { headers: bearer(after) })).status).toBe(200);
     expect((await post("rp", "login", { email: "bo@test.co", password: PASSWORD })).status).toBe(401);
     expect((await post("rp", "login", { email: "bo@test.co", password: "a-brand-new-password" })).status).toBe(200);
@@ -1520,6 +1792,8 @@ describe("virtual start/stop", () => {
       ["/stopped/openapi.json", {}],
       ["/stopped/auth/login", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
       ["/stopped/auth/forgot-password", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
+      ["/stopped/auth/refresh", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
+      ["/stopped/auth/logout", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
       ["/stopped/_notify/email", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }],
     ];
     for (const [path, init] of surfaces) {

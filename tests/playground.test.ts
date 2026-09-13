@@ -28,7 +28,10 @@ import {
   DIRECTIONS,
   SORT_KEYWORDS,
   countsAsUsage,
+  endsSession,
   idProblem,
+  initialInputs,
+  refreshTokenFrom,
   normalizeParamValue,
   paramValueKind,
   requestHeaders,
@@ -265,7 +268,54 @@ describe("token autofill", () => {
     expect(tokenFrom(login, 401, JSON.stringify({ token: "jwt" }))).toBeNull();
     expect(tokenFrom(login, 200, "not json")).toBeNull();
     expect(tokenFrom(find("POST", "/users"), 201, ok)).toBeNull();
+    // A refresh answers with the next token, which replaces the one it was issued alongside.
+    expect(tokenFrom(find("POST", "/auth/refresh"), 200, ok)).toBe("jwt");
   });
+
+  test("adopts the refresh token alongside it, and knows when a logout ended both", () => {
+    const pair = JSON.stringify({ token: "jwt", refreshToken: "sid.secret", expiresIn: 900, user: { id: "u1" } });
+    for (const path of ["/auth/signup", "/auth/login", "/auth/refresh", "/auth/change-password", "/auth/reset-password"])
+      expect({ path, adopted: refreshTokenFrom(find("POST", path), 200, pair) }).toEqual({ path, adopted: "sid.secret" });
+    expect(refreshTokenFrom(find("POST", "/auth/refresh"), 401, pair)).toBeNull();
+    expect(refreshTokenFrom(find("POST", "/posts"), 201, pair)).toBeNull();
+
+    expect(endsSession(find("POST", "/auth/logout"), 204)).toBe(true);
+    expect(endsSession(find("POST", "/auth/logout"), 503)).toBe(false);
+    expect(endsSession(find("POST", "/auth/login"), 200)).toBe(false);
+
+    // The refresh route opens with the token the playground holds, and with the documented shape without one.
+    const refreshRoute = find("POST", "/auth/refresh");
+    expect(JSON.parse(initialInputs(refreshRoute, null, "sid.secret").body)).toEqual({ refreshToken: "sid.secret" });
+    expect(JSON.parse(initialInputs(refreshRoute, null).body)).toHaveProperty("refreshToken");
+    expect(JSON.parse(initialInputs(find("POST", "/auth/login"), null, "sid.secret").body)).not.toHaveProperty("refreshToken");
+  });
+
+  test("carries a real session through refresh and logout, sending only what the rail offers", async () => {
+    await seedTenant(core, "playauth", { posts: [], config: { AUTH_ENABLED: "true" } });
+    const send = async (path: string, body: string, token = "") => {
+      const endpoint = find("POST", path);
+      const res = await fetch(`${core.base}${requestPath("playauth", endpoint, "")}`, {
+        method: "POST",
+        headers: requestHeaders(endpoint, { chaos: {} }, { token, authEnabled: true, qaMode: false }),
+        body,
+      });
+      return { endpoint, status: res.status, body: await res.text() };
+    };
+
+    const signup = await send("/auth/signup", JSON.stringify({ email: "pg@test.co", password: "password123" }));
+    const refreshToken = refreshTokenFrom(signup.endpoint, signup.status, signup.body);
+    expect(refreshToken).toBeString();
+
+    const refreshed = await send("/auth/refresh", initialInputs(find("POST", "/auth/refresh"), null, refreshToken!).body);
+    expect(refreshed.status).toBe(200);
+    const token = tokenFrom(refreshed.endpoint, refreshed.status, refreshed.body);
+    expect(refreshTokenFrom(refreshed.endpoint, refreshed.status, refreshed.body)).not.toBe(refreshToken);
+
+    const loggedOut = await send("/auth/logout", initialInputs(find("POST", "/auth/logout"), null).body, token!);
+    expect(endsSession(loggedOut.endpoint, loggedOut.status)).toBe(true);
+    const after = await fetch(`${core.base}/playauth/posts`, { headers: { authorization: `Bearer ${token}` } });
+    expect(after.status).toBe(401);
+  }, 20_000);
 });
 
 /**

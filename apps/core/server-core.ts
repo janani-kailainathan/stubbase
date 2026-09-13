@@ -60,6 +60,7 @@ import {
   isSystemFileName,
   parseAuthConfig,
   readIdentity,
+  redactAuthBody,
   viewSystemFile,
   type AuthConfig,
   type Claims,
@@ -500,6 +501,8 @@ interface LogDraft {
   startedAt: number;
   lifecycle: LifecycleStep[];
   requestBody?: string | null;
+  /** Set for the auth plane, whose answers carry tokens the log must never keep (redactAuthBody). */
+  redactTokens?: boolean;
 }
 
 const newLogDraft = (): LogDraft => ({
@@ -522,6 +525,8 @@ function finishLog(
 ): Response {
   try {
     res.headers.set("x-correlation-id", draft.correlationId);
+    // Redacted before truncation: a body cut short is no longer JSON anyone can clean.
+    const body = serializedBody.get(res) ?? null;
     recordLog({
       correlationId: draft.correlationId,
       ts: new Date().toISOString(),
@@ -532,7 +537,7 @@ function finishLog(
       status: res.status,
       durationMs: Math.round(performance.now() - draft.startedAt),
       requestBody: truncate(draft.requestBody),
-      responseBody: truncate(serializedBody.get(res) ?? null),
+      responseBody: truncate(draft.redactTokens ? redactAuthBody(body) : body),
       lifecycle: draft.lifecycle,
     });
   } catch (e) {
@@ -584,7 +589,7 @@ async function loadTenant(tenantId: string): Promise<TenantState | null> {
   const state: TenantState = {
     db,
     config: system.has("config") ? parseConfig(system.get("config")) : DEFAULT_CONFIG,
-    identity: readIdentity(system.get("users"), system.get("reset-password")),
+    identity: readIdentity(system.get("users"), system.get("reset-password"), system.get("sessions")),
     status: parseStatus(system.get("status")),
     rbac: system.has("rbac") ? loadRbac(tenantId, system.get("rbac")) : null,
     lastSeen: Date.now(),
@@ -695,8 +700,10 @@ function persist(state: TenantState, tenantId: string, resource: string) {
  * Write-through for a feature's system file, on the same per-tenant chain as
  * the resources. No projection to drop: system/ never reaches `state.db`.
  */
-function persistSystem(state: TenantState, tenantId: string, name: "users" | "reset-password") {
-  const snapshot = JSON.stringify(name === "users" ? state.identity.users : state.identity.resets, null, 2);
+function persistSystem(state: TenantState, tenantId: string, name: "users" | "reset-password" | "sessions") {
+  const { identity } = state;
+  const rows = name === "users" ? identity.users : name === "reset-password" ? identity.resets : identity.sessions;
+  const snapshot = JSON.stringify(rows, null, 2);
   state.writeChain = state.writeChain.then(() =>
     Bun.write(systemFile(tenantId, name), snapshot).catch((e) =>
       console.error(`[core] persist failed ${tenantId}/system/${name}: ${e}`),
@@ -716,6 +723,7 @@ const auth = createAuth<TenantState>({
   refused: (tenantId, state) => statusBlocked(state) ?? quotaBlocked(tenantId),
   saveUsers: (tenantId, state) => persistSystem(state, tenantId, "users"),
   saveResets: (tenantId, state) => persistSystem(state, tenantId, "reset-password"),
+  saveSessions: (tenantId, state) => persistSystem(state, tenantId, "sessions"),
   readJsonBody,
   requestOrigin,
   emailConfigured: (state) => state.config.resendKey !== "",
@@ -2502,7 +2510,10 @@ const server = Bun.serve({
       return done(res);
     };
 
-    if (second === "auth") return single("auth", await auth.handle(req, tenantId, rest));
+    if (second === "auth") {
+      draft.redactTokens = true;
+      return single("auth", await auth.handle(req, tenantId, rest));
+    }
     if (second === "_notify") return single("notify", await handleNotify(req, tenantId, rest));
     if (second === "openapi.json" && rest.length === 0)
       return single("openapi", await handleOpenApi(req, tenantId));

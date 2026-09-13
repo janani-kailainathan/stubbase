@@ -79,8 +79,11 @@ curl https://api.stubbase.dev/<project-id>/orders \
 - **Public reads stay public when you want them.** `AUTH_PUBLIC_ROUTES` lists
   the resources anonymous visitors may `GET`, so a catalogue can be open while
   writes still require a token.
-- **Sessions expire on your terms.** `AUTH_JWT_TTL_SECONDS` sets the lifetime;
-  the default is twenty-four hours.
+- **Sessions expire on your terms.** `AUTH_JWT_TTL_SECONDS` sets how long a
+  token lasts, twenty-four hours by default. Every sign-in also returns a
+  refresh token, so a short-lived token can be renewed with `POST /auth/refresh`
+  for as long as `AUTH_REFRESH_TTL_SECONDS` allows, and `POST /auth/logout`
+  ends one device's session immediately.
 
 ## What you do not have to run
 

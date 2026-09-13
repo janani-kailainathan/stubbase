@@ -3,12 +3,13 @@
  * (sites/dashboard/src/lib/log-storage.ts), kept in sessionStorage.
  *
  * The copy is written to browser storage, so the rule that matters most is
- * that it never holds a credential — and a signup or login response carries
- * the project's user token, which the dashboard otherwise keeps in memory
- * only. That is checked against real log entries: a real core with auth on
- * serves a real signup and login, and the entries come from its own log
- * snapshot, so the check follows whatever the core actually records rather
- * than a guess at its shape.
+ * that it never holds a credential. A sign-in response carries the project's
+ * user tokens; the core logs them as "[redacted]" (tests/core.test.ts holds
+ * that), and this copy strips every auth body regardless, so it never depends
+ * on the core getting it right. That is checked against real log entries: a
+ * real core with auth on serves a real signup and login, and the entries come
+ * from its own log snapshot, so the check follows whatever the core actually
+ * records rather than a guess at its shape.
  *
  * Also held here: Clear sticks against the core's replay-on-connect, logout
  * forgets every copy and disarms stores opened before it, projects never share
@@ -119,13 +120,18 @@ beforeEach(() => {
 });
 
 describe("no credential reaches storage", () => {
-  test("the core's log really carries the tokens — otherwise this suite proves nothing", async () => {
-    const logged = JSON.stringify(await coreLog());
-    expect(logged).toContain(signupToken);
-    expect(logged).toContain(loginToken);
+  test("the core's log carries the sign-in bodies, but never their tokens — so there is something to strip", async () => {
+    const entries = await coreLog();
+    const auth = entries.filter((e) => e.path.startsWith(`/${TENANT}/auth/`));
+    expect(auth).toHaveLength(2);
+    // Without a body to strip, the storage rule below would pass by doing nothing.
+    for (const entry of auth) expect(entry.responseBody).toContain("ada@example.com");
+    const logged = JSON.stringify(entries);
+    expect(logged).not.toContain(signupToken);
+    expect(logged).not.toContain(loginToken);
   });
 
-  test("a real signup and login are stored without the token, and still listed", async () => {
+  test("a real signup and login are stored without their bodies, and still listed", async () => {
     const entries = await coreLog();
     openTabLogStore(TENANT).save({ entries, clearedAt: null });
 
@@ -133,6 +139,7 @@ describe("no credential reaches storage", () => {
     expect(stored).not.toContain(signupToken);
     expect(stored).not.toContain(loginToken);
     expect(stored).not.toContain(PASSWORD);
+    expect(stored).not.toContain("ada@example.com"); // only the sign-in bodies carried it
     // Every request is still in the copy — only the bodies are gone.
     for (const entry of entries) expect(stored).toContain(entry.correlationId);
 

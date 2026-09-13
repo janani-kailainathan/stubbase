@@ -12,8 +12,9 @@
  *   helpdesk    Deskline, a support desk: rbac.json roles — customers see their
  *               own tickets, agents the whole queue, a lead can promote agents
  *   accounts    Signet, sign-in and user management in the spirit of Clerk:
- *               every login path the auth plane has, organizations, members and
- *               invites, and roles that decide who may list or promote accounts
+ *               every login path the auth plane has, short tokens kept going by
+ *               refresh tokens, organizations, members and invites, and roles
+ *               that decide who may list or promote accounts
  *
  * Foreign keys follow the core's convention exactly — `?_expand=authors`
  * singularizes to `author`, reads `authorId`, and nests the match under
@@ -169,13 +170,16 @@ export const STARTERS: Starter[] = [
     // Every auth setting that works without a credential. Anyone may browse the
     // cookbook; reviewing, posting and saving collections needs an account from
     // /auth/signup (or /auth/login), and a signed-in user edits only what they
-    // wrote. A login lasts a week, as a phone app would want. The redirect and
-    // reset page are real Forkful URLs; Google, GitHub and email sending need
-    // the owner's own keys, which stay commented in the .env to fill in.
+    // wrote. Sessions are set the way a phone app wants them: a token lasts an
+    // hour, and the refresh token keeps someone signed in for 90 days after
+    // they last opened the app. The redirect and reset page are real Forkful
+    // URLs; Google, GitHub and email sending need the owner's own keys, which
+    // stay commented in the .env to fill in.
     config: {
       AUTH_ENABLED: 'true',
       AUTH_PUBLIC_ROUTES: 'recipes,cuisines,ingredients,steps,reviews',
-      AUTH_JWT_TTL_SECONDS: '604800',
+      AUTH_JWT_TTL_SECONDS: '3600',
+      AUTH_REFRESH_TTL_SECONDS: '7776000',
       AUTH_OAUTH_REDIRECT: 'https://forkful.app/auth/callback',
       AUTH_RESET_URL: 'https://forkful.app/reset-password',
     },
@@ -320,14 +324,17 @@ export const STARTERS: Starter[] = [
     nextStep:
       'Google and GitHub sign-in need your OAuth app’s keys, and reset emails a Resend API key — add them in the .env.',
     // Sign-in as a product: signup, login, change and reset password, Google
-    // and GitHub, and a one-hour session. The org directory and plans are
-    // public; a member's profile, memberships and invitations are their own;
-    // support can list accounts, and only an admin can change a role. New
-    // accounts are members; make the first admin from system/users.json.
+    // and GitHub, and sessions the way a hosted auth product runs them: a
+    // 15-minute token kept going by a 30-day refresh token. The org directory
+    // and plans are public; a member's profile, memberships and invitations
+    // are their own; support can list accounts, and only an admin can change a
+    // role. New accounts are members; make the first admin from
+    // system/users.json.
     config: {
       AUTH_ENABLED: 'true',
       RBAC_ENABLED: 'true',
-      AUTH_JWT_TTL_SECONDS: '3600',
+      AUTH_JWT_TTL_SECONDS: '900',
+      AUTH_REFRESH_TTL_SECONDS: '2592000',
       AUTH_OAUTH_REDIRECT: 'https://signet.app/sso-callback',
       AUTH_RESET_URL: 'https://signet.app/reset-password',
     },

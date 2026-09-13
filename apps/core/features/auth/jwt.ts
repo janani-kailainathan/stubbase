@@ -10,7 +10,7 @@ export function createJwt(secret: string) {
   const key = (tenantId: string): Buffer =>
     createHmac("sha256", secret).update(`jwt:${tenantId}`).digest();
 
-  function sign(tenantId: string, user: UserRecord, ttlSec: number): string {
+  function sign(tenantId: string, user: UserRecord, sessionId: string, ttlSec: number): string {
     const now = Math.floor(Date.now() / 1000);
     const enc = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
     const head = enc({ alg: "HS256", typ: "JWT" });
@@ -18,6 +18,7 @@ export function createJwt(secret: string) {
       sub: String(user.id),
       email: String(user.email),
       role: String(user.role ?? "user"),
+      sid: sessionId,
       iat: now,
       exp: now + ttlSec,
     };
@@ -37,7 +38,7 @@ export function createJwt(secret: string) {
     try {
       const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString()) as Claims;
       if (typeof claims.exp !== "number" || claims.exp * 1000 < Date.now()) return null;
-      if (typeof claims.sub !== "string") return null;
+      if (typeof claims.sub !== "string" || typeof claims.sid !== "string") return null;
       return claims;
     } catch {
       return null;

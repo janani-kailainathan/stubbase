@@ -10,6 +10,7 @@ import {
   DIRECTIONS,
   SORT_KEYWORDS,
   acceptsQuery,
+  endsSession,
   normalizeParamValue,
   paramValueKind,
   hasBody,
@@ -17,6 +18,7 @@ import {
   initialInputs,
   playgroundKey,
   recordIds,
+  refreshTokenFrom,
   requestHeaders,
   requestPath,
   requestQuery,
@@ -575,16 +577,19 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   const stored = useWorkspaceStore((s) => s.playgroundInputs[key])
   const run = useWorkspaceStore((s) => s.playgroundRuns[key])
   const token = useWorkspaceStore((s) => s.testTokens[tenantId]) ?? ''
+  const refreshToken = useWorkspaceStore((s) => s.testRefreshTokens[tenantId]) ?? ''
   const split = useWorkspaceStore((s) => s.playgroundSplit)
   const collapsed = useWorkspaceStore((s) => s.playgroundCollapsed)
   const setPlaygroundInputs = useWorkspaceStore((s) => s.setPlaygroundInputs)
   const setTestToken = useWorkspaceStore((s) => s.setTestToken)
+  const adoptRefreshToken = useWorkspaceStore((s) => s.adoptRefreshToken)
+  const endTestSession = useWorkspaceStore((s) => s.endTestSession)
   const runPlayground = useWorkspaceStore((s) => s.runPlayground)
   const setSplit = useWorkspaceStore((s) => s.setPlaygroundSplit)
   const setCollapsed = useWorkspaceStore((s) => s.setPlaygroundCollapsed)
 
   const records = live.data
-  const inputs = stored ?? initialInputs(endpoint, records)
+  const inputs = stored ?? initialInputs(endpoint, records, refreshToken)
   const update = (patch: Partial<PlaygroundInputs>) =>
     setPlaygroundInputs(key, { ...inputs, ...patch })
 
@@ -614,6 +619,9 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     countSent(tenantId, result)
     const issued = tokenFrom(endpoint, result.status, result.body)
     if (issued) setTestToken(tenantId, issued)
+    const refreshToken = refreshTokenFrom(endpoint, result.status, result.body)
+    if (refreshToken) adoptRefreshToken(tenantId, refreshToken)
+    if (endsSession(endpoint, result.status)) endTestSession(tenantId)
     // A write through the public API changes the deployed file, which is also
     // what the editor shows whenever nothing is staged — refetch both rather
     // than keep showing the records from before this request. An auth route
