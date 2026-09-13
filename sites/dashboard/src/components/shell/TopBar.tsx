@@ -529,6 +529,10 @@ export function TopBar() {
   const current = useCurrentProject()
   const openProject = useOpenProject()
   const setNewProjectOpen = useWorkspaceStore((s) => s.setNewProjectOpen)
+  // With no project there is nothing to switch to, and the page below is
+  // already the create form (NoProjects), so the project menu is not offered:
+  // its one item would open that same form again, over itself.
+  const hasProjects = (projects?.length ?? 0) > 0
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   // Signing out lands on the marketing site, not /login. Someone who clicked
@@ -578,7 +582,7 @@ export function TopBar() {
             initialName={current.name}
             onDone={() => setRenaming(false)}
           />
-        ) : (
+        ) : hasProjects ? (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <button className="flex cursor-pointer items-center gap-1 text-sm font-medium text-foreground select-none">
@@ -647,6 +651,10 @@ export function TopBar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        ) : (
+          <span className="text-sm font-medium text-foreground select-none">
+            {isLoading ? 'Loading…' : 'No project'}
+          </span>
         )}
         {current && !renaming && (
           <button
