@@ -231,12 +231,18 @@ interface TenantState {
   status: ProjectStatus; // system/status.json — set by Start/Stop, never staged or deployed
   identity: Identity; // system/users.json + system/reset-password.json — never a resource
   rbac: RbacRules | null; // system/rbac.json — roles and permissions; null when the project has none
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>; // idle eviction; armed when the state is installed
   lastSeen: number;
   writeChain: Promise<unknown>; // serializes disk writes per tenant
 }
 
 const activeTenants = new Map<string, TenantState>();
+
+// Loads in flight, at most one per tenant — every request that finds a tenant
+// cold awaits the same one. Two loads would install two copies, and writes
+// landing in different arrays overwrite each other on disk (see startLoad).
+const loadingTenants = new Map<string, Promise<TenantState | null | typeof STALE_LOAD>>();
+const STALE_LOAD = Symbol("stale load"); // a load an eviction overtook: never installed
 
 /**
  * The roles and permissions in force. Rules govern a project only while both
@@ -581,16 +587,41 @@ async function loadTenant(tenantId: string): Promise<TenantState | null> {
     identity: readIdentity(system.get("users"), system.get("reset-password")),
     status: parseStatus(system.get("status")),
     rbac: system.has("rbac") ? loadRbac(tenantId, system.get("rbac")) : null,
-    timer: setTimeout(() => evict(tenantId), IDLE_TTL_MS),
     lastSeen: Date.now(),
     writeChain: Promise.resolve(),
   };
-  activeTenants.set(tenantId, state);
-  enforceCap(tenantId);
   return state;
 }
 
+/**
+ * Starts the one load of a cold tenant and installs its result — unless an
+ * eviction lands first. An eviction means disk moved on underneath (an admin
+ * write, a deploy), so a load that began before it may have read the old files:
+ * installing it would serve them, and the next write would put them back.
+ */
+function startLoad(tenantId: string): Promise<TenantState | null | typeof STALE_LOAD> {
+  const load: Promise<TenantState | null | typeof STALE_LOAD> = loadTenant(tenantId).then(
+    (state) => {
+      if (loadingTenants.get(tenantId) !== load) return STALE_LOAD;
+      loadingTenants.delete(tenantId);
+      if (state) {
+        activeTenants.set(tenantId, state);
+        touch(tenantId, state);
+        enforceCap(tenantId);
+      }
+      return state;
+    },
+    (e) => {
+      if (loadingTenants.get(tenantId) === load) loadingTenants.delete(tenantId);
+      throw e;
+    },
+  );
+  loadingTenants.set(tenantId, load);
+  return load;
+}
+
 function evict(tenantId: string) {
+  loadingTenants.delete(tenantId); // a load still reading is stale now — see startLoad
   const state = activeTenants.get(tenantId);
   if (!state) return;
   clearTimeout(state.timer);
@@ -626,9 +657,21 @@ function enforceCap(justLoaded: string) {
 }
 
 async function getTenant(tenantId: string): Promise<TenantState | null> {
-  const state = activeTenants.get(tenantId) ?? (await loadTenant(tenantId));
-  if (state) touch(tenantId, state);
-  return state;
+  for (;;) {
+    const live = activeTenants.get(tenantId);
+    if (live) {
+      touch(tenantId, live);
+      return live;
+    }
+    const loaded = await (loadingTenants.get(tenantId) ?? startLoad(tenantId));
+    if (loaded === null) return null;
+    // Installed and still current: done. Otherwise an eviction overtook the
+    // load, and whatever it read may be stale — go round and read again.
+    if (loaded !== STALE_LOAD && activeTenants.get(tenantId) === loaded) {
+      touch(tenantId, loaded);
+      return loaded;
+    }
+  }
 }
 
 /** Whether a tenant exists, without loading it: already in RAM, or a directory on disk. */

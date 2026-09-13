@@ -476,6 +476,58 @@ describe("write-through persistence", () => {
     expect(new Set(onDisk.map((r: any) => r.n)).size).toBe(25);
   });
 
+  test("a burst at a cold tenant loads it once — no write lands in a discarded copy", async () => {
+    // The two-days-later case: loaded once, evicted, then several requests at once.
+    // Enough records that the load spans many event-loop turns.
+    const seeded = Array.from({ length: 5_000 }, (_, i) => ({ id: `s${i}`, body: "x".repeat(80) }));
+    await seed(core, "coldburst", { posts: seeded });
+    expect((await fetch(`${core.base}/coldburst/posts?_limit=1`)).status).toBe(200);
+    await fetch(`${core.base}/coldburst/_admin/flush`, { method: "POST", headers: adminAuth });
+
+    const statuses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        fetch(`${core.base}/coldburst/posts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: `burst ${i}` }),
+        }).then((r) => r.status),
+      ),
+    );
+    expect(statuses.every((s) => s === 201)).toBe(true);
+
+    const onDisk = await readFile(core, "coldburst", "posts");
+    expect(onDisk.filter((r: any) => String(r.title).startsWith("burst"))).toHaveLength(20);
+    const served = await fetch(`${core.base}/coldburst/posts?title[contains]=burst`).then((r) => r.json());
+    expect(served).toHaveLength(20);
+  });
+
+  test("an admin write during a cold load is never overwritten by the stale load", async () => {
+    // The admin write evicts while a public request is still reading the old
+    // files. Timing-dependent by nature, so it runs many rounds with the write
+    // staggered across the load: before the fix ~1 round in 6 served stale data.
+    const files: Record<string, unknown> = { aaa: [{ id: "v0" }] };
+    for (let i = 0; i < 200; i++) files[`z${String(i).padStart(3, "0")}`] = [{ id: "1" }];
+    await seed(core, "midload", files);
+
+    const stale: number[] = [];
+    for (let i = 1; i <= 120; i++) {
+      await fetch(`${core.base}/midload/_admin/flush`, { method: "POST", headers: adminAuth });
+      await Promise.all([
+        fetch(`${core.base}/midload/aaa`),
+        Bun.sleep(i % 12).then(() =>
+          fetch(`${core.base}/midload/_admin/files/aaa`, {
+            method: "POST",
+            headers: { ...adminAuth, "content-type": "application/json" },
+            body: JSON.stringify([{ id: `v${i}` }]),
+          }),
+        ),
+      ]);
+      const after = (await fetch(`${core.base}/midload/aaa`).then((r) => r.json())) as { id: string }[];
+      if (after[0]?.id !== `v${i}`) stale.push(i);
+    }
+    expect(stale).toEqual([]);
+  }, 60_000);
+
   test("eviction only drops RAM — data reloads from disk intact", async () => {
     await seed(core, "evictable", { posts: [] });
     await fetch(`${core.base}/evictable/posts`, {
