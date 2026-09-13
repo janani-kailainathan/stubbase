@@ -29,7 +29,7 @@ export function UnknownProject({ tenantId }: { tenantId: string }) {
       {first && (
         <button
           onClick={() => openProject(first.tenantId)}
-          className="cursor-pointer rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="cursor-pointer rounded bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           Open {first.name}
         </button>

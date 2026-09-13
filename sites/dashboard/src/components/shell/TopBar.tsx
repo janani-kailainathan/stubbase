@@ -116,14 +116,14 @@ function DeleteProjectDialog({
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
             autoFocus
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
+            className="rounded px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </button>
           {running ? (
             <button
-              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-mono text-xs text-body transition-colors hover:border-danger-fill/40 hover:text-danger-emphasis disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded border border-border px-3 py-1.5 font-mono text-xs text-body transition-colors hover:border-danger-fill/40 hover:text-danger-emphasis disabled:opacity-60"
               disabled={stop.isPending}
               onClick={() => stop.mutate()}
             >
@@ -132,7 +132,7 @@ function DeleteProjectDialog({
             </button>
           ) : (
             <button
-              className="flex items-center gap-1.5 rounded-md bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
               disabled={deleteProject.isPending}
               onClick={submit}
             >
@@ -390,7 +390,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
       <button
         onClick={() => deploy.mutate()}
         disabled={!tenantId || busy}
-        className="flex cursor-pointer items-center gap-1.5 rounded-l-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+        className="flex cursor-pointer items-center gap-1.5 rounded-l bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         {/* Progress lives on the icon, not the label. Swapping the word to
             "Deploying…" and back inside ~50ms stutters; the word only changes
@@ -418,7 +418,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
         aria-label={stopped ? 'Start API' : 'Stop API'}
         onClick={() => (stopped ? changeStatus.mutate('active') : setConfirmingStop(true))}
         disabled={!tenantId || busy}
-        className={`flex cursor-pointer items-center rounded-r-md border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors disabled:opacity-60 ${
+        className={`flex cursor-pointer items-center rounded-r border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors disabled:opacity-60 ${
           stopped ? 'hover:bg-primary-hover' : 'hover:bg-danger-fill'
         }`}
       >
@@ -447,13 +447,13 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
           <div className="mt-2 flex items-center justify-end gap-2">
             <button
               autoFocus
-              className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
+              className="rounded px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
               onClick={() => setConfirmingStop(false)}
             >
               Cancel
             </button>
             <button
-              className="flex items-center gap-1.5 rounded-md bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
               disabled={changeStatus.isPending}
               onClick={() => changeStatus.mutate('stopped')}
             >

@@ -74,13 +74,13 @@ function NewResourceDialog({
         </p>
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
+            className="rounded px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </button>
           <button
-            className="rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+            className="rounded bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
             disabled={createResource.isPending}
             onClick={submit}
           >
@@ -124,7 +124,7 @@ export function FilesSidebar() {
           aria-label="Expand files"
           aria-expanded={false}
           onClick={() => setCollapsed(false)}
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-card hover:text-heading"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
@@ -144,7 +144,7 @@ export function FilesSidebar() {
           title="New resource"
           onClick={() => setNewOpen(true)}
           disabled={!project}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading disabled:opacity-40"
+          className="flex h-6 w-6 items-center justify-center rounded text-subtle transition-colors hover:bg-card hover:text-heading disabled:opacity-40"
         >
           <FilePlus className="h-3.5 w-3.5" />
         </button>
@@ -154,7 +154,7 @@ export function FilesSidebar() {
           aria-label="Collapse files"
           aria-expanded
           onClick={() => setCollapsed(true)}
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-card hover:text-heading"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>

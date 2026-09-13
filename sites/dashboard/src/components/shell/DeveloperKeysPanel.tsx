@@ -27,7 +27,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
           setTimeout(() => setCopied(false), 1500)
         })
       }}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground hover:border-border-strong hover:text-emphasis"
+      className="flex cursor-pointer items-center gap-1.5 rounded border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground hover:border-border-strong hover:text-emphasis"
     >
       {copied ? <Check className="h-3 w-3 text-primary-ink" /> : <Copy className="h-3 w-3" />}
       {copied ? 'Copied' : label}
@@ -133,13 +133,13 @@ function KeyList({ tenantId }: { tenantId: string }) {
                   revoke.mutate(k.id)
                   setConfirming(null)
                 }}
-                className="cursor-pointer rounded-md border border-danger-fill/40 bg-danger-soft px-2 py-1 font-mono text-[11px] text-danger-emphasis hover:bg-danger-fill/20"
+                className="cursor-pointer rounded border border-danger-fill/40 bg-danger-soft px-2 py-1 font-mono text-[11px] text-danger-emphasis hover:bg-danger-fill/20"
               >
                 Revoke
               </button>
               <button
                 onClick={() => setConfirming(null)}
-                className="cursor-pointer rounded-md border border-transparent px-2 py-1 font-mono text-[11px] text-subtle hover:text-body"
+                className="cursor-pointer rounded border border-transparent px-2 py-1 font-mono text-[11px] text-subtle hover:text-body"
               >
                 Cancel
               </button>
@@ -148,7 +148,7 @@ function KeyList({ tenantId }: { tenantId: string }) {
             <button
               onClick={() => setConfirming(k.id)}
               title="Revoke this key"
-              className="cursor-pointer rounded-md border border-transparent p-1 text-faint hover:text-danger-ink"
+              className="cursor-pointer rounded border border-transparent p-1 text-faint hover:text-danger-ink"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -201,7 +201,7 @@ export function DeveloperKeysPanel({ tenantId }: { tenantId: string | undefined 
             <button
               onClick={submit}
               disabled={create.isPending}
-              className="flex cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-mono text-xs text-primary-foreground hover:bg-primary-ink disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex cursor-pointer items-center gap-1.5 rounded bg-primary px-3 py-1.5 font-mono text-xs text-primary-foreground hover:bg-primary-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" />
               {create.isPending ? 'Generating…' : 'Generate'}

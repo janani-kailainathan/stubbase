@@ -145,7 +145,7 @@ export function NewProjectForm({
         {onCancel && (
           <button
             type="button"
-            className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading disabled:opacity-60"
+            className="rounded px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading disabled:opacity-60"
             disabled={busy}
             onClick={onCancel}
           >
@@ -155,7 +155,7 @@ export function NewProjectForm({
         <button
           type="submit"
           disabled={busy}
-          className="flex cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          className="flex cursor-pointer items-center gap-1.5 rounded bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />

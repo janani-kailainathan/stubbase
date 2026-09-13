@@ -102,7 +102,7 @@ export function OAuthButtons() {
           <a
             key={provider}
             href={api.oauthStartUrl(provider)}
-            className="flex items-center justify-center gap-2.5 rounded-md border border-border bg-panel py-2.5 text-sm font-medium text-foreground transition-colors hover:border-border-strong hover:bg-card"
+            className="flex items-center justify-center gap-2.5 rounded border border-border bg-panel py-2.5 text-sm font-medium text-foreground transition-colors hover:border-border-strong hover:bg-card"
           >
             {MARKS[provider].mark}
             {MARKS[provider].label}

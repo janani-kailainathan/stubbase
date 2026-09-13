@@ -74,7 +74,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
               if (edge.data) edge.mutate()
             }}
             disabled={diagnostics.isFetching || edge.isPending}
-            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-60"
+            className="flex cursor-pointer items-center gap-1.5 rounded border border-border px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-60"
           >
             <RefreshCw className={`h-3 w-3 ${diagnostics.isFetching ? 'animate-spin' : ''}`} />
             Re-check
@@ -136,7 +136,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
               </p>
               <button
                 onClick={() => edge.mutate()}
-                className="shrink-0 cursor-pointer rounded-md border border-border px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading"
+                className="shrink-0 cursor-pointer rounded border border-border px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading"
               >
                 Run check
               </button>

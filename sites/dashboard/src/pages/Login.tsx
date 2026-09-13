@@ -80,7 +80,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={pending}
-            className="mt-1 rounded-md bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+            className="mt-1 rounded bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
             {pending ? 'Logging in…' : 'Log in'}
           </button>

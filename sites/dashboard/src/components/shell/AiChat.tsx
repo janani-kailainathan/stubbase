@@ -216,7 +216,7 @@ function ConfirmDeletion({
             )
           }
           disabled={apply.isPending}
-          className="cursor-pointer rounded-md bg-danger-fill px-2.5 py-1 font-mono text-[11px] text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-50"
+          className="cursor-pointer rounded bg-danger-fill px-2.5 py-1 font-mono text-[11px] text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-50"
         >
           {apply.isPending ? copy.busy : copy.confirm}
         </button>
@@ -226,7 +226,7 @@ function ConfirmDeletion({
             notice('Cancelled — nothing was deleted.', 'cancelled')
           }}
           disabled={apply.isPending}
-          className="cursor-pointer rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-50"
+          className="cursor-pointer rounded border border-border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-50"
         >
           Cancel
         </button>
@@ -503,7 +503,7 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
           onClick={send}
           disabled={!tenantId || chat.isPending || !input.trim() || !entitled}
           title={entitled ? undefined : 'Available on Pro + AI'}
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ArrowUp className="h-4 w-4" />
         </button>

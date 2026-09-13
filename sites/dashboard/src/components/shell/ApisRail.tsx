@@ -82,7 +82,7 @@ export function ApisRail() {
           aria-label="Expand APIs"
           aria-expanded={false}
           onClick={() => setRailCollapsed(false)}
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-card hover:text-heading"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
@@ -104,7 +104,7 @@ export function ApisRail() {
           aria-label="Collapse APIs"
           aria-expanded
           onClick={() => setRailCollapsed(true)}
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-card hover:text-heading"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-subtle transition-colors hover:bg-card hover:text-heading"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
