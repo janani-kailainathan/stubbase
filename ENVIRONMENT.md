@@ -142,12 +142,14 @@ Whether a project is serving lives in its own file,
 `<tenant>/system/status.json` (`{ "status": "active" | "stopped" | "maintenance" }`),
 not in `config.json`. `stopped` or `maintenance` makes the whole public plane
 (CRUD, auth, notify, openapi) answer `503` with `{"error":…,"projectStatus":…}`;
-`active`, or no file at all, serves normally. It is set only by the dashboard's
-Start/Stop toggle and the Co-Pilot (`POST /projects/<id>/status` → core
-`POST _admin/status`), and applies immediately. It is never staged, never
-deployed and has no `.env` line, so neither a Save nor a Deploy can start or
-stop an API — a `PROJECT_STATUS` key in config is ignored. The `_admin` plane
-stays reachable so the dashboard can always start it again.
+`active`, or no file at all, serves normally. It is set only through
+`POST /projects/<id>/status` → core `POST _admin/status`, and applies
+immediately: by the dashboard's Deploy button, which promotes a stopped
+project's drafts and then starts it (there is no separate Start); by its Stop
+button; and by the Co-Pilot. It is never staged, never promoted and has no
+`.env` line, so neither a Save nor the deploy route itself changes it — a
+`PROJECT_STATUS` key in config is ignored. The `_admin` plane stays reachable so
+the dashboard can always bring the API back up.
 
 ### QA Chaos Engine
 

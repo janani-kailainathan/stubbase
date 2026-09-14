@@ -161,7 +161,7 @@ export async function seedSystemFile(core: Service, tenant: string, name: string
   await Bun.write(systemFilePath(core, tenant, name), JSON.stringify(rows, null, 2));
 }
 
-/** Writes a tenant's system/status.json, as the Start/Stop button would. */
+/** Writes a tenant's system/status.json, as Deploy (on a stopped project) and Stop would. */
 export async function seedStatus(core: Service, tenant: string, status: string) {
   await Bun.write(systemFilePath(core, tenant, "status"), JSON.stringify({ status }, null, 2));
 }

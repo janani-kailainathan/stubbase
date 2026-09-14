@@ -106,7 +106,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
         <Section title="Configuration">
           {stopped && (
             <Alert tone="warn" title={`The API is ${status}`}>
-              Every public endpoint answers 503 until you deploy or start the API again.
+              Every public endpoint answers 503 until you deploy again.
             </Alert>
           )}
           {qaMode && (
@@ -158,7 +158,7 @@ export function DiagnosticsPanel({ tenantId }: { tenantId: string | undefined })
           ) : stopped && edge.data?.status === 503 ? (
             // Expected, not a fault: statusGuard 503s the whole public plane.
             <Alert tone="warn" title={`GET /${probeResource} returned 503`}>
-              Expected while the API is {status} — start it, or deploy, to bring it back up.
+              Expected while the API is {status} — deploy to bring it back up.
             </Alert>
           ) : edge.data && edge.data.status >= 500 ? (
             <Alert tone="error" title={`GET /${probeResource} returned ${edge.data.status}`}>

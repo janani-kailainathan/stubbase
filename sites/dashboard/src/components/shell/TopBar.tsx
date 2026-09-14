@@ -8,7 +8,6 @@ import {
   Loader2,
   LogOut,
   Pencil,
-  Play,
   Plus,
   Rocket,
   Square,
@@ -321,19 +320,20 @@ function useMinDuration(active: boolean, ms = 450): boolean {
 }
 
 /**
- * One control for publishing and for start/stop.
+ * One control for going live, and Stop beside it while the API is.
  *
- * Deploy is the primary action and stays clickable in every state: it promotes
- * staged drafts, and doing that while the API is already live is the common
- * case, so it cannot be swapped out for a Stop button. Start/stop is the
- * button's second segment instead — a stop icon while live, a play icon while
- * stopped. It used to be a chevron opening a one-item menu, which kept Stop
- * from being hit by accident but also kept anyone from finding it.
+ * Deploy is the only way to bring an API up. It promotes staged drafts, and on
+ * a stopped project it then starts the API, so what goes live is always what
+ * was last saved. There is deliberately no separate Start: one beside Deploy
+ * could bring a project up on its old settings with the staged ones still
+ * waiting — a new starter project serving with its auth switched off — and two
+ * buttons that both mean "make it live" was the confusion. Live, the label
+ * reads Redeploy and the second segment is Stop; stopped, there is nothing to
+ * stop, so Deploy stands alone.
  *
- * Sitting right beside Deploy, Stop now asks first: it answers every public
- * endpoint with 503 and breaks whatever calls the API, and Cancel takes focus
- * so a stray Enter cannot confirm it. Starting only restores service, so it
- * happens on the click — as does Deploy on a stopped project.
+ * Stop asks first: it answers every public endpoint with 503 and breaks
+ * whatever calls the API, and Cancel takes focus so a stray Enter cannot
+ * confirm it.
  */
 function DeployControls({ tenantId }: { tenantId: string | undefined }) {
   const status = useProjectStatus(tenantId)
@@ -346,15 +346,14 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
   const current = useCurrentProject()
   const [confirmingStop, setConfirmingStop] = useState(false)
 
-  const changeStatus = useMutation({
-    mutationFn: (next: 'active' | 'stopped') => setStatus.mutateAsync(next),
-    onSuccess: (_, next) => {
+  // Stopping is the only status change made here: starting is part of Deploy.
+  const stop = useMutation({
+    mutationFn: () => setStatus.mutateAsync('stopped'),
+    onSuccess: () => {
       setConfirmingStop(false)
-      toast.success(
-        next === 'active' ? 'API started — endpoints are serving again.' : 'API stopped — requests now answer 503.',
-      )
+      toast.success('API stopped — requests now answer 503.')
     },
-    onError: (e: Error) => toast.error(`Could not change status: ${e.message}`),
+    onError: (e: Error) => toast.error(`Could not stop the API: ${e.message}`),
   })
 
   const deploy = useMutation({
@@ -369,7 +368,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
         res.promoted.length > 0
           ? `${res.promoted.length} file${res.promoted.length === 1 ? '' : 's'}: ${res.promoted.join(', ')}`
           : 'no draft changes'
-      toast.success(stopped ? `API is live again (${files})` : `Deployed ${files}`)
+      toast.success(stopped ? `API is live (${files})` : `Deployed ${files}`)
       // The project's staged set is empty now — this refetch is what takes the
       // StagedChanges strip down.
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -387,7 +386,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
 
   // Held briefly so fast round-trips still register as a state, not a flicker.
   const deploying = useMinDuration(deploy.isPending)
-  const busy = deploying || deploy.isPending || changeStatus.isPending
+  const busy = deploying || deploy.isPending || stop.isPending
 
   return (
     <div className="flex items-stretch">
@@ -396,7 +395,8 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
         disabled={!tenantId || busy}
         // Hover and pointer only while it can be pressed: a disabled button that
         // still lights up under the mouse reads as broken, not as unavailable.
-        className="flex items-center gap-1.5 rounded-l bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors enabled:cursor-pointer enabled:hover:bg-primary-hover disabled:opacity-60"
+        // Squared off on the right only while Stop sits against it.
+        className={`flex items-center gap-1.5 ${stopped ? 'rounded' : 'rounded-l'} bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors enabled:cursor-pointer enabled:hover:bg-primary-hover disabled:opacity-60`}
       >
         {/* Progress lives on the icon, not the label. Swapping the word to
             "Deploying…" and back inside ~50ms stutters; the word only changes
@@ -417,29 +417,27 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
             lie on the very first screen a new account sees — `stopped` covers it. */}
         <span className="w-[8ch] text-center">{stopped ? 'Deploy' : 'Redeploy'}</span>
       </button>
-      {/* The second segment: start/stop, one click from Deploy. Red on hover
-          while live, so what a click here does is plain before it happens. */}
-      <button
-        title={stopped ? 'Start API' : 'Stop API'}
-        aria-label={stopped ? 'Start API' : 'Stop API'}
-        onClick={() => (stopped ? changeStatus.mutate('active') : setConfirmingStop(true))}
-        disabled={!tenantId || busy}
-        className={`flex items-center rounded-r border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors enabled:cursor-pointer disabled:opacity-60 ${
-          stopped ? 'enabled:hover:bg-primary-hover' : 'enabled:hover:bg-danger-fill'
-        }`}
-      >
-        {changeStatus.isPending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : stopped ? (
-          <Play className="h-3.5 w-3.5" />
-        ) : (
-          <Square className="h-3.5 w-3.5" />
-        )}
-      </button>
+      {/* The second segment, only while live: Stop, one click from Redeploy.
+          Red on hover, so what a click here does is plain before it happens. */}
+      {!stopped && (
+        <button
+          title="Stop API"
+          aria-label="Stop API"
+          onClick={() => setConfirmingStop(true)}
+          disabled={busy}
+          className="flex items-center rounded-r border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors enabled:cursor-pointer enabled:hover:bg-danger-fill disabled:opacity-60"
+        >
+          {stop.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Square className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
 
       <Dialog
         open={confirmingStop}
-        onOpenChange={(open) => !changeStatus.isPending && setConfirmingStop(open)}
+        onOpenChange={(open) => !stop.isPending && setConfirmingStop(open)}
       >
         <DialogContent className="w-96 border-border bg-card p-4" showCloseButton={false}>
           <DialogTitle className="text-sm font-semibold text-foreground">
@@ -447,7 +445,7 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
           </DialogTitle>
           <p className="font-mono text-xs leading-relaxed text-muted-foreground">
             Every public endpoint of <span className="text-emphasis">/{tenantId}</span> will answer{' '}
-            <span className="text-emphasis">503</span> until you start it again, so apps calling it
+            <span className="text-emphasis">503</span> until you deploy it again, so apps calling it
             will fail. Your data, drafts and settings stay as they are.
           </p>
           <div className="mt-2 flex items-center justify-end gap-2">
@@ -460,11 +458,11 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
             </button>
             <button
               className="flex items-center gap-1.5 rounded bg-danger-fill px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-danger-fill-hover disabled:opacity-60"
-              disabled={changeStatus.isPending}
-              onClick={() => changeStatus.mutate('stopped')}
+              disabled={stop.isPending}
+              onClick={() => stop.mutate()}
             >
               <Square className="h-3 w-3" />
-              {changeStatus.isPending ? 'Stopping…' : 'Stop API'}
+              {stop.isPending ? 'Stopping…' : 'Stop API'}
             </button>
           </div>
         </DialogContent>

@@ -1450,7 +1450,7 @@ const envSection = (title: string) => `# ── ${title} ${"─".repeat(Math.max
  * Commented out is the point. A template line is documentation, not config:
  * this text compiles to an empty object, so a new project is exactly as plain
  * as before the template existed. Whether the API is serving is deliberately
- * absent — that is system/status.json, which only Start/Stop writes.
+ * absent — that is system/status.json, which only the status route writes.
  *
  * tests/dashboard-api.test.ts holds it to the keys the core reads (ENVIRONMENT.md
  * §2). The OAuth callbacks it names are this project's real ones.
@@ -1476,7 +1476,8 @@ function envTemplate(tenantId: string): string {
     "#   9. Validation: a JSON Schema per resource",
     "#  10. Webhooks",
     "#",
-    "# Starting and stopping the API is not a setting: use the Start / Stop button.",
+    "# Going live is not a setting: Deploy publishes your changes and starts the",
+    "# API, and Stop takes it offline.",
     "",
     envSection("1. Auth — sign-up, login and sessions"),
     "# The switch for everything numbered 1 to 5. Every request then needs a token,",
@@ -1654,7 +1655,7 @@ async function projectStatus(tenantId: string): Promise<string> {
   return res.ok && typeof status === "string" ? status : "active";
 }
 
-/** GET /projects/<id>/status — what the dashboard's status badge and Start/Stop show. */
+/** GET /projects/<id>/status — what the dashboard's status badge, Deploy/Redeploy label and Stop show. */
 async function getProjectStatus(user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
   const res = await coreAdminStatus(tenantId);
