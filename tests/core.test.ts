@@ -43,15 +43,42 @@ const seed = seedTenant;
 const readFile = tenantFile;
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
-/** Signs a new account up on a tenant with AUTH_ENABLED, failing the test if it can't. */
-async function signupAs(tenant: string, email: string, password = "password123", on?: Service) {
-  const res = await fetch(`${(on ?? core).base}/${tenant}/auth/signup`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+type SignedIn = { token: string; refreshToken: string; expiresIn: number; user: { id: string; email: string } };
+
+/**
+ * Signs a new account up on a tenant with AUTH_ENABLED, failing the test if it
+ * can't. With email verification on (the default) it finishes the sign-up with
+ * the code from the project's log, which is where a project with no email
+ * provider gets it — so a tenant that sets RESEND_API_KEY needs verification
+ * off to use this.
+ */
+async function signupAs(tenant: string, email: string, password = "password123", on?: Service): Promise<SignedIn> {
+  const svc = on ?? core;
+  const post = (route: string, body: unknown) =>
+    fetch(`${svc.base}/${tenant}/auth/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const res = await post("signup", { email, password });
+  if (res.status === 202) {
+    const { verificationId } = await res.json();
+    const code = await loggedCode(svc, tenant, res.headers.get("x-correlation-id"));
+    const verified = await post("signup/verify", { verificationId, code });
+    expect(verified.status).toBe(201);
+    return (await verified.json()) as SignedIn;
+  }
   expect(res.status).toBe(201);
-  return (await res.json()) as { token: string; refreshToken: string; expiresIn: number; user: { id: string; email: string } };
+  return (await res.json()) as SignedIn;
+}
+
+/** The one-time code a request left in its project's log — where it goes when there is no email provider. */
+async function loggedCode(svc: Service, tenant: string, correlationId: string | null): Promise<string> {
+  const { entries } = await fetch(`${svc.base}/${tenant}/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+  const entry = entries.find((e: { correlationId: string }) => e.correlationId === correlationId);
+  const code = /: (\d{6}) —/.exec(entry?.note ?? "")?.[1];
+  if (!code) throw new Error(`no code in the log for ${correlationId}: ${JSON.stringify(entry)}`);
+  return code;
 }
 
 // ── Shared server ──────────────────────────────────────────────────
@@ -205,12 +232,10 @@ describe("server-owned timestamps", () => {
   });
 
   test("a signup stamps the new user", async () => {
-    const res = await send("POST", `${core.base}/secure/auth/signup`, {
-      email: `stamped-${Date.now()}@example.com`,
-      password: "long-enough-password",
-    });
-    expect(res.status).toBe(201);
-    const { user } = await res.json();
+    // Stamped when the account is made — which, with verification on, is when the code comes back.
+    const { user } = (await signupAs("secure", `stamped-${Date.now()}@example.com`, "long-enough-password")) as {
+      user: { createdAt: string; updatedAt: string };
+    };
     expect(typeof user.createdAt).toBe("string");
     expect(user.updatedAt).toBe(user.createdAt);
   });
@@ -696,13 +721,7 @@ describe("QA chaos headers", () => {
 
 describe("tenant auth", () => {
   test("signup and login never leak passwordHash", async () => {
-    const signup = await fetch(`${core.base}/secure/auth/signup`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "leak@test.co", password: "password123" }),
-    });
-    expect(signup.status).toBe(201);
-    const created = await signup.json();
+    const created = await signupAs("secure", "leak@test.co");
     expect(created.token).toBeString();
     expect(created.user).not.toHaveProperty("passwordHash");
 
@@ -844,12 +863,8 @@ describe("ownership (RBAC)", () => {
     ]);
 
     const signup = async (email: string) => {
-      const r = await fetch(`${core.base}/rbac/auth/signup`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      }).then((x) => x.json());
-      return { token: r.token as string, id: r.user.id as string };
+      const r = await signupAs("rbac", email, password);
+      return { token: r.token, id: r.user.id };
     };
     alice = await signup("alice@test.co");
     bob = await signup("bob@test.co");
@@ -1261,7 +1276,20 @@ describe("the admin system plane", () => {
       { userId: "1", codeHash: "CODEHASH", expiresAt: "2099-01-01T00:00:00.000Z", attempts: 2, issuedAt: [] },
     ]);
     await seedSystemFile(core, "sysview", "sessions", [SESSION_ROW]);
+    await seedSystemFile(core, "sysview", "signups", [SIGNUP_ROW]);
   });
+
+  const SIGNUP_ROW = {
+    id: "v1",
+    email: "new@b.co",
+    passwordHash: "PENDINGHASH",
+    codeHash: "SIGNUPCODEHASH",
+    codeExpiresAt: "2099-01-01T00:00:00.000Z",
+    attempts: 1,
+    issuedAt: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
 
   const SESSION_ROW = {
     id: "s1",
@@ -1275,7 +1303,12 @@ describe("the admin system plane", () => {
 
   test("lists a tenant's feature files and shows each without its credentials", async () => {
     const list = await fetch(`${core.base}/sysview/_admin/system`, { headers: adminAuth });
-    expect(await list.json()).toEqual({ tenant: "sysview", files: ["users", "reset-password", "sessions"] });
+    expect(await list.json()).toEqual({ tenant: "sysview", files: ["users", "signups", "reset-password", "sessions"] });
+
+    // A pending sign-up shows neither the password it will set nor its code's hash.
+    const signups = await fetch(`${core.base}/sysview/_admin/system/signups`, { headers: adminAuth });
+    const { passwordHash: _ph, codeHash: _ch, ...pending } = SIGNUP_ROW;
+    expect(await signups.json()).toEqual([pending]);
 
     const sessions = await fetch(`${core.base}/sysview/_admin/system/sessions`, { headers: adminAuth });
     const { tokenHash: _t, previousHash: _p, ...shown } = SESSION_ROW;
@@ -1482,8 +1515,10 @@ describe("sessions and refresh tokens", () => {
     await stream.waitForEntry((e) => e.correlationId === cid);
 
     const entries = stream.entries.filter((e) => e.path.startsWith("/logged/auth/"));
-    expect(entries.map((e) => e.path)).toEqual(["/logged/auth/signup", "/logged/auth/refresh"]);
-    for (const entry of entries) {
+    expect(entries.map((e) => e.path)).toEqual(["/logged/auth/signup", "/logged/auth/signup/verify", "/logged/auth/refresh"]);
+    // The sign-up itself hands out no token; the two answers that do are redacted.
+    expect(JSON.parse(entries[0].responseBody)).not.toHaveProperty("token");
+    for (const entry of entries.slice(1)) {
       for (const secret of [signup.token, signup.refreshToken, next.token, next.refreshToken])
         expect(entry.responseBody).not.toContain(secret);
       expect(JSON.parse(entry.responseBody)).toMatchObject({
@@ -1633,10 +1668,17 @@ describe("forgot and reset password", () => {
     });
   const codeIn = (text: string) => /\b(\d{6})\b/.exec(text)?.[1] ?? "";
   const mailTo = (to: string) => mail.filter((m) => m.to === to);
+  // Verification off: these accounts exist up front, and the only mail is the reset code.
   const project = (tenant: string, extra: Record<string, string> = {}) =>
     seed(svc, tenant, {
       posts: [],
-      config: { AUTH_ENABLED: "true", RESEND_API_KEY: "re_test_key", RESEND_FROM: "App <hi@app.test>", ...extra },
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        RESEND_API_KEY: "re_test_key",
+        RESEND_FROM: "App <hi@app.test>",
+        ...extra,
+      },
     });
   const INVALID = { error: "invalid or expired reset code" };
 
@@ -1762,15 +1804,26 @@ describe("forgot and reset password", () => {
     expect((await post("oauthonly", "login", { email: "gus@test.co", password: "first-password" })).status).toBe(200);
   }, 20_000);
 
-  test("with no email provider it is not configured — unless the dev log flag is on", async () => {
+  test("with no email provider the code goes to the owner's log, and the answer is still the same for every address", async () => {
     await seed(svc, "nomail", { posts: [], config: { AUTH_ENABLED: "true" } });
     await signupAs("nomail", "hana@test.co", PASSWORD, svc);
-    for (const email of ["hana@test.co", "ghost@test.co"]) {
-      const res = await post("nomail", "forgot-password", { email });
-      expect(res.status).toBe(404); // the same for every address
-      expect((await res.json()).error).toContain("RESEND_API_KEY");
-    }
+    const ghost = await post("nomail", "forgot-password", { email: "ghost@test.co" });
+    const real = await post("nomail", "forgot-password", { email: "hana@test.co" });
+    expect([ghost.status, real.status]).toEqual([202, 202]);
+    const answer = await real.json();
+    expect(await ghost.json()).toEqual(answer);
+    expect(answer.message).toContain("logs");
+    expect(mailTo("hana@test.co")).toHaveLength(0);
 
+    // Only the real account's request carries a note, and only the owner's log shows it.
+    const { entries } = await fetch(`${svc.base}/nomail/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+    const ghostEntry = entries.find((e: any) => e.correlationId === ghost.headers.get("x-correlation-id"));
+    expect(ghostEntry).not.toHaveProperty("note");
+    const logged = await loggedCode(svc, "nomail", real.headers.get("x-correlation-id"));
+    expect(JSON.stringify(answer)).not.toContain(logged);
+    expect((await post("nomail", "reset-password", { email: "hana@test.co", code: logged, password: "logged-password" })).status).toBe(200);
+
+    // The process-log flag still prints them too, for local dev.
     const dev = await boot("reset-log", { AUTH_RESET_LOG_CODES: "true" });
     await seed(dev, "t", { config: { AUTH_ENABLED: "true" } });
     await signupAs("t", "ivy@test.co", PASSWORD, dev);
@@ -1780,6 +1833,209 @@ describe("forgot and reset password", () => {
     const code = pattern.exec(dev.output.join(""))![1];
     expect((await post("t", "reset-password", { email: "ivy@test.co", code, password: "logged-password" }, dev)).status).toBe(200);
   }, 30_000);
+});
+
+// ── Email verification ─────────────────────────────────────────────
+
+describe("email verification", () => {
+  const PASSWORD = "password123";
+  const mail: { to: string; text: string }[] = [];
+  let mailer: ReturnType<typeof Bun.serve>;
+  let svc: Service;
+
+  beforeAll(async () => {
+    mailer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        mail.push((await req.json()) as { to: string; text: string });
+        return Response.json({ id: `email_${mail.length}` });
+      },
+    });
+    svc = await boot("verify", { RESEND_API_URL: `http://127.0.0.1:${mailer.port}/emails` });
+  }, 30_000);
+
+  afterAll(() => mailer.stop(true));
+
+  const call = (tenant: string, route: string, body: unknown) =>
+    fetch(`${svc.base}/${tenant}/auth/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const project = (tenant: string, extra: Record<string, string> = {}) =>
+    seed(svc, tenant, { posts: [], config: { AUTH_ENABLED: "true", ...extra } });
+  const systemList = (tenant: string) =>
+    fetch(`${svc.base}/${tenant}/_admin/system`, { headers: adminAuth }).then((r) => r.json()).then((b) => b.files);
+  /** Starts a sign-up on a project with no email provider, and reads its code back from the log. */
+  const begin = async (tenant: string, email: string, password = PASSWORD) => {
+    const res = await call(tenant, "signup", { email, password });
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    return { id: body.verificationId as string, code: await loggedCode(svc, tenant, res.headers.get("x-correlation-id")) };
+  };
+  const INVALID = { error: "invalid or expired verification code" };
+
+  test("is on by default: a sign-up is not an account until its code comes back", async () => {
+    await project("pending");
+    const res = await call("pending", "signup", { email: "ada@test.co", password: PASSWORD, name: "Ada" });
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body).toMatchObject({ verificationRequired: true, email: "ada@test.co", expiresIn: 900, delivery: "logs" });
+    expect(body.verificationId).toBeString();
+    expect(body).not.toHaveProperty("token");
+    // Not even an unverified account: users.json does not exist yet.
+    expect(await systemList("pending")).toEqual(["signups"]);
+
+    // The right password is told why it can't sign in, and gets the id to finish with; a wrong one learns nothing.
+    const early = await call("pending", "login", { email: "ada@test.co", password: PASSWORD });
+    expect(early.status).toBe(403);
+    expect(await early.json()).toMatchObject({ verificationRequired: true, verificationId: body.verificationId });
+    const wrong = await call("pending", "login", { email: "ada@test.co", password: "not-the-password" });
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toEqual({ error: "invalid email or password" });
+
+    const code = await loggedCode(svc, "pending", res.headers.get("x-correlation-id"));
+    const verified = await call("pending", "signup/verify", { verificationId: body.verificationId, code });
+    expect(verified.status).toBe(201);
+    const { token, refreshToken, user } = await verified.json();
+    expect(refreshToken).toBeString();
+    expect(user).toMatchObject({ email: "ada@test.co", name: "Ada", role: "user" });
+    expect(user.emailVerifiedAt).toBeString();
+    expect(user).not.toHaveProperty("passwordHash");
+    expect((await fetch(`${svc.base}/pending/posts`, { headers: bearer(token) })).status).toBe(200);
+    expect((await call("pending", "login", { email: "ada@test.co", password: PASSWORD })).status).toBe(200);
+
+    // The code went with the sign-up, and the address is taken now.
+    expect(await (await call("pending", "signup/verify", { verificationId: body.verificationId, code })).json()).toEqual(INVALID);
+    expect((await call("pending", "signup", { email: "ada@test.co", password: PASSWORD })).status).toBe(409);
+  }, 30_000);
+
+  test("with no email provider the code is only in the owner's log, and on disk only as a keyed hash", async () => {
+    await project("logsonly");
+    const res = await call("logsonly", "signup", { email: "bo@test.co", password: PASSWORD });
+    const body = await res.json();
+    const cid = res.headers.get("x-correlation-id");
+    const code = await loggedCode(svc, "logsonly", cid);
+
+    const { entries } = await fetch(`${svc.base}/logsonly/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+    const entry = entries.find((e: any) => e.correlationId === cid);
+    expect(entry.note).toContain("bo@test.co");
+    expect(entry.note).toContain("RESEND_API_KEY");
+    expect(body.message).toContain("logs");
+    for (const shown of [body, JSON.parse(entry.responseBody)]) expect(Object.values(shown)).not.toContain(code);
+    expect(mail.filter((m) => m.to === "bo@test.co")).toHaveLength(0);
+
+    const [row] = await systemFile(svc, "logsonly", "signups");
+    expect(Object.values(row)).not.toContain(code);
+    expect(row.codeHash).toBeString();
+    expect(row.passwordHash).toBeString();
+    const [shown] = await fetch(`${svc.base}/logsonly/_admin/system/signups`, { headers: adminAuth }).then((r) => r.json());
+    expect(shown).not.toHaveProperty("codeHash");
+    expect(shown).not.toHaveProperty("passwordHash");
+    expect(shown).toMatchObject({ id: body.verificationId, email: "bo@test.co", attempts: 0 });
+  }, 20_000);
+
+  test("with Resend set up the code is emailed, and the log holds no note", async () => {
+    await project("mailed", { RESEND_API_KEY: "re_test_key" });
+    const res = await call("mailed", "signup", { email: "cy@test.co", password: PASSWORD });
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.delivery).toBe("email");
+    const sent = mail.filter((m) => m.to === "cy@test.co");
+    expect(sent).toHaveLength(1);
+    const code = /\b(\d{6})\b/.exec(sent[0].text)![1];
+
+    const { entries } = await fetch(`${svc.base}/mailed/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+    expect(entries.find((e: any) => e.correlationId === res.headers.get("x-correlation-id"))).not.toHaveProperty("note");
+    expect((await call("mailed", "signup/verify", { verificationId: body.verificationId, code })).status).toBe(201);
+  }, 20_000);
+
+  test("a code finishes only the sign-up it was sent for", async () => {
+    await project("replaced");
+    // Someone signs up with your address after you did: your mailbox now holds both codes.
+    const yours = await begin("replaced", "di@test.co", "your-password");
+    const theirs = await begin("replaced", "di@test.co", "their-password");
+
+    // Their code, entered into your sign-up, is refused — and your own code went with the sign-up theirs replaced.
+    for (const code of [theirs.code, yours.code])
+      expect(await (await call("replaced", "signup/verify", { verificationId: yours.id, code })).json()).toEqual(INVALID);
+
+    // Signing up again replaces theirs in turn, and the account is made with your password.
+    const again = await begin("replaced", "di@test.co", "your-password");
+    expect((await call("replaced", "signup/verify", { verificationId: again.id, code: again.code })).status).toBe(201);
+    expect((await call("replaced", "signup/verify", { verificationId: theirs.id, code: theirs.code })).status).toBe(400);
+    expect((await call("replaced", "login", { email: "di@test.co", password: "your-password" })).status).toBe(200);
+    expect((await call("replaced", "login", { email: "di@test.co", password: "their-password" })).status).toBe(401);
+  }, 30_000);
+
+  test("every way a code is wrong reads alike, five wrong guesses spend it, and a resend brings a new one", async () => {
+    await project("guesses");
+    const { id, code } = await begin("guesses", "ed@test.co");
+    const wrong = code === "000000" ? "000001" : "000000";
+    const attempt = (verificationId: string, c: string) => call("guesses", "signup/verify", { verificationId, code: c });
+
+    expect(await (await attempt("no-such-signup", code)).json()).toEqual(INVALID);
+    for (let i = 0; i < 5; i++) expect(await (await attempt(id, wrong)).json()).toEqual(INVALID);
+    expect(await (await attempt(id, code)).json()).toEqual(INVALID); // the right code, too late
+
+    const resent = await call("guesses", "signup/resend", { verificationId: id });
+    expect(resent.status).toBe(202);
+    expect((await resent.json()).verificationId).toBe(id);
+    const fresh = await loggedCode(svc, "guesses", resent.headers.get("x-correlation-id"));
+    expect((await attempt(id, fresh)).status).toBe(201);
+    // A finished sign-up has nothing left to resend.
+    expect((await call("guesses", "signup/resend", { verificationId: id })).status).toBe(400);
+  }, 30_000);
+
+  test("codes are throttled per address, sign-ups and resends together, and neither signing up again nor an eviction resets it", async () => {
+    await project("throttled");
+    const first = await begin("throttled", "fay@test.co"); // 1
+    for (let i = 0; i < 2; i++)
+      expect((await call("throttled", "signup/resend", { verificationId: first.id })).status).toBe(202); // 2, 3
+    const second = await begin("throttled", "fay@test.co"); // 4
+    await fetch(`${svc.base}/throttled/_admin/flush`, { method: "POST", headers: adminAuth });
+    expect((await call("throttled", "signup/resend", { verificationId: second.id })).status).toBe(202); // 5
+
+    expect((await call("throttled", "signup/resend", { verificationId: second.id })).status).toBe(429);
+    expect((await call("throttled", "signup", { email: "FAY@test.co", password: PASSWORD })).status).toBe(429);
+    // Another address has its own allowance.
+    expect((await call("throttled", "signup", { email: "gus@test.co", password: PASSWORD })).status).toBe(202);
+  }, 30_000);
+
+  test("requests racing with one code make one account", async () => {
+    await project("race");
+    const { id, code } = await begin("race", "hal@test.co");
+    const results = await Promise.all(
+      [1, 2, 3].map(() => call("race", "signup/verify", { verificationId: id, code }).then((r) => r.status)),
+    );
+    expect(results.sort()).toEqual([201, 400, 400]);
+    expect(await systemFile(svc, "race", "users")).toHaveLength(1);
+  }, 20_000);
+
+  test("an account made another way while the code was out wins, and the sign-up is dropped", async () => {
+    await project("taken");
+    const { id, code } = await begin("taken", "ivy@test.co");
+    // Signed in through GitHub meanwhile — and the pending sign-up survives the eviction that reads it in.
+    await seedSystemFile(svc, "taken", "users", [{ id: "gh-1", email: "ivy@test.co", role: "user", provider: "github" }]);
+    await fetch(`${svc.base}/taken/_admin/flush`, { method: "POST", headers: adminAuth });
+
+    const res = await call("taken", "signup/verify", { verificationId: id, code });
+    expect(res.status).toBe(409);
+    expect(await systemFile(svc, "taken", "signups")).toEqual([]);
+    expect(await systemFile(svc, "taken", "users")).toHaveLength(1);
+  }, 20_000);
+
+  test("switched off, signup makes the account at once and the verify routes are gone", async () => {
+    await project("noverify", { AUTH_EMAIL_VERIFICATION: "false" });
+    const res = await call("noverify", "signup", { email: "jo@test.co", password: PASSWORD });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.token).toBeString();
+    expect(body.user).not.toHaveProperty("emailVerifiedAt");
+    for (const route of ["signup/verify", "signup/resend"])
+      expect((await call("noverify", route, { verificationId: "x", code: "123456" })).status).toBe(404);
+    expect(await systemList("noverify")).toEqual(["users", "sessions"]);
+  }, 20_000);
 });
 
 // ── Virtual start / stop ───────────────────────────────────────────

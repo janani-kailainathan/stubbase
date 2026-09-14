@@ -20,7 +20,7 @@ distinct layers — don't confuse them:
 |---|---|---|
 | `ADMIN_SECRET` | — **(required, exits if unset)** | Bearer token for the `_admin` plane; also the root key from which per-tenant JWT signing keys are derived (`HMAC(ADMIN_SECRET, "jwt:" + tenantId)`). Rotating it invalidates every tenant's JWTs. Must match the Dashboard API's value. **Never reaches a browser.** |
 | `PORT` | `3000` | Listen port. |
-| `TENANTS_DIR` | `./tenants` | Root of tenant folders: `<tenant>/data/<resource>.json` (and drafts) for resources, `<tenant>/system/` for `config.json`, `status.json` and feature-owned files (`users.json`, `reset-password.json`, `sessions.json`). The only writable path in the sandboxed systemd unit. |
+| `TENANTS_DIR` | `./tenants` | Root of tenant folders: `<tenant>/data/<resource>.json` (and drafts) for resources, `<tenant>/system/` for `config.json`, `status.json` and feature-owned files (`users.json`, `signups.json`, `reset-password.json`, `sessions.json`). The only writable path in the sandboxed systemd unit. |
 | `IDLE_TTL_MS` | `300000` (5 min) | Idle time before a tenant is evicted from RAM (scale-to-zero). Set low to test eviction. |
 | `MAX_ACTIVE_TENANTS` | `500` | RAM cap; past it, the least-recently-seen tenant is evicted early. |
 | `MAX_BODY_BYTES` | `1048576` (1 MiB) | Request-body size limit. |
@@ -36,7 +36,7 @@ distinct layers — don't confuse them:
 | `SQL_MAX_QUERY_CHARS` | `4000` | Longest SQL statement an MCP client may submit. |
 | `MCP_MAX_SESSIONS` | `50` | Concurrent MCP SSE streams across all tenants. They are held open indefinitely by design, so they need a ceiling on the 1GB box; past it, new streams get 503. |
 | `HOOK_ALLOW_PRIVATE` | unset (off) | `true` disables the webhook SSRF guard so hooks may target private addresses. **Local dev/tests only — never set in production.** |
-| `AUTH_RESET_LOG_CODES` | unset (off) | `true` writes every tenant password reset code (and its link) to the core's log, so reset can be tried with no email provider configured — `forgot-password` then works without `RESEND_API_KEY`. The core warns at boot while it is on. **Local dev/tests only — never set in production**: the log would hold working account-recovery codes for every project's users. |
+| `AUTH_RESET_LOG_CODES` | unset (off) | `true` also writes every tenant password reset code (and its link) to the core's process log, even for a project that emails them. Not needed to try reset without an email provider — a project with no `RESEND_API_KEY` already gets its codes in its own request log, where only its owner sees them. The core warns at boot while it is on. **Local dev/tests only — never set in production**: the log would hold working account-recovery codes for every project's users. |
 | `RESEND_API_URL` | `https://api.resend.com/emails` | Upstream for the `_notify/email` proxy and password reset emails. Override only to point at a mock. |
 | `TWILIO_API_BASE` | `https://api.twilio.com` | Upstream base for the `_notify/sms` proxy. Override only to point at a mock. |
 | `OAUTH_GOOGLE_AUTH_URL` | Google's real endpoint | OAuth consent-screen URL. Override only for mocks. |
@@ -184,14 +184,15 @@ backends take no npm dependencies).
 
 | Key | Example | Purpose |
 |---|---|---|
-| `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/refresh`, `/logout`, `/change-password`, `/forgot-password` and `/reset-password`, keeps accounts in `system/users.json` and open sessions in `system/sessions.json` (neither a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
+| `AUTH_ENABLED` | `"true"` | Master switch. Enables `POST /auth/signup`, `/login`, `/refresh`, `/logout`, `/change-password`, `/forgot-password` and `/reset-password` (plus `/signup/verify` and `/signup/resend` while email verification is on), keeps accounts in `system/users.json`, pending sign-ups in `system/signups.json` and open sessions in `system/sessions.json` (none a CRUD resource — a `data/users.json` is unaffected), and makes all CRUD require a `Bearer` JWT. Everything else in this section is inert without it. |
+| `AUTH_EMAIL_VERIFICATION` | `"false"` | Email verification, **on whenever `AUTH_ENABLED` is** unless this is exactly `false` (case-insensitive). On: `POST /auth/signup` answers `202 { verificationRequired, verificationId, email, expiresIn, delivery }` and creates no account; `POST /auth/signup/verify { verificationId, code }` creates it and answers `201` with tokens; `POST /auth/signup/resend { verificationId }` sends a new code. `false`: signup answers `201` with tokens at once and both verify routes answer `404`. Codes are emailed with `RESEND_API_KEY`, or logged as a note for the owner without it (below). |
 | `AUTH_PUBLIC_ROUTES` | `"posts,comments"` | Comma-separated resources that allow **anonymous GET** despite auth (writes still need a JWT). Ignored while roles are on (`RBAC_ENABLED=true` with a `system/rbac.json`) — the `guest` role decides what visitors may do. |
 | `AUTH_JWT_TTL_SECONDS` | `"3600"` | Access token (JWT) lifetime (default 86400 = 24 h, min 60). Every sign-in answers with it as `expiresIn`. |
 | `AUTH_REFRESH_TTL_SECONDS` | `"604800"` | How long a session lasts without a refresh (default 2592000 = 30 days, min 3600, and never shorter than `AUTH_JWT_TTL_SECONDS`). Sliding: every `POST /auth/refresh` starts it again. A session that runs out takes its access tokens with it. |
 | `AUTH_OAUTH_REDIRECT` | `"https://myapp.com/login"` | After OAuth, 302 the browser here with `#token=<jwt>&refreshToken=<token>&expiresIn=<seconds>` instead of returning JSON. |
 | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_SECRET` | — | Tenant's own Google OAuth app. Both present ⇒ `GET /<tenant>/auth/google` (+ `/callback`) go live. The tenant registers `<origin>/<tenant>/auth/google/callback` in their Google console. |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_SECRET` | — | Same for GitHub (`/auth/github`). |
-| `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself needs `RESEND_API_KEY` (§ Notifications) — or the core's `AUTH_RESET_LOG_CODES` locally — and answers `404` without either. |
+| `AUTH_RESET_URL` | `"https://myapp.com/reset"` | Page a reset email links to, as `<url>#email=…&code=…`, below the code. Must be http(s); anything else is ignored with a boot warning and the email carries the code alone. Password reset itself is on with `AUTH_ENABLED`; its codes are emailed with `RESEND_API_KEY` (§ Notifications) and logged as a note for the owner without it. |
 | `RBAC_ENABLED` | `"true"` | Roles and permissions. With `AUTH_ENABLED=true` too, every CRUD request is checked against `system/rbac.json` (below), and the dashboard lets you create or save that file only while this is on. Off, the file is kept but ignored, and the ownership rules apply. |
 
 Roles: an account's `role` lives on its `system/users.json` record and is
@@ -224,6 +225,26 @@ are stored in `system/reset-password.json` as an HMAC keyed off `ADMIN_SECRET`.
 Changing or resetting a password stamps `passwordChangedAt` and closes every
 session the account has, so every token and refresh token issued before it
 stops working; the answer opens a fresh session for the caller.
+
+**Email verification** (fixed behaviour behind `AUTH_EMAIL_VERIFICATION`): a
+pending sign-up lives in `system/signups.json`, one row per address, holding the
+argon2id hash of the chosen password and an HMAC of the code keyed off
+`ADMIN_SECRET` and bound to the row's `verificationId`. A new sign-up for the
+address replaces the row. Codes are six digits, live 15 minutes, and are spent
+by five wrong guesses; a sign-up lasts 24 hours; an address gets at most five
+codes an hour, sign-ups and resends together. Only a correct code creates the
+`system/users.json` account, stamped `emailVerifiedAt`; `409` if the address was
+taken meanwhile (for example through OAuth, which needs no code). Until then
+`POST /auth/login` with that password answers `403` with `verificationRequired`
+and the `verificationId`.
+
+**Where codes go** (sign-up verification and password reset alike): with
+`RESEND_API_KEY`, emailed from `RESEND_FROM`. Without it nothing is emailed —
+the code is attached as `note` to that request's entry in the project's live
+request log (`GET /<tenant>/_admin/sse-logs` and `/_admin/logs`, the dashboard's
+Logs tab), never to the response, and never written to disk. The answers say
+which happened: `delivery: "email" | "logs"` on a sign-up, and the message of
+`forgot-password`'s `202`, which still reads the same for every address.
 
 ### Roles and permissions (`<tenant>/system/rbac.json`)
 
@@ -274,7 +295,7 @@ with `HOOK_ALLOW_PRIVATE=true`.
 
 | Key | Purpose |
 |---|---|
-| `RESEND_API_KEY` | Enables `_notify/email` and password reset emails (`/auth/forgot-password`); the key stays server-side, the tenant's frontend never sees it. |
+| `RESEND_API_KEY` | Enables `_notify/email`, and emails sign-up verification and password reset codes (without it those codes go to the project's request log instead); the key stays server-side, the tenant's frontend never sees it. |
 | `RESEND_FROM` | From address for both (default `Stubbase <onboarding@resend.dev>`). |
 | `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_FROM` | All three enable `_notify/sms`. |
 

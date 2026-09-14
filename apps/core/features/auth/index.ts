@@ -1,7 +1,10 @@
 /**
  * Auth — sign-up, login, sessions and password recovery for a tenant's end users.
  *
- *   POST /<tenant>/auth/signup            { email, password, name? }          → 201 { ...tokens, user }
+ *   POST /<tenant>/auth/signup            { email, password, name? }          → 202 { verificationId, … }
+ *                                                                               (201 { ...tokens, user } with verification off)
+ *   POST /<tenant>/auth/signup/verify     { verificationId, code }            → 201 { ...tokens, user }
+ *   POST /<tenant>/auth/signup/resend     { verificationId }                  → 202
  *   POST /<tenant>/auth/login             { email, password }                 → { ...tokens, user }
  *   POST /<tenant>/auth/refresh           { refreshToken }                    → { ...tokens, user }
  *   POST /<tenant>/auth/logout            JWT and/or { refreshToken }         → 204
@@ -15,9 +18,12 @@
  * `tokens` is `{ token, refreshToken, expiresIn }`: every sign-in opens a
  * session (sessions.ts), and the refresh token keeps it going.
  *
- * Every route needs AUTH_ENABLED. The identity table is `system/users.json`,
- * outstanding reset codes are `system/reset-password.json` and open sessions
- * are `system/sessions.json`; none of them is a CRUD resource (see identity.ts).
+ * Every route needs AUTH_ENABLED; the two signup/* routes also need email
+ * verification, which is on unless AUTH_EMAIL_VERIFICATION=false. The identity
+ * table is `system/users.json`, sign-ups waiting for their code are
+ * `system/signups.json`, outstanding reset codes are `system/reset-password.json`
+ * and open sessions are `system/sessions.json`; none of them is a CRUD resource
+ * (see identity.ts).
  *
  * The core builds one instance with `createAuth(host)` and calls `handle` for
  * the auth routes and `authenticate` wherever a request's bearer token matters
@@ -30,6 +36,7 @@ import { handleOauth } from "./oauth.ts";
 import { changePassword, login, signup } from "./password.ts";
 import { forgotPassword, resetPassword } from "./password-reset.ts";
 import { sessionOpen } from "./sessions.ts";
+import { resendSignupCode, verifySignup } from "./signup-verification.ts";
 import { logout, refresh } from "./tokens.ts";
 import type { AuthHost, AuthTenant, Claims } from "./types.ts";
 import { changeRole, listUsers, setRole } from "./users.ts";
@@ -117,6 +124,12 @@ export function createAuth<T extends AuthTenant>(host: AuthHost<T>) {
     if (req.method === "GET" && (action === "google" || action === "github") && segments.length <= 2) {
       if (sub !== undefined && sub !== "callback") return err(404, "unknown auth route");
       return handleOauth(ctx, action, sub === "callback");
+    }
+    if (req.method === "POST" && action === "signup" && segments.length === 2 && (sub === "verify" || sub === "resend")) {
+      if (!tenant.config.auth.emailVerification) return err(404, "email verification is off for this project");
+      const body = await host.readJsonBody(req);
+      if (body instanceof Response) return body;
+      return (sub === "verify" ? verifySignup : resendSignupCode)(ctx, asFields(body));
     }
 
     const route = req.method === "POST" && segments.length === 1 ? POST_ROUTES.get(action) : undefined;

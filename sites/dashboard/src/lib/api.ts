@@ -583,6 +583,11 @@ export interface LogEntry {
   requestBody: string | null
   responseBody: string | null
   lifecycle: LogLifecycleStep[]
+  /**
+   * For the owner only: a sign-up or reset code the project had no email
+   * provider to send. The caller was never shown it.
+   */
+  note?: string
 }
 
 /**

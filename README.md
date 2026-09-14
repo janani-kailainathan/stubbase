@@ -58,19 +58,22 @@ GET    /<tenant>/openapi.json        auto-generated OpenAPI 3.0 spec
 With `AUTH_ENABLED=true` in the tenant config, every request needs a tenant JWT and the auth routes go live:
 
 ```
-POST   /<tenant>/auth/signup            { email, password, name? }       → { token, refreshToken, expiresIn, user }
-POST   /<tenant>/auth/login             { email, password }              → { token, refreshToken, expiresIn, user }
+POST   /<tenant>/auth/signup            { email, password, name? }       → 202 { verificationId, email, expiresIn, delivery }; code sent
+                                                                           (201 { token, refreshToken, expiresIn, user } with AUTH_EMAIL_VERIFICATION=false)
+POST   /<tenant>/auth/signup/verify     { verificationId, code }         → 201 { token, refreshToken, expiresIn, user } — creates the account
+POST   /<tenant>/auth/signup/resend     { verificationId }               → 202, a new code replaces the last
+POST   /<tenant>/auth/login             { email, password }              → { token, refreshToken, expiresIn, user }; 403 + verificationId while unverified
 POST   /<tenant>/auth/refresh           { refreshToken }                 → { token, refreshToken, expiresIn, user }
 POST   /<tenant>/auth/logout            (JWT and/or { refreshToken })    → 204, ends that session
 POST   /<tenant>/auth/change-password   (JWT) { currentPassword, password } → { token, refreshToken, expiresIn, user }
-POST   /<tenant>/auth/forgot-password   { email }                        → 202, emails a 6-digit code
+POST   /<tenant>/auth/forgot-password   { email }                        → 202, sends a 6-digit code
 POST   /<tenant>/auth/reset-password    { email, code, password }        → { token, refreshToken, expiresIn, user }
 GET    /<tenant>/auth/google | github   OAuth sign-in (when configured)
 GET    /<tenant>/auth/users             (JWT, role with _users: read) list accounts
 PUT    /<tenant>/auth/users/<id>/role   (JWT, role with _users: update) { role }
 ```
 
-Every sign-in opens a session. The JWT names it and stops working the moment it is closed; the refresh token renews it, rotating on every use, and a spent refresh token presented again closes the session. Changing or resetting a password closes every session the account has.
+Sign-up and reset codes are emailed through the tenant's `RESEND_API_KEY`; a tenant without one gets each code as a note on that request's entry in its live log, which only the owner's dashboard sees. Every sign-in opens a session. The JWT names it and stops working the moment it is closed; the refresh token renews it, rotating on every use, and a spent refresh token presented again closes the session. Changing or resetting a password closes every session the account has.
 
 With `RBAC_ENABLED=true` and a `system/rbac.json` as well, every CRUD request is checked against the caller's role: a permission is resource + action (`read`/`create`/`update`/`delete`) + scope (`own`/`all`), anything a role doesn't list is refused, and requests without a token use the `guest` role. New accounts get the file's `defaultRole`.
 

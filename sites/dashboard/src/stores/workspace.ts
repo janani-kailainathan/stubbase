@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import type { ChatTurn, RunResult } from '@/lib/api'
-import { REFRESH_ROUTE, playgroundKey, refreshBody, type PlaygroundInputs } from '@/lib/playground'
+import {
+  REFRESH_ROUTE,
+  RESEND_ROUTE,
+  VERIFY_ROUTE,
+  playgroundKey,
+  refreshBody,
+  verificationBody,
+  type PlaygroundInputs,
+} from '@/lib/playground'
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
@@ -94,6 +102,12 @@ interface WorkspaceState {
   /** The refresh token that came with it, per project — memory only, for the same reasons. */
   testRefreshTokens: Record<string, string>
   /**
+   * The playground's pending sign-up, per project: the verificationId the verify
+   * and resend bodies carry. Memory only and dropped by `reset` like the tokens —
+   * with the code from the Logs tab, it finishes somebody's sign-up.
+   */
+  testVerificationIds: Record<string, string>
+  /**
    * The playground's layout — request pane height as a percentage, and whether
    * the response pane is folded away. A preference, not per-endpoint state, so
    * it holds while you move between routes; not user data, so `reset` keeps it.
@@ -156,6 +170,10 @@ interface WorkspaceState {
   setTestToken: (tenantId: string, token: string) => void
   /** Hold a new refresh token, and put it in the refresh route's body if that route has been opened. */
   adoptRefreshToken: (tenantId: string, refreshToken: string) => void
+  /** Hold a pending sign-up's verificationId, and put it in the verify and resend bodies if those routes have been opened. */
+  adoptVerificationId: (tenantId: string, verificationId: string) => void
+  /** Forget it once the sign-up it names is finished. */
+  forgetVerificationId: (tenantId: string) => void
   /** Forget both tokens once a logout has ended their session. */
   endTestSession: (tenantId: string) => void
   /** Record a playground request under `key` while `send` runs, and resolve with its result. */
@@ -182,6 +200,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   playgroundRuns: {},
   testTokens: {},
   testRefreshTokens: {},
+  testVerificationIds: {},
   playgroundSplit: 55,
   playgroundCollapsed: false,
   filesCollapsed: false,
@@ -210,6 +229,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       playgroundRuns: {},
       testTokens: {},
       testRefreshTokens: {},
+      testVerificationIds: {},
       chat: {}, // prompts and generated data must not leak between users
       chatInput: '',
       stagedDismissed: false,
@@ -275,6 +295,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           playgroundInputs: { ...s.playgroundInputs, [key]: { ...opened, body: refreshBody(refreshToken) } },
         }),
       }
+    }),
+
+  adoptVerificationId: (tenantId, verificationId) =>
+    set((s) => {
+      // Verify and resend routes the user has opened take the new id; a code already typed stays.
+      const playgroundInputs = { ...s.playgroundInputs }
+      for (const route of [VERIFY_ROUTE, RESEND_ROUTE]) {
+        const key = playgroundKey(tenantId, route)
+        const opened = playgroundInputs[key]
+        const body = opened ? verificationBody(route, verificationId, opened.body) : null
+        if (opened && body) playgroundInputs[key] = { ...opened, body }
+      }
+      return {
+        testVerificationIds: { ...s.testVerificationIds, [tenantId]: verificationId },
+        playgroundInputs,
+      }
+    }),
+
+  forgetVerificationId: (tenantId) =>
+    set((s) => {
+      const { [tenantId]: _id, ...testVerificationIds } = s.testVerificationIds
+      return { testVerificationIds }
     }),
 
   endTestSession: (tenantId) =>

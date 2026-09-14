@@ -200,6 +200,8 @@ function SystemActions({ tenantId, file }: { tenantId: string; file: string }) {
 const SYSTEM_FILE_NOTES: Record<string, string> = {
   users:
     'The accounts that sign in to your API, created by /auth/signup and the login providers. You can change an account’s role here; password hashes are never shown.',
+  signups:
+    'Sign-ups waiting for their email verification code. An account is created only when the code comes back to /auth/signup/verify. Passwords and codes are never shown — without RESEND_API_KEY, each code appears in the Logs tab instead.',
   'reset-password':
     'Password reset codes that are outstanding or were sent in the last hour. Codes themselves are never shown.',
   sessions:

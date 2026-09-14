@@ -2,13 +2,16 @@
  * Forgot password: a one-time 6-digit code, sent by email, traded for a new password.
  *
  *   POST /auth/forgot-password  { email }                  → 202, whether or not the account exists
- *   POST /auth/reset-password   { email, code, password }  → { token, user }
+ *   POST /auth/reset-password   { email, code, password }  → { token, refreshToken, expiresIn, user }
  *
  * One kind of credential, two ways to present it. The email always shows the
  * code, which works in any client (a mobile app, a CLI, a SPA with no reset
  * page). When the project sets AUTH_RESET_URL the email also links there with
  * the email and code in the fragment, for a web app that wants a one-click page.
  * The link adds no second credential: a code is a code wherever it is typed.
+ *
+ * A project with no email provider gets the code in its own request log instead
+ * (codes.ts), so reset can be tried before email is set up.
  *
  * Six digits are guessable, so the security is in the limits around them, and
  * every one is load-bearing:
@@ -18,12 +21,22 @@
  *   - at most MAX_CODES_PER_HOUR codes per user per hour, counted from the row's
  *     `issuedAt` and persisted, so neither spending a code nor evicting the
  *     tenant hands out a fresh allowance.
- * Codes are stored as an HMAC under a key derived from ADMIN_SECRET, not a bare
- * hash: a million candidates is nothing to brute-force, and the dashboard shows
- * this file.
  */
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { err, json } from "../../lib/http.ts";
+import { err, json, withLogNote } from "../../lib/http.ts";
+import {
+  CODE_RE,
+  CODE_TTL_MS,
+  MAX_ATTEMPTS,
+  MAX_CODES_PER_HOUR,
+  codeHash,
+  codeNote,
+  escapeHtml,
+  iso,
+  newCode,
+  recentIssues,
+  sameCode,
+  sendCode,
+} from "./codes.ts";
 import {
   EMAIL_RE,
   MIN_PASSWORD_LEN,
@@ -36,27 +49,13 @@ import {
 } from "./identity.ts";
 import type { AuthTenant, EmailMessage, Identity, ResetEntry } from "./types.ts";
 
-/** Local dev and tests only: write each reset code to the log. NEVER set in production. */
+/** Local dev and tests only: write each reset code to the process log. NEVER set in production. */
 export const LOG_RESET_CODES = process.env.AUTH_RESET_LOG_CODES === "true";
-
-const CODE_TTL_MS = 15 * 60_000;
-const MAX_ATTEMPTS = 5;
-const MAX_CODES_PER_HOUR = 5;
-const HOUR_MS = 60 * 60_000;
-const CODE_RE = /^\d{6}$/;
-
-/** Bound to the user as well as the code, so a hash can never be moved to another row. */
-function codeHash(secret: string, tenantId: string, userId: string, code: string): string {
-  const key = createHmac("sha256", secret).update(`reset:${tenantId}`).digest();
-  return createHmac("sha256", key).update(`${userId}:${code}`).digest("base64url");
-}
 
 /** Drops rows with nothing left to do: no live code, and nothing issued within the hour to throttle. */
 function prune(identity: Identity, now: number) {
   identity.resets = identity.resets.filter(
-    (r) =>
-      (r.codeHash !== "" && Date.parse(r.expiresAt) > now) ||
-      r.issuedAt.some((t) => now - Date.parse(t) < HOUR_MS),
+    (r) => (r.codeHash !== "" && Date.parse(r.expiresAt) > now) || recentIssues(r.issuedAt, now).length > 0,
   );
 }
 
@@ -66,9 +65,6 @@ function resetLink(base: string, email: string, code: string): string {
   url.hash = new URLSearchParams({ email, code }).toString();
   return url.toString();
 }
-
-const escapeHtml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 function resetEmail(to: string, code: string, link: string): EmailMessage {
   const minutes = CODE_TTL_MS / 60_000;
@@ -92,13 +88,18 @@ export async function forgotPassword<T extends AuthTenant>(ctx: AuthContext<T>, 
   const { email } = body;
   if (typeof email !== "string" || !EMAIL_RE.test(email)) return err(400, "valid email required");
 
-  // Said the same for every address, so it tells a caller nothing about who has an account.
-  const emailReady = host.emailConfigured(tenant);
-  if (!emailReady && !LOG_RESET_CODES)
-    return err(404, "password reset is not configured for this project: set RESEND_API_KEY");
-
+  // Said the same for every address, so it tells a caller nothing about who has
+  // an account. Where the code went depends only on the project's settings.
   const accepted = () =>
-    json({ ok: true, message: "If that email has an account, a reset code is on its way." }, 202);
+    json(
+      {
+        ok: true,
+        message: host.emailConfigured(tenant)
+          ? "If that email has an account, a reset code is on its way."
+          : "If that email has an account, a reset code has been issued. This project has no email provider, so the code is in the project's logs.",
+      },
+      202,
+    );
 
   const user = findByEmail(tenant.identity, email);
   if (!user) return accepted();
@@ -107,17 +108,17 @@ export async function forgotPassword<T extends AuthTenant>(ctx: AuthContext<T>, 
   const now = Date.now();
   prune(tenant.identity, now);
   const previous = tenant.identity.resets.find((r) => r.userId === userId);
-  const recent = (previous?.issuedAt ?? []).filter((t) => now - Date.parse(t) < HOUR_MS);
+  const recent = recentIssues(previous?.issuedAt ?? [], now);
   // Throttled quietly: a 429 only an existing account could earn would give the account away.
   if (recent.length >= MAX_CODES_PER_HOUR) return accepted();
 
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const code = newCode();
   const entry: ResetEntry = {
     userId,
-    codeHash: codeHash(host.secret, tenantId, userId, code),
-    expiresAt: new Date(now + CODE_TTL_MS).toISOString(),
+    codeHash: codeHash(host.secret, "reset", tenantId, userId, code),
+    expiresAt: iso(now + CODE_TTL_MS),
     attempts: 0,
-    issuedAt: [...recent, new Date(now).toISOString()],
+    issuedAt: [...recent, iso(now)],
   };
   tenant.identity.resets = [...tenant.identity.resets.filter((r) => r.userId !== userId), entry];
   await host.saveResets(tenantId, tenant);
@@ -125,11 +126,9 @@ export async function forgotPassword<T extends AuthTenant>(ctx: AuthContext<T>, 
   const link = resetLink(tenant.config.auth.resetUrl, user.email, code);
   if (LOG_RESET_CODES)
     console.log(`[core] ${tenantId}: password reset code for ${user.email} is ${code}${link ? ` — ${link}` : ""}`);
-  if (emailReady) {
-    const sent = await host.sendEmail(tenant, resetEmail(user.email, code, link));
-    if (!sent.ok) return err(502, `email provider rejected the request (${sent.status ?? "unreachable"})`);
-  }
-  return accepted();
+  const delivery = await sendCode(host, tenant, resetEmail(user.email, code, link));
+  if (delivery instanceof Response) return delivery;
+  return delivery === "logs" ? withLogNote(accepted(), codeNote("Password reset", user.email, code)) : accepted();
 }
 
 export async function resetPassword<T extends AuthTenant>(ctx: AuthContext<T>, body: Fields): Promise<Response> {
@@ -146,9 +145,7 @@ export async function resetPassword<T extends AuthTenant>(ctx: AuthContext<T>, b
   const entry = user ? tenant.identity.resets.find((r) => r.userId === String(user.id)) : undefined;
   if (!user || !entry || entry.codeHash === "" || Date.parse(entry.expiresAt) <= Date.now()) return invalid();
 
-  const given = Buffer.from(codeHash(host.secret, tenantId, String(user.id), code), "base64url");
-  const stored = Buffer.from(entry.codeHash, "base64url");
-  if (given.length !== stored.length || !timingSafeEqual(given, stored)) {
+  if (!sameCode(codeHash(host.secret, "reset", tenantId, String(user.id), code), entry.codeHash)) {
     entry.attempts += 1;
     if (entry.attempts >= MAX_ATTEMPTS) {
       entry.codeHash = "";

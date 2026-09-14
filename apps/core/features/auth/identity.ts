@@ -1,8 +1,8 @@
 /**
  * The identity table and what may be done with it.
  *
- * `system/users.json`, `system/reset-password.json` and `system/sessions.json`
- * are the auth feature's own files. They are never mounted as CRUD resources
+ * `system/users.json`, `system/signups.json`, `system/reset-password.json` and
+ * `system/sessions.json` are the auth feature's own files. They are never mounted as CRUD resources
  * and never reach the SQL projection, so the only ways out of the server are
  * the auth routes (through `safeUser`) and the dashboard's read-only system
  * view (through `viewSystemFile`). A project can still have a
@@ -12,7 +12,7 @@
 import { json } from "../../lib/http.ts";
 import type { Jwt } from "./jwt.ts";
 import { closeUserSessions, openSession } from "./sessions.ts";
-import type { AuthHost, AuthTenant, Claims, Identity, ResetEntry, SessionEntry, UserRecord } from "./types.ts";
+import type { AuthHost, AuthTenant, Claims, Identity, ResetEntry, SessionEntry, SignupEntry, UserRecord } from "./types.ts";
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const MIN_PASSWORD_LEN = 8;
@@ -102,14 +102,31 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
 /**
- * Builds the in-RAM identity from the three system files as read off disk.
+ * Builds the in-RAM identity from the four system files as read off disk.
  * Rows that are not the right shape are dropped rather than trusted: nothing
  * else about this table is allowed to be surprising.
  */
-export function readIdentity(usersRaw: unknown, resetsRaw: unknown, sessionsRaw: unknown): Identity {
+export function readIdentity(usersRaw: unknown, signupsRaw: unknown, resetsRaw: unknown, sessionsRaw: unknown): Identity {
   const users = (Array.isArray(usersRaw) ? usersRaw : []).filter(
     (u): u is UserRecord => isObject(u) && (typeof u.id === "string" || typeof u.id === "number") && typeof u.email === "string",
   );
+  const signups: SignupEntry[] = [];
+  for (const s of Array.isArray(signupsRaw) ? signupsRaw : []) {
+    if (!isObject(s) || typeof s.id !== "string" || typeof s.email !== "string") continue;
+    if (typeof s.passwordHash !== "string" || typeof s.expiresAt !== "string") continue;
+    signups.push({
+      id: s.id,
+      email: s.email,
+      ...(typeof s.name === "string" && s.name ? { name: s.name } : {}),
+      passwordHash: s.passwordHash,
+      codeHash: text(s.codeHash),
+      codeExpiresAt: typeof s.codeExpiresAt === "string" ? s.codeExpiresAt : new Date(0).toISOString(),
+      attempts: typeof s.attempts === "number" ? s.attempts : 0,
+      issuedAt: Array.isArray(s.issuedAt) ? s.issuedAt.filter((t): t is string => typeof t === "string") : [],
+      createdAt: text(s.createdAt),
+      expiresAt: s.expiresAt,
+    });
+  }
   const resets: ResetEntry[] = [];
   for (const r of Array.isArray(resetsRaw) ? resetsRaw : []) {
     if (!isObject(r) || typeof r.userId !== "string") continue;
@@ -135,18 +152,23 @@ export function readIdentity(usersRaw: unknown, resetsRaw: unknown, sessionsRaw:
       expiresAt: s.expiresAt,
     });
   }
-  return { users, resets, sessions };
+  return { users, signups, resets, sessions };
 }
 
 /**
  * The system files the dashboard may look at, and how each is shown. No view
- * carries a credential: a password hash is stripped, and so is a reset code's
- * HMAC, since six digits are recoverable from their hash by anyone who could
- * also get at the key — and so are a session's refresh-token hashes.
+ * carries a credential: a password hash is stripped — a pending sign-up's too —
+ * and so is a code's HMAC, since six digits are recoverable from their hash by
+ * anyone who could also get at the key, and so are a session's refresh-token
+ * hashes.
  */
 const SYSTEM_VIEWS = {
   users: (row: Record<string, unknown>) => {
     const { passwordHash: _ph, ...rest } = row;
+    return rest;
+  },
+  signups: (row: Record<string, unknown>) => {
+    const { passwordHash: _ph, codeHash: _ch, ...rest } = row;
     return rest;
   },
   "reset-password": (row: Record<string, unknown>) => {

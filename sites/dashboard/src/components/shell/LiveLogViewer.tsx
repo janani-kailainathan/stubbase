@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ArrowDown, CheckCircle2, ChevronDown, Radio, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowDown, CheckCircle2, ChevronDown, KeyRound, Radio, Trash2 } from 'lucide-react'
 import { useLiveLogs } from '@/hooks/logs'
 import { useWorkspaceStore, type LogView } from '@/stores/workspace'
 import type { LogEntry } from '@/lib/api'
@@ -84,6 +84,15 @@ function LogRow({ entry, view }: { entry: LogEntry; view: LogView }) {
           {entry.durationMs}ms
         </span>
       </button>
+
+      {/* A code the project could not email. Shown on the row itself, not behind
+          the expander: reading it off is the whole reason to open the log. */}
+      {entry.note && (
+        <p className="mx-3 mb-1.5 flex items-start gap-1.5 rounded border border-border bg-primary-soft px-2 py-1 font-mono text-[11px] break-words text-primary-ink">
+          <KeyRound className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+          <span className="min-w-0">{entry.note}</span>
+        </p>
+      )}
 
       {open && (
         <div className="px-3 pb-2">

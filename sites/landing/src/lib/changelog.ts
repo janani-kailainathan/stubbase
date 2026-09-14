@@ -57,6 +57,10 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
+        text: 'Email verification for the users of your API, on whenever sign-in is. An account is created only when the six-digit code sent to its address comes back. Before you add a Resend key, sign-up and reset codes appear in your project’s Logs tab so you can build the whole flow first.',
+      },
+      {
+        kind: 'added',
         text: 'Refresh tokens and logout for the users of your API. Every sign-in returns a refresh token that renews a short-lived access token, rotates on every use and ends the session if a copy is ever replayed; logout ends one device at once.',
         href: '/features/google-github-social-login',
       },

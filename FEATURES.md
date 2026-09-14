@@ -23,7 +23,8 @@ Reference docs: [README.md](README.md) (architecture + API),
 ### 1.1 JSON-to-CRUD
 
 Add a JSON file to your project and the CRUD endpoints are created for you.
-No database to set up and no schema to write — the file *is* your data and your
+No database to set up and no schema to write — the file *is* your data 
+and your
 schema.
 
 Drop in a `posts.json`, hit **Deploy**, and you have:
@@ -195,7 +196,7 @@ Give *your* users accounts, without building an auth service. Turn it on and
 these endpoints appear:
 
 ```
-POST   /<project>/auth/signup            { email, password }               → a token and a refresh token
+POST   /<project>/auth/signup            { email, password }               → a code to confirm the email (see 1.4.3)
 POST   /<project>/auth/login             { email, password }               → a token and a refresh token
 POST   /<project>/auth/refresh           { refreshToken }                  → a new token and refresh token
 POST   /<project>/auth/logout            your token, or { refreshToken }   → signed out
@@ -234,7 +235,7 @@ appear in a response or in the dashboard. A `users.json` you add to your data is
 an ordinary resource like any other and has nothing to do with signing in.
 
 Every account is a standard user until you add roles — see
-[1.4.4 Roles and permissions](#144-roles-and-permissions).
+[1.4.5 Roles and permissions](#145-roles-and-permissions).
 
 **Changing a password** takes the user's token *and* their current password, so
 a stolen token alone cannot lock anyone out. It signs the user out everywhere
@@ -242,9 +243,9 @@ else: every token and refresh token issued before the change stops working, and
 the response carries a fresh pair so they stay signed in where they made it.
 
 This section is the base every login builds on. Google and GitHub sign-in are
-extra doors into the same feature, and password reset is a way back in — they
-all need everything here switched on first, and they hand your users the same
-tokens.
+extra doors into the same feature, email verification checks who is signing up,
+and password reset is a way back in — they all need everything here switched on
+first, and they hand your users the same tokens.
 
 ##### To enable this feature, add to your `.env`:
 
@@ -253,7 +254,9 @@ AUTH_ENABLED=true
 ```
 
 That one line is enough — you get signup, login, and an API that now requires a
-token. Everything below is optional.
+token. It also switches on email verification (1.4.3) and password reset
+(1.4.4), which work before you set up email: their codes show in your project's
+**Logs** tab until you add a Resend key. Everything below is optional.
 
 ##### To keep some resources readable by anyone:
 
@@ -268,7 +271,7 @@ Leave this key out and *nothing* is public — the right default for a private
 app, the wrong one for a public blog with a signed-in comment box.
 
 Once roles are on (`RBAC_ENABLED=true` with an `rbac.json`), this key is
-ignored: the `guest` role decides what visitors can do (see 1.4.4).
+ignored: the `guest` role decides what visitors can do (see 1.4.5).
 
 ##### To control how long a token lasts:
 
@@ -384,7 +387,78 @@ read.
 
 This key is shared with Google login: set it once and it applies to both.
 
-#### 1.4.3 Password reset
+#### 1.4.3 Email verification
+
+Make sure every account belongs to someone who can read its inbox. With auth on,
+signing up no longer creates the account straight away: we send a six-digit code
+to the address, and the account is created when your app sends that code back.
+
+```
+POST   /<project>/auth/signup          { email, password }          → { verificationId, … } and a code is sent
+POST   /<project>/auth/signup/verify   { verificationId, code }     → a token and a refresh token
+POST   /<project>/auth/signup/resend   { verificationId }           → a new code replaces the last
+```
+
+Keep the `verificationId` from the sign-up response and send it back with the
+code. It ties the code to *this* sign-up: if somebody else signs up with the same
+address, the code sent for theirs cannot finish yours.
+
+**Where the code goes.** With a Resend key in your `.env`, it is emailed to the
+address that signed up. Without one, nothing is emailed — the code appears in
+your project's **Logs** tab, on the sign-up request, where only you can see it.
+The sign-up response says which (`"delivery": "email"` or `"logs"`). That lets
+you build and test the whole flow before you set up email; add the key before
+real users sign up, or their codes will never reach them.
+
+Until the code comes back, logging in with that email and password answers `403`
+with `"verificationRequired": true` and the `verificationId`, so your app can show
+its code screen again — and call `resend` if the code has run out. A code lasts
+15 minutes, five wrong tries use it up, each address gets at most five codes an
+hour, and a sign-up nobody finishes is dropped after a day. Sign-ups waiting for
+their code show in the **system** folder as `signups.json`, without their
+passwords or codes.
+
+People who sign in with Google or GitHub skip this step: the provider has
+already confirmed their email.
+
+##### To enable this feature, add to your `.env`:
+
+```
+AUTH_ENABLED=true
+```
+
+Email verification is on whenever auth is — there is nothing else to switch on.
+
+##### To email the codes to your users:
+
+```
+AUTH_ENABLED=true
+RESEND_API_KEY=re_your_resend_key
+```
+
+The codes go out through your own [Resend](https://resend.com) account. This key
+is shared with password reset and email notifications.
+
+##### To send the email from your own address:
+
+```
+RESEND_FROM=Your App <no-reply@your-app.com>
+```
+
+Left out, the email comes from Resend's onboarding address. Shared with password
+reset and email notifications.
+
+##### To create accounts without a code:
+
+```
+AUTH_EMAIL_VERIFICATION=false
+```
+
+`signup` answers with a token and a refresh token straight away, and the
+`verify` and `resend` routes go away — right for a prototype or an internal
+tool. Only `false` turns it off; leave the key out and verification stays on.
+
+#### 1.4.4 Password reset
 
 Let your users back in when they forget their password. They ask for a code, we
 email it to them, and they trade it for a new password:
@@ -411,15 +485,22 @@ for the first time.
 
 ```
 AUTH_ENABLED=true
+```
+
+Password reset is on whenever auth is. Until you add a Resend key nothing is
+emailed: the code appears in your project's **Logs** tab on the
+`forgot-password` request, where only you can see it — handy while you build, but
+your users cannot reset a password on their own until the key is there.
+
+##### To email the codes to your users:
+
+```
+AUTH_ENABLED=true
 RESEND_API_KEY=re_your_resend_key
 ```
 
-The codes go out through your own [Resend](https://resend.com) account. Without
-a Resend key there is nothing to send with, so `forgot-password` answers `404`.
-And `AUTH_ENABLED=true` still has to be there: password reset is part of auth,
-not a separate service.
-
-This key is shared with email notifications.
+The codes go out through your own [Resend](https://resend.com) account. This key
+is shared with email verification and email notifications.
 
 ##### To send the email from your own address:
 
@@ -445,7 +526,7 @@ your page and send them to `reset-password` with the new password.
 Leave it out and the email carries the code alone — the right choice for a
 mobile app, or anything without a web page to land on.
 
-#### 1.4.4 Roles and permissions
+#### 1.4.5 Roles and permissions
 
 Decide who may do what with your API — say, customers place orders and see only
 their own, while staff see every order and edit the products. You describe
@@ -622,7 +703,7 @@ Feature: [1.4 Auth](#14-auth--sign-up-and-login-for-your-users)
 
 | Key | Example | What it does |
 |---|---|---|
-| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login, refresh, logout and change-password endpoints, keeps your users' accounts and sessions in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub, password reset and roles ones. |
+| `AUTH_ENABLED` | `true` | **The switch.** Adds the signup, login, refresh, logout and change-password endpoints — with email verification and password reset on too — keeps your users' accounts and sessions in your project's read-only `system` folder, and makes every request need a token. Every key in this whole section does nothing without it — including the Google, GitHub, verification, password reset and roles ones. |
 | `AUTH_PUBLIC_ROUTES` | `posts,comments` | Resources anyone may `GET` without a token. Writes to them still need one. Comma-separated, no spaces. Left out, nothing is public. |
 | `AUTH_JWT_TTL_SECONDS` | `3600` | How long a token stays valid, in seconds. Defaults to `86400` (24 hours); the minimum is `60`. |
 | `AUTH_REFRESH_TTL_SECONDS` | `604800` | How long a user stays signed in without using their refresh token, in seconds. Every refresh starts the clock again. Defaults to `2592000` (30 days); the minimum is `3600`, and it is never shorter than `AUTH_JWT_TTL_SECONDS`. |
@@ -647,19 +728,31 @@ Register `<origin>/<project>/auth/google/callback` in the Google console.
 
 Register `<origin>/<project>/auth/github/callback` in your GitHub OAuth app.
 
-#### 3.1.3 Password reset
+#### 3.1.3 Email verification
 
-Feature: [1.4.3 Password reset](#143-password-reset)
+Feature: [1.4.3 Email verification](#143-email-verification)
 
 | Key | Example | What it does |
 |---|---|---|
-| `RESEND_API_KEY` | `re_your_resend_key` | **The switch.** Your Resend key — with it, `/<project>/auth/forgot-password` can email codes. Needs `AUTH_ENABLED=true` as well. Shared with email notifications. |
-| `RESEND_FROM` | `Your App <no-reply@your-app.com>` | Who the email is from. Left out, Resend's onboarding address. Shared with email notifications. |
+| `AUTH_ENABLED` | `true` | **The switch.** Email verification is on whenever auth is. Shared with every auth feature. |
+| `AUTH_EMAIL_VERIFICATION` | `false` | Set to `false` and signup creates the account at once, with no code, and `/<project>/auth/signup/verify` and `/signup/resend` go away. Left out, or any other value, verification stays on. |
+| `RESEND_API_KEY` | `re_your_resend_key` | Emails the codes. Left out, each code appears in your project's **Logs** tab instead and nothing is emailed. Shared with password reset and email notifications. |
+| `RESEND_FROM` | `Your App <no-reply@your-app.com>` | Who the email is from. Left out, Resend's onboarding address. Shared with password reset and email notifications. |
+
+#### 3.1.4 Password reset
+
+Feature: [1.4.4 Password reset](#144-password-reset)
+
+| Key | Example | What it does |
+|---|---|---|
+| `AUTH_ENABLED` | `true` | **The switch.** Password reset is on whenever auth is. Shared with every auth feature. |
+| `RESEND_API_KEY` | `re_your_resend_key` | Emails the codes. Left out, each code appears in your project's **Logs** tab instead and nothing is emailed. Shared with email verification and email notifications. |
+| `RESEND_FROM` | `Your App <no-reply@your-app.com>` | Who the email is from. Left out, Resend's onboarding address. Shared with email verification and email notifications. |
 | `AUTH_RESET_URL` | `https://your-app.com/reset-password` | Adds a link to this page below the code, with `#email=…&code=…` attached. Must start with `http://` or `https://`. Left out, the email carries the code alone. |
 
-#### 3.1.4 Roles and permissions
+#### 3.1.5 Roles and permissions
 
-Feature: [1.4.4 Roles and permissions](#144-roles-and-permissions)
+Feature: [1.4.5 Roles and permissions](#145-roles-and-permissions)
 
 | Key | Example | What it does |
 |---|---|---|

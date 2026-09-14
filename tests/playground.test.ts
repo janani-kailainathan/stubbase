@@ -29,9 +29,12 @@ import {
   SORT_KEYWORDS,
   countsAsUsage,
   endsSession,
+  finishesSignup,
   idProblem,
   initialInputs,
   refreshTokenFrom,
+  verificationBody,
+  verificationIdFrom,
   normalizeParamValue,
   paramValueKind,
   requestHeaders,
@@ -290,8 +293,70 @@ describe("token autofill", () => {
     expect(JSON.parse(initialInputs(find("POST", "/auth/login"), null, "sid.secret").body)).not.toHaveProperty("refreshToken");
   });
 
+  test("adopts a pending sign-up's verificationId into the verify and resend bodies, and lists those routes only while verification is on", () => {
+    const pending = JSON.stringify({ verificationRequired: true, verificationId: "v-1", email: "a@b.co" });
+    expect(verificationIdFrom(find("POST", "/auth/signup"), 202, pending)).toBe("v-1");
+    expect(verificationIdFrom(find("POST", "/auth/signup/resend"), 202, pending)).toBe("v-1");
+    // A login refused until the address is verified carries it too.
+    expect(verificationIdFrom(find("POST", "/auth/login"), 403, pending)).toBe("v-1");
+    expect(verificationIdFrom(find("POST", "/auth/login"), 401, pending)).toBeNull();
+    expect(verificationIdFrom(find("POST", "/posts"), 202, pending)).toBeNull();
+    expect(tokenFrom(find("POST", "/auth/signup"), 202, pending)).toBeNull();
+
+    const verify = find("POST", "/auth/signup/verify");
+    expect(JSON.parse(initialInputs(verify, null, "", "v-1").body)).toEqual({ verificationId: "v-1", code: "" });
+    expect(JSON.parse(initialInputs(find("POST", "/auth/signup/resend"), null, "", "v-1").body)).toEqual({ verificationId: "v-1" });
+    expect(JSON.parse(initialInputs(verify, null).body)).toHaveProperty("verificationId"); // the documented shape without one
+    // A new id keeps the code already typed, and no other route takes one.
+    const typed = JSON.stringify({ verificationId: "v-1", code: "123456" });
+    expect(JSON.parse(verificationBody(verify, "v-2", typed)!)).toEqual({ verificationId: "v-2", code: "123456" });
+    expect(verificationBody(find("POST", "/auth/login"), "v-1")).toBeNull();
+    expect(finishesSignup(verify, 201)).toBe(true);
+    expect(finishesSignup(verify, 400)).toBe(false);
+
+    // Read as the core reads AUTH_EMAIL_VERIFICATION: only a literal false turns it off.
+    const paths = (config: Record<string, string>) =>
+      groupEndpoints([], config).flatMap((g) => g.endpoints).map((e) => e.path);
+    expect(paths({ AUTH_ENABLED: "true" })).toContain("/auth/signup/verify");
+    expect(paths({ AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: " FALSE " })).not.toContain("/auth/signup/verify");
+    expect(paths({ AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" })).not.toContain("/auth/signup/resend");
+    expect(paths({ AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "no" })).toContain("/auth/signup/resend");
+    expect(paths({ AUTH_EMAIL_VERIFICATION: "true" })).toEqual([]);
+  });
+
+  test("finishes a real sign-up with the adopted id and the code from the project's log", async () => {
+    await seedTenant(core, "playverify", { posts: [], config: { AUTH_ENABLED: "true" } });
+    const send = async (path: string, body: string) => {
+      const endpoint = find("POST", path);
+      const res = await fetch(`${core.base}${requestPath("playverify", endpoint, "")}`, {
+        method: "POST",
+        headers: requestHeaders(endpoint, { chaos: {} }, { token: "", authEnabled: true, qaMode: false }),
+        body,
+      });
+      return { endpoint, status: res.status, body: await res.text(), correlationId: res.headers.get("x-correlation-id") };
+    };
+
+    const signup = await send("/auth/signup", JSON.stringify({ email: "pv@test.co", password: "password123" }));
+    expect(signup.status).toBe(202);
+    const verificationId = verificationIdFrom(signup.endpoint, signup.status, signup.body)!;
+    expect(verificationId).toBeString();
+
+    // The code the project had no email provider to send, read off the log the way the Logs tab shows it.
+    const { entries } = await fetch(`${core.base}/playverify/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+    const note: string = entries.find((e: { correlationId: string }) => e.correlationId === signup.correlationId).note;
+    const code = /: (\d{6}) —/.exec(note)![1];
+
+    const verify = find("POST", "/auth/signup/verify");
+    const opened = initialInputs(verify, null, "", verificationId).body;
+    const verified = await send("/auth/signup/verify", JSON.stringify({ ...JSON.parse(opened), code }));
+    expect(verified.status).toBe(201);
+    expect(tokenFrom(verified.endpoint, verified.status, verified.body)).toBeString();
+    expect(finishesSignup(verified.endpoint, verified.status)).toBe(true);
+  }, 20_000);
+
   test("carries a real session through refresh and logout, sending only what the rail offers", async () => {
-    await seedTenant(core, "playauth", { posts: [], config: { AUTH_ENABLED: "true" } });
+    // Verification off, so signup itself opens the session (the test above finishes a pending one).
+    await seedTenant(core, "playauth", { posts: [], config: { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" } });
     const send = async (path: string, body: string, token = "") => {
       const endpoint = find("POST", path);
       const res = await fetch(`${core.base}${requestPath("playauth", endpoint, "")}`, {

@@ -18,6 +18,8 @@ export interface OauthCredentials {
 /** The AUTH_* keys of a tenant's config, parsed. */
 export interface AuthConfig {
   enabled: boolean;
+  /** AUTH_EMAIL_VERIFICATION — a password sign-up is an account only once its emailed code comes back. On unless "false". */
+  emailVerification: boolean;
   /** Resources that allow anonymous GET despite auth. */
   publicRoutes: Set<string>;
   /** How long an access token lasts. */
@@ -63,6 +65,33 @@ export interface ResetEntry {
 }
 
 /**
+ * One row of `system/signups.json`: a password sign-up waiting for its code, at
+ * most one per address.
+ *
+ * Not an account — `users.json` holds only addresses that answered. The code is
+ * bound to `id`, which only the caller who signed up is given, so a sign-up
+ * that replaced this one can never be completed with the code sent for it. Like
+ * a reset row, it outlives its code: `issuedAt` throttles the address.
+ */
+export interface SignupEntry {
+  id: string;
+  email: string;
+  name?: string;
+  /** argon2id of the password chosen at sign-up; becomes the account's. */
+  passwordHash: string;
+  /** HMAC of the current code under a key derived from ADMIN_SECRET. `""` once spent. */
+  codeHash: string;
+  codeExpiresAt: string;
+  /** Wrong guesses against the current code. */
+  attempts: number;
+  /** When each code of the last hour was issued, for this address. */
+  issuedAt: string[];
+  createdAt: string;
+  /** The sign-up itself; a resend issues a new code but never extends this. */
+  expiresAt: string;
+}
+
+/**
  * One row of `system/sessions.json`: a sign-in that is still going.
  *
  * The refresh token is `<id>.<secret>`, and only keyed hashes of the secret are
@@ -84,6 +113,7 @@ export interface SessionEntry {
 
 export interface Identity {
   users: UserRecord[];
+  signups: SignupEntry[];
   resets: ResetEntry[];
   sessions: SessionEntry[];
 }
@@ -111,6 +141,8 @@ export interface AuthHost<T extends AuthTenant> {
   refused(tenantId: string, tenant: T): Response | null;
   /** Write-through for `system/users.json`. */
   saveUsers(tenantId: string, tenant: T): Promise<unknown>;
+  /** Write-through for `system/signups.json`. */
+  saveSignups(tenantId: string, tenant: T): Promise<unknown>;
   /** Write-through for `system/reset-password.json`. */
   saveResets(tenantId: string, tenant: T): Promise<unknown>;
   /** Write-through for `system/sessions.json`. */

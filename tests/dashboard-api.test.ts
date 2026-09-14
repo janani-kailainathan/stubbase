@@ -316,6 +316,7 @@ describe("project provisioning", () => {
   const CORE_TENANT_KEYS = [
     "QA_MODE",
     "AUTH_ENABLED",
+    "AUTH_EMAIL_VERIFICATION",
     "AUTH_PUBLIC_ROUTES",
     "AUTH_JWT_TTL_SECONDS",
     "AUTH_REFRESH_TTL_SECONDS",
@@ -2222,7 +2223,8 @@ describe("system files", () => {
     const staged = await fetch(`${app.base}/projects/${tenantId}/files/config`, {
       method: "PUT",
       headers: jsonHeaders(owner.token),
-      body: JSON.stringify({ AUTH_ENABLED: "true" }),
+      // Verification off, so the signup below is an account at once (the core suite covers the pending kind).
+      body: JSON.stringify({ AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" }),
     });
     expect(staged.status).toBe(200);
     await activate(owner.token, tenantId);
@@ -2339,7 +2341,7 @@ describe("roles and permissions", () => {
     const owner = await signup();
     const { tenantId } = await createProject(owner.token, "Roles", { posts: [] });
     for (const [name, body] of [
-      ["config", { AUTH_ENABLED: "true", RBAC_ENABLED: "true" }],
+      ["config", { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false", RBAC_ENABLED: "true" }],
       ["rbac", RULES],
     ] as const) {
       const res = await fetch(`${app.base}/projects/${tenantId}/files/${name}`, {

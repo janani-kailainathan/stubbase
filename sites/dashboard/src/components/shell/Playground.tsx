@@ -11,6 +11,7 @@ import {
   SORT_KEYWORDS,
   acceptsQuery,
   endsSession,
+  finishesSignup,
   normalizeParamValue,
   paramValueKind,
   hasBody,
@@ -23,6 +24,7 @@ import {
   requestPath,
   requestQuery,
   tokenFrom,
+  verificationIdFrom,
   type PlaygroundInputs,
   type QueryParam,
 } from '@/lib/playground'
@@ -578,18 +580,21 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
   const run = useWorkspaceStore((s) => s.playgroundRuns[key])
   const token = useWorkspaceStore((s) => s.testTokens[tenantId]) ?? ''
   const refreshToken = useWorkspaceStore((s) => s.testRefreshTokens[tenantId]) ?? ''
+  const verificationId = useWorkspaceStore((s) => s.testVerificationIds[tenantId]) ?? ''
   const split = useWorkspaceStore((s) => s.playgroundSplit)
   const collapsed = useWorkspaceStore((s) => s.playgroundCollapsed)
   const setPlaygroundInputs = useWorkspaceStore((s) => s.setPlaygroundInputs)
   const setTestToken = useWorkspaceStore((s) => s.setTestToken)
   const adoptRefreshToken = useWorkspaceStore((s) => s.adoptRefreshToken)
+  const adoptVerificationId = useWorkspaceStore((s) => s.adoptVerificationId)
+  const forgetVerificationId = useWorkspaceStore((s) => s.forgetVerificationId)
   const endTestSession = useWorkspaceStore((s) => s.endTestSession)
   const runPlayground = useWorkspaceStore((s) => s.runPlayground)
   const setSplit = useWorkspaceStore((s) => s.setPlaygroundSplit)
   const setCollapsed = useWorkspaceStore((s) => s.setPlaygroundCollapsed)
 
   const records = live.data
-  const inputs = stored ?? initialInputs(endpoint, records, refreshToken)
+  const inputs = stored ?? initialInputs(endpoint, records, refreshToken, verificationId)
   const update = (patch: Partial<PlaygroundInputs>) =>
     setPlaygroundInputs(key, { ...inputs, ...patch })
 
@@ -622,6 +627,10 @@ export function Playground({ endpoint, tenantId }: { endpoint: Endpoint; tenantI
     const refreshToken = refreshTokenFrom(endpoint, result.status, result.body)
     if (refreshToken) adoptRefreshToken(tenantId, refreshToken)
     if (endsSession(endpoint, result.status)) endTestSession(tenantId)
+    // A pending sign-up's id goes into the verify and resend bodies; its code is in the Logs tab or the inbox.
+    const pendingId = verificationIdFrom(endpoint, result.status, result.body)
+    if (pendingId) adoptVerificationId(tenantId, pendingId)
+    if (finishesSignup(endpoint, result.status)) forgetVerificationId(tenantId)
     // A write through the public API changes the deployed file, which is also
     // what the editor shows whenever nothing is staged — refetch both rather
     // than keep showing the records from before this request. An auth route

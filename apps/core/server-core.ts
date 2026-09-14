@@ -50,7 +50,7 @@ import { dirname, join } from "node:path";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { Database } from "bun:sqlite"; // built into Bun — not an npm dependency
-import { err, json, serializedBody } from "./lib/http.ts";
+import { err, json, logNotes, serializedBody } from "./lib/http.ts";
 import { NAME_RE } from "./lib/names.ts";
 import { newTimestamps } from "./lib/timestamps.ts";
 import {
@@ -66,6 +66,7 @@ import {
   type Claims,
   type EmailResult,
   type Identity,
+  type SystemFileName,
 } from "./features/auth/index.ts";
 import {
   canManageUsers,
@@ -471,6 +472,11 @@ interface LogEntry {
   requestBody: string | null;
   responseBody: string | null;
   lifecycle: LifecycleStep[];
+  /**
+   * For the owner, never the caller: a one-time code the project had no email
+   * provider to send (features/auth/codes.ts). Lives only in this ring.
+   */
+  note?: string;
 }
 
 const tenantLogs = new Map<string, LogEntry[]>();
@@ -539,6 +545,7 @@ function finishLog(
       requestBody: truncate(draft.requestBody),
       responseBody: truncate(draft.redactTokens ? redactAuthBody(body) : body),
       lifecycle: draft.lifecycle,
+      ...(logNotes.has(res) ? { note: logNotes.get(res) } : {}),
     });
   } catch (e) {
     console.warn(`[core] log record failed for ${tenantId} (${e})`);
@@ -589,7 +596,12 @@ async function loadTenant(tenantId: string): Promise<TenantState | null> {
   const state: TenantState = {
     db,
     config: system.has("config") ? parseConfig(system.get("config")) : DEFAULT_CONFIG,
-    identity: readIdentity(system.get("users"), system.get("reset-password"), system.get("sessions")),
+    identity: readIdentity(
+      system.get("users"),
+      system.get("signups"),
+      system.get("reset-password"),
+      system.get("sessions"),
+    ),
     status: parseStatus(system.get("status")),
     rbac: system.has("rbac") ? loadRbac(tenantId, system.get("rbac")) : null,
     lastSeen: Date.now(),
@@ -700,9 +712,14 @@ function persist(state: TenantState, tenantId: string, resource: string) {
  * Write-through for a feature's system file, on the same per-tenant chain as
  * the resources. No projection to drop: system/ never reaches `state.db`.
  */
-function persistSystem(state: TenantState, tenantId: string, name: "users" | "reset-password" | "sessions") {
+function persistSystem(state: TenantState, tenantId: string, name: SystemFileName) {
   const { identity } = state;
-  const rows = name === "users" ? identity.users : name === "reset-password" ? identity.resets : identity.sessions;
+  const rows = {
+    users: identity.users,
+    signups: identity.signups,
+    "reset-password": identity.resets,
+    sessions: identity.sessions,
+  }[name];
   const snapshot = JSON.stringify(rows, null, 2);
   state.writeChain = state.writeChain.then(() =>
     Bun.write(systemFile(tenantId, name), snapshot).catch((e) =>
@@ -722,6 +739,7 @@ const auth = createAuth<TenantState>({
   getTenant,
   refused: (tenantId, state) => statusBlocked(state) ?? quotaBlocked(tenantId),
   saveUsers: (tenantId, state) => persistSystem(state, tenantId, "users"),
+  saveSignups: (tenantId, state) => persistSystem(state, tenantId, "signups"),
   saveResets: (tenantId, state) => persistSystem(state, tenantId, "reset-password"),
   saveSessions: (tenantId, state) => persistSystem(state, tenantId, "sessions"),
   readJsonBody,

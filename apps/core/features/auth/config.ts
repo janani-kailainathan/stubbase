@@ -16,6 +16,8 @@ export function parseAuthConfig(env: Record<string, unknown>): AuthConfig {
   const jwtTtlSec = Math.max(60, Number(str("AUTH_JWT_TTL_SECONDS")) || DEFAULT_JWT_TTL_SEC);
   return {
     enabled: str("AUTH_ENABLED").toLowerCase() === "true",
+    // On unless switched off: an account nobody verified is the unsafe default.
+    emailVerification: str("AUTH_EMAIL_VERIFICATION").toLowerCase() !== "false",
     publicRoutes: new Set(
       str("AUTH_PUBLIC_ROUTES")
         .split(",")

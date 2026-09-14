@@ -169,6 +169,37 @@ export const refreshTokenFrom = (endpoint: Endpoint, status: number, body: strin
 /** The route that trades a refresh token for a new pair. */
 export const REFRESH_ROUTE = { method: 'POST', path: '/auth/refresh' } as const
 
+/** The two routes a pending sign-up is finished or re-sent through, both keyed by its verificationId. */
+export const VERIFY_ROUTE = { method: 'POST', path: '/auth/signup/verify' } as const
+export const RESEND_ROUTE = { method: 'POST', path: '/auth/signup/resend' } as const
+
+type Route = { method: string; path: string }
+
+const isRoute = (endpoint: Route, route: Route) =>
+  endpoint.method === route.method && endpoint.path === route.path
+
+/**
+ * The verificationId an auth answer handed out: a sign-up waiting for its code
+ * (202), a resend (202), or a login refused until the address is verified
+ * (403). Adopted into the verify and resend bodies so the code from the Logs
+ * tab is all that is left to type. It is not a credential without the code,
+ * which is why — unlike a token — it may be taken from a refusal.
+ */
+export function verificationIdFrom(endpoint: Endpoint, status: number, body: string): string | null {
+  if (endpoint.kind !== 'auth' || (status !== 202 && status !== 403)) return null
+  try {
+    const parsed: unknown = JSON.parse(body)
+    const value = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).verificationId : null
+    return typeof value === 'string' && value ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** Whether this answer finished the sign-up, spending its verificationId. */
+export const finishesSignup = (endpoint: Route, status: number) =>
+  isRoute(endpoint, VERIFY_ROUTE) && status >= 200 && status < 300
+
 /**
  * Whether this answer ended the playground's session, so both of its tokens are
  * dead. A playground logout always carries the adopted bearer token, which is
@@ -181,6 +212,25 @@ const stringify = (data: unknown) => JSON.stringify(data, null, 2) ?? ''
 
 /** The refresh route's body, carrying the refresh token the playground holds. */
 export const refreshBody = (refreshToken: string) => stringify({ refreshToken })
+
+/**
+ * The verify or resend route's body for the playground's verificationId, or
+ * null for any other route. A verify body keeps a code already typed into
+ * `previous`, so adopting a new id never throws away what the user entered.
+ */
+export function verificationBody(endpoint: Route, verificationId: string, previous = ''): string | null {
+  if (isRoute(endpoint, RESEND_ROUTE)) return stringify({ verificationId })
+  if (!isRoute(endpoint, VERIFY_ROUTE)) return null
+  let code = ''
+  try {
+    const parsed: unknown = JSON.parse(previous)
+    const typed = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).code : null
+    if (typeof typed === 'string') code = typed
+  } catch {
+    // Nothing usable typed yet.
+  }
+  return stringify({ verificationId, code })
+}
 
 /** A request body modelled on the resource's first record, minus its id. */
 export function sampleRecordBody(records: unknown[] | undefined | null): string {
@@ -207,26 +257,33 @@ export function recordIds(records: unknown[] | undefined | null, cap = 100): str
  * Starting values for an endpoint nobody has edited yet: the first deployed
  * record's id, and a body shaped like the deployed records (or the documented
  * shape, for an auth route — the refresh route opens with the refresh token
- * the playground holds, when it holds one).
+ * the playground holds, and the verify and resend routes with its
+ * verificationId, when it holds them).
  */
 export function initialInputs(
   endpoint: Endpoint,
   records: unknown[] | undefined | null,
   refreshToken = '',
+  verificationId = '',
 ): PlaygroundInputs {
-  const refreshing = endpoint.method === REFRESH_ROUTE.method && endpoint.path === REFRESH_ROUTE.path
   return {
     id: endpoint.needsId ? (recordIds(records, 1)[0] ?? '') : '',
     query: [],
-    body: hasBody(endpoint)
-      ? refreshing && refreshToken
-        ? refreshBody(refreshToken)
-        : endpoint.sample?.request
-          ? stringify(endpoint.sample.request)
-          : sampleRecordBody(records)
-      : '',
+    body: hasBody(endpoint) ? initialBody(endpoint, records, refreshToken, verificationId) : '',
     chaos: {},
   }
+}
+
+function initialBody(
+  endpoint: Endpoint,
+  records: unknown[] | undefined | null,
+  refreshToken: string,
+  verificationId: string,
+): string {
+  if (refreshToken && isRoute(endpoint, REFRESH_ROUTE)) return refreshBody(refreshToken)
+  const pending = verificationId ? verificationBody(endpoint, verificationId) : null
+  if (pending) return pending
+  return endpoint.sample?.request ? stringify(endpoint.sample.request) : sampleRecordBody(records)
 }
 
 /** Identifies one endpoint's playground state — path, not resource: auth holds two POSTs. */

@@ -1,8 +1,9 @@
 /**
  * Email-and-password accounts: signup, login, and changing a password you know.
- * Forgetting one is `password-reset.ts`.
+ * Forgetting one is `password-reset.ts`; with email verification on, a signup
+ * is finished in `signup-verification.ts`.
  */
-import { err } from "../../lib/http.ts";
+import { err, json } from "../../lib/http.ts";
 import { newTimestamps } from "../../lib/timestamps.ts";
 import {
   ARGON,
@@ -17,6 +18,7 @@ import {
   type AuthContext,
   type Fields,
 } from "./identity.ts";
+import { pendingSignupFor, signupThrottled, startSignup } from "./signup-verification.ts";
 import type { AuthTenant, UserRecord } from "./types.ts";
 
 export async function signup<T extends AuthTenant>(ctx: AuthContext<T>, body: Fields): Promise<Response> {
@@ -25,9 +27,15 @@ export async function signup<T extends AuthTenant>(ctx: AuthContext<T>, body: Fi
   if (typeof password !== "string" || password.length < MIN_PASSWORD_LEN) return err(400, PASSWORD_RULE);
 
   const { identity } = ctx.tenant;
+  const { emailVerification } = ctx.tenant.config.auth;
   if (findByEmail(identity, email)) return err(409, "email already registered");
+  // Before the hash, so a throttled address costs no argon2 run; startSignup checks again.
+  if (emailVerification && signupThrottled(identity, email))
+    return err(429, "too many verification codes for this address; try again later");
   const passwordHash = await Bun.password.hash(password, ARGON);
   if (findByEmail(identity, email)) return err(409, "email already registered"); // re-check: hashing yielded
+  if (emailVerification)
+    return startSignup(ctx, email, typeof name === "string" && name ? name : undefined, passwordHash);
   const user: UserRecord = {
     id: crypto.randomUUID(),
     email,
@@ -47,9 +55,27 @@ export async function login<T extends AuthTenant>(ctx: AuthContext<T>, body: Fie
   if (typeof password !== "string" || password.length < MIN_PASSWORD_LEN) return err(400, PASSWORD_RULE);
 
   // Always verify against some hash, so an unknown email takes as long as a wrong password.
-  const existing = findByEmail(ctx.tenant.identity, email);
-  const hash = typeof existing?.passwordHash === "string" ? existing.passwordHash : DUMMY_HASH;
+  const { identity } = ctx.tenant;
+  const existing = findByEmail(identity, email);
+  // An address still waiting for its code has no account, but the password it
+  // signed up with earns an explanation — and the id to ask for a new code.
+  const pending = !existing && ctx.tenant.config.auth.emailVerification ? pendingSignupFor(identity, email) : undefined;
+  const hash = typeof existing?.passwordHash === "string" ? existing.passwordHash : (pending?.passwordHash ?? DUMMY_HASH);
   const ok = await Bun.password.verify(password, hash).catch(() => false);
+  if (ok && pending && !findByEmail(identity, email)) {
+    // Re-read: verifying yielded, and a new sign-up may have replaced this one.
+    const current = pendingSignupFor(identity, email);
+    if (current?.passwordHash === pending.passwordHash)
+      return json(
+        {
+          error: "email not verified: finish signing up with the code that was sent",
+          verificationRequired: true,
+          verificationId: current.id,
+          email: current.email,
+        },
+        403,
+      );
+  }
   if (!ok || !existing) return err(401, "invalid email or password");
   return signedIn(ctx, existing);
 }

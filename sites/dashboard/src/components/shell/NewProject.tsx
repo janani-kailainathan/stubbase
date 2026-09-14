@@ -73,9 +73,7 @@ export function NewProjectForm({
         {
           onSuccess: (project) => {
             created(project.tenantId)
-            toast.success(`Created ${project.tenantId} — Deploy, then try ${starter.example}`, {
-              description: starter.nextStep,
-            })
+            toast.success('Project created.')
           },
           onError: (e) => toast.error(`Could not create the ${starter.title} example: ${e.message}`),
         },
@@ -86,7 +84,7 @@ export function NewProjectForm({
         {
           onSuccess: (project) => {
             created(project.tenantId)
-            toast.success(`Provisioned ${project.tenantId}`)
+            toast.success('Project created.')
           },
           onError: (e) => toast.error(`Could not create project: ${e.message}`),
         },

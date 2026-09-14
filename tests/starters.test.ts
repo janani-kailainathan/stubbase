@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
 import { RAW_KEY, mergeEnv, parseEnvText, socialLoginConfigured } from "../sites/dashboard/src/lib/env.ts";
+import { emailVerificationEnabled, groupEndpoints } from "../sites/dashboard/src/lib/endpoints.ts";
 import { adminAuth, seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
 let ROOT = "";
@@ -44,6 +45,33 @@ afterAll(async () => {
   await stopServices([core]);
   if (ROOT) await rm(ROOT, { recursive: true, force: true });
 });
+
+/** The one-time code a request left in its project's log — where it goes with no Resend key, as in every starter. */
+async function loggedCode(tenant: string, correlationId: string | null): Promise<string> {
+  const { entries } = await fetch(`${core.base}/${tenant}/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+  const note = entries.find((e: { correlationId: string }) => e.correlationId === correlationId)?.note ?? "";
+  const code = /: (\d{6}) —/.exec(note)?.[1];
+  if (!code) throw new Error(`no code in ${tenant}'s log for ${correlationId}`);
+  return code;
+}
+
+/**
+ * Signs up on a starter's tenant and answers with the account's tokens (201),
+ * finishing email verification the way the project's owner would when the
+ * starter has it on: with the code from the Logs tab.
+ */
+async function signUp(tenant: string, email: string, extra: Record<string, unknown> = {}): Promise<Response> {
+  const post = (route: string, body: unknown) =>
+    fetch(`${core.base}/${tenant}/auth/${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const res = await post("signup", { email, password: "password123", ...extra });
+  if (res.status !== 202) return res;
+  const { verificationId } = (await res.json()) as { verificationId: string };
+  return post("signup/verify", { verificationId, code: await loggedCode(tenant, res.headers.get("x-correlation-id")) });
+}
 
 /**
  * A starter's config lands in a project whose .env is the commented-out
@@ -92,8 +120,8 @@ describe("a starter's config merged into a templated .env", () => {
 });
 
 /**
- * The .env view's social login hint (and Forkful's next step) tells an owner
- * sign-in is off until a provider has both keys. That has to be the core's own
+ * The .env view's social login hint tells an owner sign-in is off until a
+ * provider has both keys. That has to be the core's own
  * rule, or the hint would vanish while the route still 404s.
  */
 describe("the social login hint agrees with the core", () => {
@@ -109,10 +137,9 @@ describe("the social login hint agrees with the core", () => {
     expect(socialLoginConfigured(whole)).toBe(true);
     expect((await fetch(`${core.base}/oauth-whole/auth/google`, { redirect: "manual" })).status).toBe(302);
 
-    // Forkful ships no keys, so the hint shows for it, and its next step says why.
+    // Forkful ships no keys, so the hint shows for it.
     const forkful = STARTERS.find((s) => s.id === "recipes")!;
     expect(socialLoginConfigured(forkful.config)).toBe(false);
-    expect(forkful.nextStep).toContain("Google");
   });
 });
 
@@ -275,11 +302,7 @@ describe("starter examples", () => {
       expect(anonymous.status).toBe(401);
 
       // And the auth plane is live, so a caller can get themselves a token.
-      const signup = await fetch(`${core.base}/${starter.id}-w/auth/signup`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: `someone@${starter.id}.example`, password: "password123" }),
-      });
+      const signup = await signUp(`${starter.id}-w`, `someone@${starter.id}.example`);
       expect(signup.status).toBe(201);
       const { token } = (await signup.json()) as { token: string };
 
@@ -302,11 +325,7 @@ describe("starter examples", () => {
       const tokenTtl = Number(starter.config!.AUTH_JWT_TTL_SECONDS ?? 86_400);
       const sessionTtl = Number(starter.config!.AUTH_REFRESH_TTL_SECONDS ?? 2_592_000);
 
-      const signup = await fetch(`${base}/auth/signup`, {
-        method: "POST",
-        headers: json,
-        body: JSON.stringify({ email: `sessions@${starter.id}.example`, password: "password123" }),
-      });
+      const signup = await signUp(`${starter.id}-w`, `sessions@${starter.id}.example`);
       expect(signup.status).toBe(201);
       const issued = (await signup.json()) as { expiresIn: number; refreshToken: string; user: { id: string } };
       expect({ starter: starter.id, expiresIn: issued.expiresIn }).toEqual({ starter: starter.id, expiresIn: tokenTtl });
@@ -330,6 +349,30 @@ describe("starter examples", () => {
         offBySeconds: true,
       });
     }
+  }, 30_000);
+
+  test("each auth starter says in its .env whether signup needs a code, and the core and the APIs rail agree", async () => {
+    const withAuth = STARTERS.filter((s) => s.config?.AUTH_ENABLED === "true");
+    for (const starter of withAuth) {
+      // Said out loud in every auth starter, so its .env shows the choice either way.
+      expect({ starter: starter.id, set: starter.config!.AUTH_EMAIL_VERIFICATION !== undefined }).toEqual({
+        starter: starter.id,
+        set: true,
+      });
+      const verifying = emailVerificationEnabled(starter.config);
+      const res = await fetch(`${core.base}/${starter.id}-w/auth/signup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: `rail@${starter.id}.example`, password: "password123" }),
+      });
+      expect({ starter: starter.id, status: res.status }).toEqual({ starter: starter.id, status: verifying ? 202 : 201 });
+      const listed = groupEndpoints([], starter.config)
+        .flatMap((g) => g.endpoints)
+        .some((e) => e.path === "/auth/signup/verify");
+      expect({ starter: starter.id, listed }).toEqual({ starter: starter.id, listed: verifying });
+    }
+    // The simplest auth starter turns it off; the rest keep the default.
+    expect(withAuth.filter((s) => !emailVerificationEnabled(s.config)).map((s) => s.id)).toEqual(["storefront"]);
   }, 30_000);
 
   test("Forkful keeps its non-public resources behind sign-in", async () => {
@@ -358,11 +401,7 @@ describe("starter examples", () => {
     expect((await fetch(`${base}/tickets`)).status).toBe(401);
 
     // A new account is a customer, and sees only the tickets it opens.
-    const signup = await fetch(`${base}/auth/signup`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "customer@deskline.example", password: "password123" }),
-    }).then((r) => r.json());
+    const signup = await signUp("helpdesk-w", "customer@deskline.example").then((r) => r.json());
     expect(signup.user.role).toBe(starter.rbac!.defaultRole);
     const as = { authorization: `Bearer ${signup.token}`, "content-type": "application/json" };
     expect(await fetch(`${base}/tickets`, { headers: as }).then((r) => r.json())).toEqual([]);
@@ -408,15 +447,25 @@ describe("starter examples", () => {
     for (const name of ["memberships", "invitations", "profiles"])
       expect((await fetch(`${base}/${name}`)).status, `${name} is open to visitors`).toBe(401);
 
-    // Sign up and log in with a password; a new account is a member.
-    const signup = await post("/auth/signup", { email: "ada@signet.example", password: "password123", name: "Ada" });
+    // Sign up with a password. The account exists once the code comes back — from
+    // the Logs tab, since no Resend key is set — and until then login says so.
+    const started = await post("/auth/signup", { email: "ada@signet.example", password: "password123", name: "Ada" });
+    expect(started.status).toBe(202);
+    const { verificationId } = (await started.json()) as { verificationId: string };
+    const early = await post("/auth/login", { email: "ada@signet.example", password: "password123" });
+    expect(early.status).toBe(403);
+    expect(await early.json()).toMatchObject({ verificationRequired: true, verificationId });
+    const code = await loggedCode("accounts-w", started.headers.get("x-correlation-id"));
+    const signup = await post("/auth/signup/verify", { verificationId, code });
     expect(signup.status).toBe(201);
     const ada = (await signup.json()) as { token: string; user: { id: unknown; role: string } };
+    // A new account is a member.
     expect(ada.user.role).toBe(starter.rbac!.defaultRole);
     expect((await post("/auth/login", { email: "ada@signet.example", password: "password123" })).status).toBe(200);
-    const bo = (await post("/auth/signup", { email: "bo@signet.example", password: "password123" }).then((r) =>
-      r.json(),
-    )) as { token: string; user: { id: unknown } };
+    const bo = (await signUp("accounts-w", "bo@signet.example").then((r) => r.json())) as {
+      token: string;
+      user: { id: unknown };
+    };
     const asAda = { authorization: `Bearer ${ada.token}` };
 
     // A profile is its owner's alone, whatever the body claims.
@@ -459,13 +508,18 @@ describe("starter examples", () => {
     expect((await fetch(`${base}/profiles`, { headers: asNext })).status).toBe(401);
     expect((await post("/auth/refresh", { refreshToken })).status).toBe(401);
 
-    // Social sign-in and reset emails wait on credentials only the owner has,
-    // which is exactly what the starter's next step tells them.
+    // Password reset works already, its code in the Logs tab until a Resend key is added.
+    const forgot = await post("/auth/forgot-password", { email: "ada@signet.example" });
+    expect(forgot.status).toBe(202);
+    const resetCode = await loggedCode("accounts-w", forgot.headers.get("x-correlation-id"));
+    const reset = await post("/auth/reset-password", { email: "ada@signet.example", code: resetCode, password: "password789" });
+    expect(reset.status).toBe(200);
+    expect((await post("/auth/login", { email: "ada@signet.example", password: "password789" })).status).toBe(200);
+
+    // Social sign-in waits on the OAuth app only the owner can register.
     expect((await fetch(`${base}/auth/google`, { redirect: "manual" })).status).toBe(404);
     expect((await fetch(`${base}/auth/github`, { redirect: "manual" })).status).toBe(404);
-    expect((await post("/auth/forgot-password", { email: "ada@signet.example" })).status).toBe(404);
     expect(socialLoginConfigured(starter.config)).toBe(false);
-    for (const word of ["Google", "GitHub", "Resend"]) expect(starter.nextStep).toContain(word);
   }, 30_000);
 
   test("a starter without the auth feature needs no token at all", async () => {

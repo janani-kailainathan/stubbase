@@ -68,6 +68,8 @@ let ROOT = "";
 let core: Service;
 let signupToken = "";
 let loginToken = "";
+/** The sign-up's verification code, which the core logs as a note because the project has no email provider. */
+let signupCode = "";
 
 async function call(method: string, path: string, body?: unknown, token?: string) {
   const res = await fetch(`${core.base}/${TENANT}${path}`, {
@@ -96,8 +98,14 @@ beforeAll(async () => {
     config: { AUTH_ENABLED: "true" },
   });
 
-  const signup = await call("POST", "/auth/signup", { email: "ada@example.com", password: PASSWORD });
-  expect(signup.status).toBeLessThan(300);
+  // Email verification is on and there is no Resend key, so the code is in the core's log.
+  const started = await call("POST", "/auth/signup", { email: "ada@example.com", password: PASSWORD });
+  expect(started.status).toBe(202);
+  const note = (await coreLog()).find((e) => e.path === `/${TENANT}/auth/signup`)?.note ?? "";
+  signupCode = /: (\d{6}) —/.exec(note)?.[1] ?? "";
+  expect(signupCode).toMatch(/^\d{6}$/);
+  const signup = await call("POST", "/auth/signup/verify", { verificationId: started.json.verificationId, code: signupCode });
+  expect(signup.status).toBe(201);
   signupToken = signup.json.token;
   const login = await call("POST", "/auth/login", { email: "ada@example.com", password: PASSWORD });
   expect(login.status).toBe(200);
@@ -123,9 +131,11 @@ describe("no credential reaches storage", () => {
   test("the core's log carries the sign-in bodies, but never their tokens — so there is something to strip", async () => {
     const entries = await coreLog();
     const auth = entries.filter((e) => e.path.startsWith(`/${TENANT}/auth/`));
-    expect(auth).toHaveLength(2);
-    // Without a body to strip, the storage rule below would pass by doing nothing.
+    expect(auth).toHaveLength(3);
+    // Without a body to strip, the storage rule below would pass by doing nothing…
     for (const entry of auth) expect(entry.responseBody).toContain("ada@example.com");
+    // …and without a note, neither would the one about codes.
+    expect(auth.filter((e) => e.note?.includes(signupCode))).toHaveLength(1);
     const logged = JSON.stringify(entries);
     expect(logged).not.toContain(signupToken);
     expect(logged).not.toContain(loginToken);
@@ -140,15 +150,22 @@ describe("no credential reaches storage", () => {
     expect(stored).not.toContain(loginToken);
     expect(stored).not.toContain(PASSWORD);
     expect(stored).not.toContain("ada@example.com"); // only the sign-in bodies carried it
+    expect(stored).not.toContain("verification code"); // nor the note holding the sign-up's code
+    expect(stored).not.toContain(signupCode);
     // Every request is still in the copy — only the bodies are gone.
     for (const entry of entries) expect(stored).toContain(entry.correlationId);
 
     const loaded = openTabLogStore(TENANT).load().entries;
     const auth = loaded.filter((e) => e.path.startsWith(`/${TENANT}/auth/`));
-    expect(auth.map((e) => e.path).sort()).toEqual([`/${TENANT}/auth/login`, `/${TENANT}/auth/signup`]);
+    expect(auth.map((e) => e.path).sort()).toEqual([
+      `/${TENANT}/auth/login`,
+      `/${TENANT}/auth/signup`,
+      `/${TENANT}/auth/signup/verify`,
+    ]);
     for (const entry of auth) {
       expect(entry.requestBody).toBeNull();
       expect(entry.responseBody).toBeNull();
+      expect(entry.note).toBeUndefined();
     }
   });
 
@@ -177,6 +194,7 @@ describe("no credential reaches storage", () => {
     const loaded = JSON.stringify(openTabLogStore(TENANT).load());
     expect(loaded).not.toContain(loginToken);
     expect(loaded).not.toContain(signupToken);
+    expect(loaded).not.toContain("verification code");
   });
 });
 

@@ -6,9 +6,12 @@
  *
  *   tracker     one flat resource — filtering, sorting, pagination
  *   blog        `<singular>Id` foreign keys, so ?_expand= nests records
- *   storefront  the same, with AUTH_ENABLED: public reads, authenticated writes
+ *   storefront  the same, with AUTH_ENABLED: public reads, authenticated writes,
+ *               and email verification switched off so signup is one call
  *   recipes     Forkful, a recipe community: every auth setting that works
- *               without credentials, and a whole product's worth of resources
+ *               without credentials — email verification and password reset
+ *               included, their codes in the Logs tab until the owner adds a
+ *               Resend key — and a whole product's worth of resources
  *   helpdesk    Deskline, a support desk: rbac.json roles — customers see their
  *               own tickets, agents the whole queue, a lead can promote agents
  *   accounts    Signet, sign-in and user management in the spirit of Clerk:
@@ -42,17 +45,10 @@ export interface Starter {
   /** Capabilities this example demonstrates, beyond plain CRUD. */
   features: ('relations' | 'auth' | 'rbac')[]
   /**
-   * A query worth running once deployed. Not shown on the card — it is in the
-   * confirmation toast, and the tests assert the data can answer it without a
-   * token.
+   * A query the starter's data is built to answer once deployed. Not shown in
+   * the UI; the tests assert the data can answer it without a token.
    */
   example: string
-  /**
-   * The one thing left for the owner once it is deployed — something no starter
-   * can do for them, like registering their own OAuth app. Shown under the
-   * confirmation toast.
-   */
-  nextStep?: string
   /** Staged into the tenant's config.json, merged over what is already there. */
   config?: Record<string, string>
   /**
@@ -128,9 +124,13 @@ export const STARTERS: Starter[] = [
     example: '/orders?_expand=customers,products&status=shipped',
     // Anyone may read the catalogue and order history; creating or changing a
     // record needs a tenant JWT from /auth/signup or /auth/login. Signup is also
-    // what creates the account (in system/users.json, never a resource).
+    // what creates the account (in system/users.json, never a resource). Email
+    // verification is switched off, so signup answers with a token straight
+    // away — the simplest sign-in there is, and the one line to delete to
+    // turn verification back on.
     config: {
       AUTH_ENABLED: 'true',
+      AUTH_EMAIL_VERIFICATION: 'false',
       AUTH_PUBLIC_ROUTES: 'products,orders,customers',
     },
     resources: {
@@ -166,17 +166,18 @@ export const STARTERS: Starter[] = [
     blurb: 'Browse recipes freely; sign in to review and save.',
     features: ['relations', 'auth'],
     example: '/recipes?_expand=cuisines&difficulty=easy&_sort=publishedAt&_direction=desc',
-    nextStep: 'To let people sign in with Google or GitHub, add your OAuth app’s keys in the .env.',
     // Every auth setting that works without a credential. Anyone may browse the
     // cookbook; reviewing, posting and saving collections needs an account from
-    // /auth/signup (or /auth/login), and a signed-in user edits only what they
-    // wrote. Sessions are set the way a phone app wants them: a token lasts an
-    // hour, and the refresh token keeps someone signed in for 90 days after
-    // they last opened the app. The redirect and reset page are real Forkful
-    // URLs; Google, GitHub and email sending need the owner's own keys, which
-    // stay commented in the .env to fill in.
+    // /auth/signup — finished with the emailed code at /auth/signup/verify —
+    // and a signed-in user edits only what they wrote. Sessions are set the way
+    // a phone app wants them: a token lasts an hour, and the refresh token
+    // keeps someone signed in for 90 days after they last opened the app. The
+    // redirect and reset page are real Forkful URLs. Verification and reset
+    // codes show in the Logs tab until the owner adds a Resend key; that and
+    // Google and GitHub stay commented in the .env to fill in.
     config: {
       AUTH_ENABLED: 'true',
+      AUTH_EMAIL_VERIFICATION: 'true',
       AUTH_PUBLIC_ROUTES: 'recipes,cuisines,ingredients,steps,reviews',
       AUTH_JWT_TTL_SECONDS: '3600',
       AUTH_REFRESH_TTL_SECONDS: '7776000',
@@ -242,10 +243,11 @@ export const STARTERS: Starter[] = [
     // Roles and permissions: the help centre is public, a customer opens and
     // follows only their own tickets, an agent works the whole queue and owns
     // the canned replies, a lead can also promote agents, an admin does
-    // anything. New accounts are customers; make the first agent from the
-    // dashboard's system/users.json.
+    // anything. New accounts are customers, once they verify their email; make
+    // the first agent from the dashboard's system/users.json.
     config: {
       AUTH_ENABLED: 'true',
+      AUTH_EMAIL_VERIFICATION: 'true',
       RBAC_ENABLED: 'true',
     },
     rbac: {
@@ -321,17 +323,17 @@ export const STARTERS: Starter[] = [
     blurb: 'Every way to sign in, with orgs, members and invites.',
     features: ['relations', 'auth', 'rbac'],
     example: '/organizations?_expand=plans&verified=true',
-    nextStep:
-      'Google and GitHub sign-in need your OAuth app’s keys, and reset emails a Resend API key — add them in the .env.',
-    // Sign-in as a product: signup, login, change and reset password, Google
-    // and GitHub, and sessions the way a hosted auth product runs them: a
-    // 15-minute token kept going by a 30-day refresh token. The org directory
-    // and plans are public; a member's profile, memberships and invitations
-    // are their own; support can list accounts, and only an admin can change a
-    // role. New accounts are members; make the first admin from
-    // system/users.json.
+    // Sign-in as a product: signup with email verification, login, change and
+    // reset password, Google and GitHub, and sessions the way a hosted auth
+    // product runs them: a 15-minute token kept going by a 30-day refresh
+    // token. Verification and reset codes show in the Logs tab until a Resend
+    // key is added. The org directory and plans are public; a member's
+    // profile, memberships and invitations are their own; support can list
+    // accounts, and only an admin can change a role. New accounts are members;
+    // make the first admin from system/users.json.
     config: {
       AUTH_ENABLED: 'true',
+      AUTH_EMAIL_VERIFICATION: 'true',
       RBAC_ENABLED: 'true',
       AUTH_JWT_TTL_SECONDS: '900',
       AUTH_REFRESH_TTL_SECONDS: '2592000',

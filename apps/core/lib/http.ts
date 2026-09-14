@@ -29,3 +29,16 @@ export const json = (data: unknown, status = 200) => {
 };
 
 export const err = (status: number, message: string) => json({ error: message }, status);
+
+/**
+ * A line for the project owner's request log that the caller is never sent,
+ * keyed by the Response it belongs to. It is how a project with no email
+ * provider still gets its one-time codes: the log streams only to the owner's
+ * dashboard, and the note never touches the body or a header.
+ */
+export const logNotes = new WeakMap<Response, string>();
+
+export const withLogNote = (res: Response, note: string) => {
+  logNotes.set(res, note);
+  return res;
+};

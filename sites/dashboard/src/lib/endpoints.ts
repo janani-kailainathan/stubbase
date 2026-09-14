@@ -25,6 +25,8 @@ export interface Endpoint {
   kind: 'crud' | 'auth'
   /** A documented request body, for endpoints with no resource file behind them. */
   sample?: { request: object }
+  /** Served only while email verification is on — see `emailVerificationEnabled`. */
+  verification?: boolean
 }
 
 export function endpointsFor(resources: string[]): Endpoint[] {
@@ -51,6 +53,28 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     kind: 'auth',
     sample: {
       request: { email: 'ada@example.com', password: 'at least 8 chars', name: 'Ada' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/signup/verify',
+    needsId: false,
+    kind: 'auth',
+    verification: true,
+    sample: {
+      request: { verificationId: 'the verificationId from signup', code: '123456' },
+    },
+  },
+  {
+    resource: 'auth',
+    method: 'POST',
+    path: '/auth/signup/resend',
+    needsId: false,
+    kind: 'auth',
+    verification: true,
+    sample: {
+      request: { verificationId: 'the verificationId from signup' },
     },
   },
   {
@@ -143,6 +167,16 @@ export const authEnabled = (config: TenantConfig | undefined) =>
     .trim()
     .toLowerCase() === 'true'
 
+/**
+ * Read AUTH_EMAIL_VERIFICATION as the Core Engine does: on with auth unless it
+ * is a literal `false`, so the verify routes show exactly while they are served.
+ */
+export const emailVerificationEnabled = (config: TenantConfig | undefined) =>
+  authEnabled(config) &&
+  String(config?.AUTH_EMAIL_VERIFICATION ?? '')
+    .trim()
+    .toLowerCase() !== 'false'
+
 export interface EndpointGroup {
   resource: string
   endpoints: Endpoint[]
@@ -154,5 +188,8 @@ export function groupEndpoints(
   config: TenantConfig | undefined,
 ): EndpointGroup[] {
   const groups = resources.map((resource) => ({ resource, endpoints: endpointsFor([resource]) }))
-  return authEnabled(config) ? [...groups, { resource: 'auth', endpoints: AUTH_ENDPOINTS }] : groups
+  if (!authEnabled(config)) return groups
+  const verifying = emailVerificationEnabled(config)
+  const auth = AUTH_ENDPOINTS.filter((endpoint) => verifying || !endpoint.verification)
+  return [...groups, { resource: 'auth', endpoints: auth }]
 }

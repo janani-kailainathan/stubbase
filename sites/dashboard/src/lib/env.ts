@@ -47,6 +47,7 @@ export function parseEnvText(text: string): EnvParseResult {
 const KNOWN_KEYS = new Set([
   'QA_MODE',
   'AUTH_ENABLED',
+  'AUTH_EMAIL_VERIFICATION',
   'AUTH_PUBLIC_ROUTES',
   'AUTH_JWT_TTL_SECONDS',
   'AUTH_REFRESH_TTL_SECONDS',

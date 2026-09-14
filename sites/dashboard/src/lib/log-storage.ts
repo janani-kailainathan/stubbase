@@ -15,7 +15,9 @@ import type { LogEntry } from './api'
  * Three rules, each held by tests/log-storage.test.ts:
  *   - no credential is stored. A sign-in response carries the project's user
  *     tokens; the core already logs them as "[redacted]", but this copy does
- *     not rely on that, so `/auth/*` entries are written without their bodies.
+ *     not rely on that, so `/auth/*` entries are written without their bodies
+ *     — and without their note, which for a project with no email provider is
+ *     a live sign-up or reset code.
  *   - Clear sticks. The core replays its whole ring on every connect, so a
  *     cleared copy records `clearedAt` and older entries stay out.
  *   - logout forgets every project's copy, and a store opened before the
@@ -56,10 +58,12 @@ export function isAuthEntry(entry: Pick<LogEntry, 'path'>): boolean {
 /**
  * The entry as it may be written down. Both bodies go, not just the response:
  * the core does not log auth request bodies today, but a password must not
- * start reaching storage the day it does.
+ * start reaching storage the day it does. The note goes too — it holds a code.
  */
 export function forStorage(entry: LogEntry): LogEntry {
-  return isAuthEntry(entry) ? { ...entry, requestBody: null, responseBody: null } : entry
+  if (!isAuthEntry(entry)) return entry
+  const { note: _note, ...rest } = entry
+  return { ...rest, requestBody: null, responseBody: null }
 }
 
 /** Whether an entry survives the user's last Clear. */
