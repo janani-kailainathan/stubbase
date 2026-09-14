@@ -20,9 +20,17 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   /** Re-reads the account from /auth/me — the stored copy may predate a field or a change. */
   refreshUser: () => Promise<void>
+  /** Renames the account; an empty name clears it. */
+  updateName: (name: string) => Promise<void>
+  /** Deletes the account with its password, then forgets it here. */
+  deleteAccount: (password: string) => Promise<void>
   /** Adopt a session minted by the OAuth callback (arrives in a URL fragment). */
   adoptSession: (token: string) => Promise<void>
-  logout: () => void
+  /**
+   * Forgets the session here. `revoke: false` skips the server-side logout, for
+   * when the server has already ended the session and would only answer 401.
+   */
+  logout: (options?: { revoke?: boolean }) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -65,6 +73,17 @@ export const useAuthStore = create<AuthState>()(
         if (get().token === token) set({ user })
       },
 
+      updateName: async (name) => {
+        const token = get().token
+        const { user } = await api.updateAccount(name)
+        if (get().token === token) set({ user })
+      },
+
+      deleteAccount: async (password) => {
+        await api.deleteAccount(password)
+        get().logout({ revoke: false })
+      },
+
       adoptSession: async (token) => {
         setAuthToken(token)
         try {
@@ -79,8 +98,8 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: () => {
-        if (get().token) api.logout().catch(() => {}) // best-effort server-side revoke
+      logout: ({ revoke = true } = {}) => {
+        if (revoke && get().token) api.logout().catch(() => {}) // best-effort server-side revoke
         setAuthToken(null)
         set({ token: null, user: null })
         useWorkspaceStore.getState().reset() // next user must not inherit selection

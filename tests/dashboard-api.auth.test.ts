@@ -16,10 +16,10 @@
  *   bun test tests/dashboard-api            (this file and its sibling)
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { startApp, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
 import {
   ALLOWED_ORIGIN,
@@ -641,6 +641,255 @@ describe("change password", () => {
   }, 20_000);
 });
 
+// ── Account settings ───────────────────────────────────────────────
+
+describe("account settings", () => {
+  interface SessionView {
+    id: string;
+    userAgent: string | null;
+    createdAt: string;
+    lastUsedAt: string | null;
+    expiresAt: string;
+    current: boolean;
+  }
+  const loginToken = async (email: string, userAgent?: string, on: Service = app) => {
+    const res = await fetch(`${on.base}/auth/login`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), ...(userAgent ? { "user-agent": userAgent } : {}) },
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()).token as string;
+  };
+  const me = (token: string, on: Service = app) => fetch(`${on.base}/auth/me`, { headers: as(token) });
+  const sessions = async (token: string, on: Service = app): Promise<SessionView[]> => {
+    const res = await fetch(`${on.base}/auth/sessions`, { headers: as(token) });
+    expect(res.status).toBe(200);
+    return (await res.json()).sessions;
+  };
+  const end = (token: string, id: string) =>
+    fetch(`${app.base}/auth/sessions/${id}`, { method: "DELETE", headers: as(token) });
+  const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1";
+
+  test("every account route needs a session", async () => {
+    const routes: [string, string][] = [
+      ["PATCH", "/auth/me"],
+      ["GET", "/auth/account"],
+      ["POST", "/auth/delete-account"],
+      ["GET", "/auth/sessions"],
+      ["DELETE", "/auth/sessions/others"],
+      ["DELETE", `/auth/sessions/${"a".repeat(32)}`],
+    ];
+    for (const [method, path] of routes) {
+      const res = await fetch(`${app.base}${path}`, {
+        method,
+        headers: jsonHeaders(),
+        body: method === "PATCH" || method === "POST" ? "{}" : undefined,
+      });
+      expect({ method, path, status: res.status }).toEqual({ method, path, status: 401 });
+    }
+  });
+
+  test("renaming trims the name, an empty one clears it, and a long one is refused", async () => {
+    const account = await signup();
+    const rename = (name: unknown) =>
+      fetch(`${app.base}/auth/me`, {
+        method: "PATCH",
+        headers: jsonHeaders(account.token),
+        body: JSON.stringify({ name }),
+      });
+
+    const res = await rename("  Ada Lovelace  ");
+    expect(res.status).toBe(200);
+    expect((await res.json()).user).toMatchObject({ name: "Ada Lovelace", email: account.email });
+    expect((await (await me(account.token)).json()).user.name).toBe("Ada Lovelace");
+
+    expect((await (await rename("   ")).json()).user.name).toBeNull();
+    expect((await rename("x".repeat(101))).status).toBe(400);
+    expect((await rename(42)).status).toBe(400);
+    expect((await (await me(account.token)).json()).user.name).toBeNull();
+  }, 20_000);
+
+  test("sessions list this account's devices, this one marked, and never a token or its hash", async () => {
+    const account = await signup();
+    const phone = await loginToken(account.email, IPHONE);
+    const stranger = await signup();
+
+    const list = await sessions(account.token);
+    expect(list).toHaveLength(2);
+    expect(list.map((s) => s.current)).toEqual([true, false]);
+    expect(list[1].userAgent).toBe(IPHONE);
+    for (const s of list) {
+      expect(s.id).toMatch(/^[0-9a-f]{32}$/);
+      for (const at of [s.createdAt, s.lastUsedAt!, s.expiresAt]) expect(at).toMatch(/Z$/);
+      expect(Date.parse(s.expiresAt)).toBeGreaterThan(Date.now());
+    }
+    const shown = JSON.stringify(list);
+    for (const secret of [account.token, phone, sha256hex(account.token), sha256hex(phone)])
+      expect(shown).not.toContain(secret);
+
+    // Seen from the phone, the phone is the current one.
+    expect((await sessions(phone)).find((s) => s.current)!.userAgent).toBe(IPHONE);
+    // And nothing of another account's is in anyone's list.
+    const theirs = (await sessions(stranger.token)).map((s) => s.id);
+    expect(list.some((s) => theirs.includes(s.id))).toBe(false);
+  }, 20_000);
+
+  test("signing one device out ends it at once and leaves the others", async () => {
+    const account = await signup();
+    const laptop = await loginToken(account.email);
+    const phone = await loginToken(account.email, IPHONE);
+    const phoneId = (await sessions(phone)).find((s) => s.current)!.id;
+
+    expect((await end(account.token, phoneId)).status).toBe(200);
+    expect((await me(phone)).status).toBe(401);
+    expect((await me(laptop)).status).toBe(200);
+    expect((await me(account.token)).status).toBe(200);
+    expect((await end(account.token, phoneId)).status).toBe(404);
+    expect((await end(account.token, "not-a-session-id")).status).toBe(404);
+  }, 20_000);
+
+  test("another account's session id ends nothing", async () => {
+    const victim = await signup();
+    const attacker = await signup();
+    const victimSession = (await sessions(victim.token))[0].id;
+
+    expect((await end(attacker.token, victimSession)).status).toBe(404);
+    expect((await me(victim.token)).status).toBe(200);
+  }, 20_000);
+
+  test("signing out every other device keeps this one", async () => {
+    const account = await signup();
+    const others = [await loginToken(account.email), await loginToken(account.email, IPHONE)];
+
+    const res = await fetch(`${app.base}/auth/sessions/others`, { method: "DELETE", headers: as(account.token) });
+    expect(await res.json()).toEqual({ ok: true, ended: 2 });
+    for (const token of others) expect((await me(token)).status).toBe(401);
+    expect((await me(account.token)).status).toBe(200);
+    expect((await sessions(account.token)).map((s) => s.current)).toEqual([true]);
+  }, 20_000);
+
+  test("a session from before the device columns existed is listed, and can be ended", async () => {
+    // A database as the service left it before sessions had ids: the migration
+    // must give the old row one rather than leave it unlistable or unendable.
+    const dir = join(ROOT, "legacy-app");
+    await mkdir(dir, { recursive: true });
+    const token = "a".repeat(64);
+    const legacy = new Database(join(dir, "app.sqlite"), { create: true });
+    legacy.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT, password_hash TEXT,
+        oauth_provider TEXT, plan TEXT NOT NULL DEFAULT 'free',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE sessions (
+        token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL
+      );
+    `);
+    legacy.query("INSERT INTO users (id, email) VALUES (1, 'legacy@test.co')").run();
+    legacy.query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, 1, datetime('now', '+1 day'))").run(sha256hex(token));
+    legacy.close();
+
+    const legacyApp = await startApp(ROOT, "legacy-app", { CORE_API_URL: core.base });
+    running.push(legacyApp);
+
+    const [old] = await sessions(token, legacyApp);
+    expect(old).toMatchObject({ current: true, userAgent: null });
+    expect(old.id).toMatch(/^[0-9a-f]{32}$/);
+    const res = await fetch(`${legacyApp.base}/auth/sessions/${old.id}`, { method: "DELETE", headers: as(token) });
+    expect(res.status).toBe(200);
+    expect((await me(token, legacyApp)).status).toBe(401);
+  }, 30_000);
+});
+
+// ── Delete account ─────────────────────────────────────────────────
+
+describe("delete account", () => {
+  const remove = (token: string, password?: string) =>
+    fetch(`${app.base}/auth/delete-account`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ password }),
+    });
+  const login = (email: string, password = PASSWORD) =>
+    fetch(`${app.base}/auth/login`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ email, password }) });
+  const me = (token: string) => fetch(`${app.base}/auth/me`, { headers: as(token) });
+
+  test("a wrong or missing password deletes nothing", async () => {
+    const account = await signup();
+    expect((await remove(account.token, "not-my-password")).status).toBe(403);
+    expect((await remove(account.token)).status).toBe(400);
+    expect((await me(account.token)).status).toBe(200);
+    expect((await login(account.email)).status).toBe(200);
+  }, 20_000);
+
+  test("the password deletes it: every session ends, and nothing is left to sign in with", async () => {
+    const account = await signup();
+    const otherDevice = (await (await login(account.email)).json()).token as string;
+    await fetch(`${app.base}/auth/me`, {
+      method: "PATCH",
+      headers: jsonHeaders(account.token),
+      body: JSON.stringify({ name: "Soon Gone" }),
+    });
+
+    expect(await (await remove(account.token, PASSWORD)).json()).toEqual({ ok: true });
+    for (const token of [account.token, otherDevice]) expect((await me(token)).status).toBe(401);
+    expect((await login(account.email)).status).toBe(401);
+
+    const row = readDb((db) =>
+      db.query("SELECT email, name, password_hash, deleted_at FROM users WHERE id = ?").get(account.id),
+    ) as { email: string; name: string | null; password_hash: string | null; deleted_at: string | null };
+    expect(row.email).not.toContain(account.email);
+    expect(row).toMatchObject({ name: null, password_hash: null });
+    expect(row.deleted_at).toBeString();
+    expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
+  }, 20_000);
+
+  test("the address is free to sign up again, and the next account never inherits the old id", async () => {
+    const deleted = await signup();
+    expect((await remove(deleted.token, PASSWORD)).status).toBe(200);
+
+    // The deleted account was the newest, so a row actually deleted would hand
+    // its id straight to this one — and with it that id's usage history.
+    const next = await signup();
+    expect(next.id).toBeGreaterThan(deleted.id);
+
+    const again = await fetch(`${app.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email: deleted.email, password: PASSWORD }),
+    });
+    expect(again.status).toBe(202);
+  }, 20_000);
+
+  test("refused while the account owns a project", async () => {
+    const account = await signup();
+    const created = await fetch(`${app.base}/projects`, {
+      method: "POST",
+      headers: jsonHeaders(account.token),
+      body: JSON.stringify({ name: "Still Here" }),
+    });
+    expect(created.status).toBe(201);
+    const { tenantId } = await created.json();
+
+    const refused = await remove(account.token, PASSWORD);
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain("1 project");
+    expect((await me(account.token)).status).toBe(200);
+
+    // A new project starts stopped, so it can go straight away — and then the account can.
+    const gone = await fetch(`${app.base}/projects/${tenantId}`, { method: "DELETE", headers: as(account.token) });
+    expect(gone.status).toBe(200);
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+  }, 30_000);
+
+  test("two deletions racing: exactly one wins", async () => {
+    const account = await signup();
+    const results = await Promise.all([remove(account.token, PASSWORD), remove(account.token, PASSWORD)]);
+    expect(results.map((r) => r.status).filter((s) => s === 200)).toHaveLength(1);
+  }, 20_000);
+});
 
 // ── OAuth sign-in ──────────────────────────────────────────────────
 
@@ -955,6 +1204,20 @@ describe("OAuth sign-in", () => {
     });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toContain("code sent to your email");
+  }, 20_000);
+
+  test("an OAuth account has no password to delete with, and is told to set one first", async () => {
+    const email = `nodelete-${Date.now()}@test.co`;
+    const token = new URLSearchParams(fragment(await signIn("github", email))).get("token")!;
+
+    const res = await fetch(`${oauthApp.base}/auth/delete-account`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ password: "anything-at-all" }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("set one");
+    expect((await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).status).toBe(200);
   }, 20_000);
 
   test("an OAuth session token is stored hashed, like every other session", async () => {

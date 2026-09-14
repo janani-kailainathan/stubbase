@@ -29,6 +29,12 @@ POST   /auth/change-password               (auth) { currentPassword, newPassword
 POST   /auth/login                         { email, password } → { token, user }
 POST   /auth/logout                        (auth) revoke session
 GET    /auth/me                            (auth)
+PATCH  /auth/me                            (auth) { name } → { user }; an empty name clears it
+GET    /auth/account                       (auth) → { account: { email, plan, planName, monthlyRequests, requestsUsed, resetsOn, memberSince } }
+GET    /auth/sessions                      (auth) → { sessions: [{ id, userAgent, createdAt, lastUsedAt, expiresAt, current }] }
+DELETE /auth/sessions/<id>                 (auth) sign one device out
+DELETE /auth/sessions/others               (auth) sign out every device but this one → { ended }
+POST   /auth/delete-account                (auth) { password } → account removed, every session ended; 409 while it owns projects
 GET    /auth/providers                     → { google, github } — which buttons the SPA shows
 GET    /auth/google | /auth/github         start OAuth sign-in (302 to the provider)
 GET    /auth/<provider>/callback           finish it → 302 to the SPA with #token=…

@@ -76,7 +76,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
-    if (res.status === 401 && url.startsWith(APP_API_URL) && !url.includes('/auth/')) {
+    // A 401 to a request that carried the session means the session is gone —
+    // expired, or ended by a password change on another device, whichever route
+    // was asked. A 401 to one that did not (a wrong password at login) says
+    // nothing about it.
+    const sentSession = Boolean((init?.headers as Record<string, string> | undefined)?.authorization)
+    if (res.status === 401 && url.startsWith(APP_API_URL) && sentSession) {
       onUnauthorized?.()
     }
     const message =
@@ -208,6 +213,42 @@ export const logout = () =>
   })
 
 export const me = () => request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, { headers: appHeaders() })
+
+/** What the settings page's Account card shows: read-only, and fetched fresh rather than stored. */
+export interface AccountSummary {
+  email: string
+  plan: string
+  planName: string
+  monthlyRequests: number
+  /** This month's requests across every project, deleted ones included — what the allowance is measured on. */
+  requestsUsed: number
+  /** YYYY-MM-DD, UTC: the first day of next month, when the count starts again. */
+  resetsOn: string
+  /** ISO timestamp the account was created. */
+  memberSince: string
+}
+
+export const fetchAccount = () =>
+  request<{ account: AccountSummary }>(`${APP_API_URL}/auth/account`, { headers: appHeaders() })
+
+/** An empty name clears it. */
+export const updateAccount = (name: string) =>
+  request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, {
+    method: 'PATCH',
+    headers: appHeaders(true),
+    body: JSON.stringify({ name }),
+  })
+
+/**
+ * Needs the password, and an account with no projects left. Every session ends
+ * with it, this one included.
+ */
+export const deleteAccount = (password: string) =>
+  request<{ ok: true }>(`${APP_API_URL}/auth/delete-account`, {
+    method: 'POST',
+    headers: appHeaders(true),
+    body: JSON.stringify({ password }),
+  })
 
 export type OauthProvider = 'google' | 'github'
 

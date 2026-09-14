@@ -651,7 +651,7 @@ with the code already filled in.
 ### 2.3 Change your password
 
 Signed in and want a new password? Open the account menu (your initial, top
-right), choose **Profile**, and use the **Password** section. Enter your current
+right), choose **Settings**, and use the **Password** card. Enter your current
 password and the new one, and you stay signed in on this device while every
 other device is signed out.
 
@@ -660,8 +660,35 @@ other device is signed out.
 - Forgotten it? **Use an email code instead** sends you a 6-digit code, the
   same as on the login page.
 - Signed up with Google or GitHub? You have no password yet, so the Password
-  section offers **Set a password** and uses the emailed code.
+  card offers **Set a password** and uses the emailed code.
 - A reset code you asked for earlier stops working once you change your password.
+
+### 2.4 Your account at a glance
+
+The first card in **Settings** shows what your account is: the email address
+you sign in with, your plan, when you joined, how many of your monthly requests
+you have used and when that count starts again, and how many projects you have.
+It is also where you switch the dashboard between light and dark — the choice
+carries over to the Stubbase website.
+
+- Requests are counted across all your projects together — projects you have
+  since deleted included — because the allowance is one pool for the account.
+- The count starts again on the first of each month (UTC).
+- The figure catches up with new traffic about once a minute.
+
+### 2.5 Delete your account
+
+The **Delete account** card at the bottom of **Settings** removes your Stubbase
+account and signs you out on every device. It cannot be undone.
+
+- Delete your projects first. The page lists them, each with its own Delete
+  button, and a running project has to be stopped before it can be deleted —
+  the same as anywhere else in the dashboard.
+- You are asked for your password, so someone at your unlocked computer cannot
+  delete your account. Signed up with Google or GitHub? Set a password first in the
+  **Password** card above it.
+- Your name, email address and password are removed. The address is free again
+  straight away: signing up with it creates a brand-new account.
 
 ---
 

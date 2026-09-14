@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -10,10 +10,10 @@ import {
   Pencil,
   Plus,
   Rocket,
+  Settings,
   Square,
   Trash2,
   TriangleAlert,
-  UserRound,
   X,
 } from 'lucide-react'
 import { deployProject, LANDING_URL, type ApiUser } from '@/lib/api'
@@ -45,8 +45,11 @@ import { useWorkspaceStore, type PaneMode } from '@/stores/workspace'
  * Deleting deprovisions the tenant on the core and drops the row — there is no
  * undo, so unlike rename this one earns a dialog. It spells out what goes, and
  * Cancel takes focus so a stray Enter cannot confirm it.
+ *
+ * Exported for the settings page, where an account's projects have to go
+ * before the account can.
  */
-function DeleteProjectDialog({
+export function DeleteProjectDialog({
   tenantId,
   name,
   resourceCount,
@@ -487,14 +490,14 @@ function StatusBadge({ tenantId }: { tenantId: string }) {
 }
 
 /**
- * The account menu: who is signed in, on which plan, and the way out. Log out
- * lives in here rather than as a bare icon beside the theme toggle — a one-click
- * exit sitting next to a control people click often is too easy to hit, and the
- * menu is where anything else about the account will go.
+ * The account menu: who is signed in, on which plan, settings, and the way out.
+ * Log out lives in here rather than as a bare icon beside the theme toggle — a
+ * one-click exit sitting next to a control people click often is too easy to hit.
  */
 function ProfileMenu({ user, onSignOut }: { user: ApiUser | null; onSignOut: () => void }) {
   const displayName = user?.name?.trim() || user?.email.split('@')[0] || 'Account'
   const navigate = useNavigate()
+  const location = useLocation()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -519,11 +522,23 @@ function ProfileMenu({ user, onSignOut }: { user: ApiUser | null; onSignOut: () 
         )}
         {user && (
           <DropdownMenuItem
-            onSelect={() => navigate('/account')}
+            // `from` is where the settings page's back link returns to: the
+            // project you were in, which a plain "/" would swap for the first one.
+            // Kept only from outside settings, so moving between sections and
+            // back out of them still returns to that project.
+            onSelect={() =>
+              navigate('/settings/profile', {
+                state: {
+                  from: location.pathname.startsWith('/settings')
+                    ? (location.state as { from?: string } | null)?.from
+                    : location.pathname,
+                },
+              })
+            }
             className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-heading"
           >
-            <UserRound className="h-3.5 w-3.5" />
-            <span className="font-mono text-xs">Profile</span>
+            <Settings className="h-3.5 w-3.5" />
+            <span className="font-mono text-xs">Settings</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuItem

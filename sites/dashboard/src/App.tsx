@@ -5,7 +5,7 @@ import AuthCallback from '@/pages/AuthCallback'
 import Editor from '@/pages/Editor'
 import ForgotPassword from '@/pages/ForgotPassword'
 import Login from '@/pages/Login'
-import Profile from '@/pages/Profile'
+import Settings from '@/pages/Settings'
 import Signup from '@/pages/Signup'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -21,11 +21,15 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        {/* Account settings, one section per URL so a reload stays on it.
+            /account is where the page used to live. */}
+        <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
+        <Route path="/account" element={<Navigate to="/settings/profile" replace />} />
         <Route
-          path="/account"
+          path="/settings/:section"
           element={
             <RequireAuth>
-              <Profile />
+              <Settings />
             </RequireAuth>
           }
         />

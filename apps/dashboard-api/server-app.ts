@@ -17,6 +17,12 @@
  *   POST   /auth/change-password                (auth) { currentPassword, newPassword } → { user }
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
+ *   PATCH  /auth/me                             (auth) { name } → { user }
+ *   GET    /auth/account                        (auth) read-only facts: plan, allowance, requests used, member since
+ *   POST   /auth/delete-account                 (auth) { password } → account removed, every session ended
+ *   GET    /auth/sessions                       (auth) this account's signed-in devices
+ *   DELETE /auth/sessions/<id>                  (auth) sign one device out
+ *   DELETE /auth/sessions/others                (auth) sign out every device but this one
  *   GET    /auth/providers                      which OAuth buttons to show
  *   GET    /auth/google|github[/callback]       OAuth sign-in (when configured)
  *   POST   /auth/google/one-tap                  Google One Tap (landing origin)
@@ -125,13 +131,17 @@ db.exec(`
     password_hash TEXT,          -- NULL for accounts created by OAuth
     oauth_provider TEXT,         -- provider that first created the row
     plan          TEXT NOT NULL DEFAULT 'free',
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at    TEXT           -- set when the owner deleted the account; see deleteAccount
   );
   CREATE TABLE IF NOT EXISTS sessions (
-    token_hash  TEXT PRIMARY KEY,
-    user_id     INTEGER NOT NULL REFERENCES users(id),
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at  TEXT NOT NULL
+    token_hash   TEXT PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES users(id),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at   TEXT NOT NULL,
+    id           TEXT,           -- random handle the settings page names a session by
+    user_agent   TEXT,           -- the browser that signed in, so a device can be recognised
+    last_used_at TEXT            -- refreshed at most every SESSION_TOUCH_MINUTES
   );
   CREATE TABLE IF NOT EXISTS projects (
     tenant_id  TEXT PRIMARY KEY,
@@ -203,6 +213,18 @@ if (!userCols.includes("name")) db.exec("ALTER TABLE users ADD COLUMN name TEXT"
 // OAuth identity and an account is the verified email address, never this.
 if (!userCols.includes("oauth_provider"))
   db.exec("ALTER TABLE users ADD COLUMN oauth_provider TEXT");
+// Set on an account its owner deleted, whose row stays behind emptied (see deleteAccount).
+if (!userCols.includes("deleted_at")) db.exec("ALTER TABLE users ADD COLUMN deleted_at TEXT");
+// What the settings page shows a session as. A session from before these columns
+// gets its id now; it has no device to show, and no last use until its next request.
+const sessionCols = (db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).map(
+  (c) => c.name,
+);
+for (const col of ["id", "user_agent", "last_used_at"])
+  if (!sessionCols.includes(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+db.exec("UPDATE sessions SET id = lower(hex(randomblob(16))) WHERE id IS NULL");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS sessions_id ON sessions(id)");
+db.exec("CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)");
 // Whether a draft is staged but not yet deployed. Existing rows come back 0, so
 // a project sitting on an undeployed draft right now reads clean until its next
 // save — a one-time blind spot, and the alternative (assuming every project is
@@ -313,27 +335,52 @@ const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
 // reveal which emails are registered.
 const DUMMY_HASH = await Bun.password.hash("stubbase-dummy-password", ARGON);
 
-function createSession(userId: number): string {
+// How stale a session's last_used_at may get before a request writes it again.
+// Writing it on every request would make every dashboard call a write; this is
+// still precise enough to tell a device in use now from one left last week.
+const SESSION_TOUCH_MINUTES = 5;
+const SESSION_ID_RE = /^[0-9a-f]{32}$/;
+
+/** An authenticated request's bearer token, hashed as its sessions row stores it. */
+const sessionHashOf = (req: Request) => sha256hex((req.headers.get("authorization") ?? "").slice(7));
+
+/**
+ * Opens a session for the browser making `req`. Its user agent is kept so the
+ * settings page can tell one device from another; the random `id` is what that
+ * page names the session by, since the token hash never leaves this service.
+ */
+function createSession(userId: number, req: Request): string {
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
+  const id = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+  const userAgent = (req.headers.get("user-agent") ?? "").slice(0, 300) || null;
   db.query("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
   db.query(
-    "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, datetime('now', ?))",
-  ).run(sha256hex(token), userId, `+${SESSION_TTL_DAYS} days`);
+    `INSERT INTO sessions (token_hash, user_id, expires_at, id, user_agent, last_used_at)
+     VALUES (?, ?, datetime('now', ?), ?, ?, datetime('now'))`,
+  ).run(sha256hex(token), userId, `+${SESSION_TTL_DAYS} days`, id, userAgent);
   return token;
 }
 
 function authenticate(req: Request): User | null {
   const header = req.headers.get("authorization") ?? "";
   if (!header.startsWith("Bearer ")) return null;
-  return (
-    (db
-      .query(
-        `SELECT u.id, u.email, u.name, u.plan FROM sessions s
-         JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = ? AND s.expires_at > datetime('now')`,
-      )
-      .get(sha256hex(header.slice(7))) as User | null) ?? null
-  );
+  const tokenHash = sha256hex(header.slice(7));
+  // deleted_at is belt and braces: deleting an account ends its sessions in the
+  // same transaction, so no row should ever match one.
+  const row = db
+    .query(
+      `SELECT u.id, u.email, u.name, u.plan,
+              s.last_used_at IS NULL OR s.last_used_at <= datetime('now', ?) AS stale
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.token_hash = ? AND s.expires_at > datetime('now') AND u.deleted_at IS NULL`,
+    )
+    .get(`-${SESSION_TOUCH_MINUTES} minutes`, tokenHash) as (User & { stale: number }) | null;
+  if (!row) return null;
+  const { stale, ...user } = row;
+  if (stale)
+    db.query("UPDATE sessions SET last_used_at = datetime('now') WHERE token_hash = ?").run(tokenHash);
+  return user;
 }
 
 // The SPA needs the entitlements, not just the tier name: it disables the
@@ -586,7 +633,7 @@ async function verifySignup(req: Request): Promise<Response> {
   const user = db
     .query("SELECT id, email, name, plan FROM users WHERE email = ?")
     .get(row.email) as User;
-  return json({ token: createSession(user.id), user: publicUser(user) }, 201);
+  return json({ token: createSession(user.id, req), user: publicUser(user) }, 201);
 }
 
 /** A fresh code for a pending sign-up: replaces the last one and resets its guesses. */
@@ -638,7 +685,7 @@ async function login(req: Request): Promise<Response> {
   } | null;
   if (current?.password_hash !== row.password_hash) return err(401, "invalid email or password");
 
-  return json({ token: createSession(row.id), user: publicUser(row) });
+  return json({ token: createSession(row.id, req), user: publicUser(row) });
 }
 
 function logout(req: Request): Response {
@@ -783,7 +830,7 @@ async function resetPassword(req: Request): Promise<Response> {
   // Every session on every device ends with the old password.
   db.query("DELETE FROM sessions WHERE user_id = ?").run(row.id);
   const user = db.query("SELECT id, email, name, plan FROM users WHERE id = ?").get(row.id) as User;
-  return json({ token: createSession(user.id), user: publicUser(user) });
+  return json({ token: createSession(user.id, req), user: publicUser(user) });
 }
 
 // ── Change password (signed in) ───────────────────────────────────
@@ -831,6 +878,175 @@ async function changePassword(req: Request, user: User): Promise<Response> {
   db.query("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, sha256hex(token));
   db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
   return json({ user: publicUser(user) });
+}
+
+// ── Account settings (signed in) ──────────────────────────────────
+//
+// The settings page: the account's name and the devices signed in to it.
+//
+// A session is named by its random `id`, never its token_hash. The hash is not a
+// credential — authenticate hashes whatever it is given — but it is the key every
+// session lookup runs on, and nothing in a browser needs it. Every query here is
+// scoped by user_id as well as the id, so an id lifted from another account ends
+// nothing: the same rule as a developer key's tenant clause.
+//
+// Ending sessions needs only a session, unlike changing the password. A stolen
+// token can sign the owner out, but that locks nobody out — the owner signs back
+// in with the password, and "sign out every other device" ends the thief's.
+
+const MAX_ACCOUNT_NAME = 100;
+
+/** SQLite's datetime('now') text is UTC with no zone marker; a browser has to be told. */
+const isoUtc = (s: string | null) => (s ? `${s.replace(" ", "T")}Z` : null);
+
+async function updateAccount(req: Request, user: User): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const raw = (body as any)?.name;
+  if (typeof raw !== "string") return err(400, "'name' is required");
+  const name = raw.trim();
+  if (name.length > MAX_ACCOUNT_NAME)
+    return err(400, `'name' must be at most ${MAX_ACCOUNT_NAME} characters`);
+  db.query("UPDATE users SET name = ? WHERE id = ?").run(name || null, user.id);
+  return json({ user: publicUser({ ...user, name: name || null }) });
+}
+
+/**
+ * GET /auth/account — the facts the settings page shows but nobody edits there.
+ *
+ * `requestsUsed` is accountMonthRequests, the same sum quotaFor hands the core,
+ * so the figure a person reads is the one their API is throttled on — deleted
+ * projects' traffic included. It is its own route rather than a field of
+ * /auth/me because the SPA persists that response, and a stored usage count
+ * would be stale from the moment it was written.
+ */
+function accountSummary(user: User): Response {
+  const plan = planOf(user);
+  const row = db
+    .query(
+      `SELECT created_at, date('now', 'start of month', '+1 month') AS resets_on
+       FROM users WHERE id = ?`,
+    )
+    .get(user.id) as { created_at: string; resets_on: string };
+  return json({
+    account: {
+      email: user.email,
+      plan: plan.id,
+      planName: plan.name,
+      monthlyRequests: plan.monthlyRequests,
+      requestsUsed: accountMonthRequests(user.id),
+      // UTC calendar months, as the allowance counts them.
+      resetsOn: row.resets_on,
+      memberSince: isoUtc(row.created_at),
+    },
+  });
+}
+
+function listSessions(req: Request, user: User): Response {
+  const rows = db
+    .query(
+      `SELECT id, user_agent, created_at, last_used_at, expires_at, token_hash = ? AS current
+       FROM sessions
+       WHERE user_id = ? AND expires_at > datetime('now')
+       ORDER BY current DESC, COALESCE(last_used_at, created_at) DESC`,
+    )
+    .all(sessionHashOf(req), user.id) as {
+    id: string;
+    user_agent: string | null;
+    created_at: string;
+    last_used_at: string | null;
+    expires_at: string;
+    current: number;
+  }[];
+  return json({
+    sessions: rows.map((r) => ({
+      id: r.id,
+      userAgent: r.user_agent,
+      createdAt: isoUtc(r.created_at),
+      lastUsedAt: isoUtc(r.last_used_at),
+      expiresAt: isoUtc(r.expires_at),
+      current: r.current === 1,
+    })),
+  });
+}
+
+function endSession(user: User, id: string): Response {
+  if (!SESSION_ID_RE.test(id)) return err(404, "session not found");
+  const ended = db.query("DELETE FROM sessions WHERE id = ? AND user_id = ?").run(id, user.id);
+  if (ended.changes === 0) return err(404, "session not found");
+  return json({ ok: true });
+}
+
+function endOtherSessions(req: Request, user: User): Response {
+  const ended = db
+    .query("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
+    .run(user.id, sessionHashOf(req));
+  return json({ ok: true, ended: ended.changes });
+}
+
+// ── Delete account ────────────────────────────────────────────────
+//
+// Irreversible, so it asks for what change-password asks for: the password, not
+// just a session — an unlocked laptop or a stolen token must not be able to
+// erase the account. An account with no password (made by Google or GitHub)
+// sets one first, by emailed code, rather than getting a session-only way out.
+//
+// Refused while the account owns a project. Projects go one at a time through
+// deleteProject and its stop-it-first guard, so a live API is never taken down
+// as a side effect of this route, and a core failure part-way through a list of
+// projects can never leave half an account behind.
+//
+// The users row is emptied, not deleted: email, name and password go, and the
+// row keeps its id, plan and deleted_at. `id INTEGER PRIMARY KEY` gives the next
+// insert the highest id once that row is gone, so deleting the newest account
+// would hand its id — and every row still keyed by it, this month's api_usage
+// included — to whoever signs up next. The address is free again at once, and
+// signing up with it makes a new account with a new id.
+//
+// The checks run again after the hash yields, in one transaction with the
+// writes, so a password change or a new project landing during the verify stops it.
+
+async function deleteAccount(req: Request, user: User): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const password = typeof (body as any)?.password === "string" ? (body as any).password : "";
+  if (!password) return err(400, "'password' is required");
+
+  const projectCount = () =>
+    (db.query("SELECT COUNT(*) AS n FROM projects WHERE user_id = ?").get(user.id) as { n: number }).n;
+  const row = db.query("SELECT password_hash FROM users WHERE id = ?").get(user.id) as {
+    password_hash: string | null;
+  } | null;
+  if (!row?.password_hash)
+    return err(409, "this account has no password yet: set one with a code sent to your email first");
+  const projects = projectCount();
+  if (projects > 0)
+    return err(409, `delete your ${projects} project${projects === 1 ? "" : "s"} before deleting the account`);
+  if (!(await Bun.password.verify(password, row.password_hash))) return err(403, "password is incorrect");
+
+  const outcome = db.transaction(() => {
+    const now = db.query("SELECT password_hash, deleted_at FROM users WHERE id = ?").get(user.id) as {
+      password_hash: string | null;
+      deleted_at: string | null;
+    } | null;
+    if (!now || now.deleted_at) return "gone";
+    if (now.password_hash !== row.password_hash) return "changed";
+    if (projectCount() > 0) return "projects";
+    db.query("DELETE FROM sessions WHERE user_id = ?").run(user.id);
+    db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
+    db.query(
+      `UPDATE users
+       SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL, deleted_at = datetime('now')
+       WHERE id = ?`,
+    ).run(`deleted:${user.id}`, user.id);
+    return "deleted";
+  })();
+
+  if (outcome === "gone") return err(409, "this account has already been deleted");
+  if (outcome === "changed")
+    return err(409, "your password was changed by another request; sign in again and retry");
+  if (outcome === "projects") return err(409, "a project was created meanwhile; delete it first");
+  return json({ ok: true });
 }
 
 // ── OAuth sign-in (Google / GitHub) ───────────────────────────────
@@ -1027,7 +1243,7 @@ async function oauthCallback(req: Request, provider: OauthProvider): Promise<Res
 
   const identity = await fetchOauthIdentity(req, provider, code);
   if (!identity) return oauthFailed("provider_rejected");
-  return signInWithIdentity(identity, provider);
+  return signInWithIdentity(req, identity, provider);
 }
 
 /**
@@ -1039,7 +1255,7 @@ async function oauthCallback(req: Request, provider: OauthProvider): Promise<Res
  * tomorrow is one customer with one project list. That is only safe because
  * every caller has already refused an unverified address.
  */
-function signInWithIdentity(identity: OauthIdentity, provider: OauthProvider): Response {
+function signInWithIdentity(req: Request, identity: OauthIdentity, provider: OauthProvider): Response {
   const email = identity.email.trim().toLowerCase();
 
   const find = () =>
@@ -1060,7 +1276,7 @@ function signInWithIdentity(identity: OauthIdentity, provider: OauthProvider): R
   }
   if (!user) return oauthFailed("provider_rejected");
 
-  return toDashboard("/auth/callback", `token=${createSession(user.id)}`);
+  return toDashboard("/auth/callback", `token=${createSession(user.id, req)}`);
 }
 
 // ── Google One Tap ────────────────────────────────────────────────
@@ -1214,7 +1430,7 @@ async function googleOneTap(req: Request): Promise<Response> {
   const identity = await verifyGoogleIdToken(credential);
   if (!identity) return oauthFailed("provider_rejected");
 
-  return signInWithIdentity(identity, "google");
+  return signInWithIdentity(req, identity, "google");
 }
 
 // ── Core Engine admin client ──────────────────────────────────────
@@ -3027,6 +3243,18 @@ async function route(req: Request): Promise<Response> {
       return logout(req);
     if (req.method === "GET" && segments[1] === "me" && segments.length === 2)
       return json({ user: publicUser(user) });
+    if (req.method === "PATCH" && segments[1] === "me" && segments.length === 2)
+      return updateAccount(req, user);
+    if (req.method === "GET" && segments[1] === "account" && segments.length === 2)
+      return accountSummary(user);
+    if (req.method === "POST" && segments[1] === "delete-account" && segments.length === 2)
+      return deleteAccount(req, user);
+    if (segments[1] === "sessions") {
+      if (req.method === "GET" && segments.length === 2) return listSessions(req, user);
+      // Session ids are 32 hex characters, so "others" can never be one.
+      if (req.method === "DELETE" && segments.length === 3)
+        return segments[2] === "others" ? endOtherSessions(req, user) : endSession(user, segments[2]);
+    }
     if (req.method === "POST" && segments[1] === "change-password" && segments.length === 2)
       return changePassword(req, user);
     return err(404, "not found");

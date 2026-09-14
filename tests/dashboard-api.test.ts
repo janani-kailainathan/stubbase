@@ -1364,6 +1364,46 @@ describe("plans and entitlements", () => {
     return new Map(quotas.map((q) => [q.tenantId, q]));
   }
 
+  test("the settings page's used figure is the one the allowance is enforced on", async () => {
+    const owner = await signup();
+    const stranger = await signup();
+    setPlan(owner.email, "pro");
+    const a = await createProject(owner.token, "SummaryA", { posts: [] });
+    const b = await createProject(owner.token, "SummaryB", { posts: [] });
+    const other = await createProject(stranger.token, "NotMine", { posts: [] });
+    const summary = async (token: string) => {
+      const res = await fetch(`${app.base}/auth/account`, { headers: as(token) });
+      expect(res.status).toBe(200);
+      return (await res.json()).account;
+    };
+
+    const quotas = await reportUsage([
+      { tenantId: a.tenantId, requests: 30 },
+      { tenantId: b.tenantId, requests: 12 },
+      { tenantId: other.tenantId, requests: 500 },
+    ]);
+    const account = await summary(owner.token);
+    expect(account.requestsUsed).toBe(quotas.get(a.tenantId)!.used);
+    expect(account).toMatchObject({
+      email: owner.email,
+      plan: "pro",
+      planName: "Pro QA",
+      monthlyRequests: quotas.get(a.tenantId)!.limit,
+      requestsUsed: 42,
+    });
+    const now = new Date();
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    expect(account.resetsOn).toBe(nextMonth.toISOString().slice(0, 10));
+    expect(Date.parse(account.memberSince)).toBeLessThanOrEqual(Date.now());
+    expect(account.memberSince).toMatch(/Z$/);
+
+    // A deleted project's traffic stays in the pool, on the page as in the quota.
+    const gone = await fetch(`${app.base}/projects/${b.tenantId}`, { method: "DELETE", headers: as(owner.token) });
+    expect(gone.status).toBe(200);
+    expect((await summary(owner.token)).requestsUsed).toBe(42);
+    expect((await summary(stranger.token)).requestsUsed).toBe(500);
+  }, 30_000);
+
   test("an account's projects share one monthly allowance", async () => {
     const owner = await signup();
     setPlan(owner.email, "pro");
