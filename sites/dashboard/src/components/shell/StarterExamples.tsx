@@ -3,6 +3,7 @@ import { StarterGrid } from '@/components/shell/StarterGrid'
 import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
 import { useSaveRbac } from '@/hooks/rbac'
 import { useCreateResources } from '@/hooks/resources'
+import { CORE_PUBLIC_URL } from '@/lib/api'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
 import { useSelectInEditor } from '@/hooks/projects'
@@ -30,7 +31,10 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
       // Merged over what is already there, so the project's own settings
       // survive the starter turning auth on; and into the .env text as well,
       // so the editor shows those lines switched on.
-      if (starter.config) await saveConfig.mutateAsync(mergeEnv(config ?? {}, starter.config))
+      if (starter.config)
+        await saveConfig.mutateAsync(
+          mergeEnv(config ?? {}, starter.config, { tenantBase: `${CORE_PUBLIC_URL}/${tenantId}` }),
+        )
       // After the config: rbac.json is refused until RBAC_ENABLED is staged.
       if (starter.rbac) await saveRules.mutateAsync(starter.rbac)
       select({ kind: 'resource', resource: names[0] })

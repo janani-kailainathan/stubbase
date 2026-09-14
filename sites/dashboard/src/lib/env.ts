@@ -123,15 +123,73 @@ export function setEnvLine(text: string, key: string, value: string): string {
  * invisible — still commented out in the text — and the next Save from the
  * editor would silently switch it back off.
  */
-export function mergeEnv(config: TenantConfig, patch: TenantConfig): TenantConfig {
+export function mergeEnv(
+  config: TenantConfig,
+  patch: TenantConfig,
+  options: { tenantBase?: string } = {},
+): TenantConfig {
   const merged: TenantConfig = { ...config, ...patch }
   const raw = config[RAW_KEY]
-  if (typeof raw === 'string')
-    merged[RAW_KEY] = Object.entries(patch).reduce(
-      (text, [key, value]) => setEnvLine(text, key, value),
-      raw,
-    )
+  if (typeof raw !== 'string') return merged
+
+  let text = Object.entries(patch).reduce((t, [key, value]) => setEnvLine(t, key, value), raw)
+  // Switching auth on is when Google and GitHub become the next thing to set
+  // up, so their lines come out of the comments — and into the keys as well,
+  // so the object still says what the text compiles to.
+  if (String(patch.AUTH_ENABLED ?? '').trim().toLowerCase() === 'true' && !socialLoginConfigured(merged)) {
+    text = exposeSocialLogin(text, options.tenantBase)
+    for (const key of SOCIAL_PROVIDERS.flatMap((p) => p.keys)) if (!(key in merged)) merged[key] = ''
+  }
+  merged[RAW_KEY] = text
   return merged
+}
+
+/** Where the .env's social login comments send an owner for the keys. Canonical: the text is stored with the project. */
+export const OAUTH_KEYS_GUIDE = 'https://stubbase.dev/guides/google-github-oauth-keys'
+
+const SOCIAL_PROVIDERS = [
+  { name: 'Google', slug: 'google', keys: ['AUTH_GOOGLE_CLIENT_ID', 'AUTH_GOOGLE_SECRET'] },
+  { name: 'GitHub', slug: 'github', keys: ['AUTH_GITHUB_CLIENT_ID', 'AUTH_GITHUB_SECRET'] },
+] as const
+
+/**
+ * Put the Google and GitHub key lines in front of the owner: uncommented and
+ * empty, because they are what to fill in next and a commented line reads as
+ * nothing to do. Empty is safe — the core routes a provider only when both its
+ * values are non-empty (features/auth/config.ts), so nothing turns on early.
+ *
+ * A line that is already live is left exactly as it is. A commented template
+ * line is uncommented where it stands, placeholder dropped, under the
+ * template's own callback and guide comments. A .env without the lines gets a
+ * block carrying those comments, naming this project's callback URLs when
+ * `tenantBase` (the project's public API address) is known.
+ */
+export function exposeSocialLogin(text: string, tenantBase?: string): string {
+  let out = text
+  for (const provider of SOCIAL_PROVIDERS) {
+    const missing: string[] = []
+    for (const key of provider.keys) {
+      const name = escapeRegExp(key)
+      if (new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`, 'm').test(out)) continue
+      const commented = new RegExp(`^\\s*#\\s*${name}\\s*=.*$`, 'm')
+      if (commented.test(out)) out = out.replace(commented, () => `${key}=`)
+      else missing.push(key)
+    }
+    if (missing.length === 0) continue
+    const block = [
+      `# ${provider.name} login: fill in both values, Save, then Deploy.`,
+      ...(tenantBase
+        ? [
+            `# Register this callback URL in your ${provider.name} OAuth app:`,
+            `#   ${tenantBase}/auth/${provider.slug}/callback`,
+          ]
+        : []),
+      `# How to get the keys: ${OAUTH_KEYS_GUIDE}`,
+      ...missing.map((key) => `${key}=`),
+    ].join('\n')
+    out = out.trim() ? `${out.replace(/\n+$/, '')}\n\n${block}\n` : `${block}\n`
+  }
+  return out
 }
 
 // ── Display masking (view mode only — edit mode shows real values) ─
@@ -141,7 +199,8 @@ const SECRET_KEY_RE = /(SECRET|TOKEN|_KEY|PASSWORD)/i
 export function maskValue(key: string, value: string): string {
   // credentials embedded in URLs: scheme://user:password@host
   let v = value.replace(/(:\/\/[^:/@\s]+:)[^@\s]+@/g, '$1****@')
-  if (SECRET_KEY_RE.test(key) && v === value)
+  // An empty secret stays empty: masked, an unfilled AUTH_GOOGLE_SECRET= would read as set.
+  if (SECRET_KEY_RE.test(key) && v === value && v !== '')
     v = v.length > 11 ? `${v.slice(0, 8)}***` : '***'
   return v
 }

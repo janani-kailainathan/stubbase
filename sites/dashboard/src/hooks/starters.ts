@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError, createProject, fetchTenantConfig, saveRbac, saveTenantConfig } from '@/lib/api'
+import { ApiError, CORE_PUBLIC_URL, createProject, fetchTenantConfig, saveRbac, saveTenantConfig } from '@/lib/api'
 import { CREATE_PROJECT_KEY } from '@/hooks/projects'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
@@ -23,14 +23,18 @@ export function useCreateProjectFromStarter() {
       if (starter.config) {
         // Merge, never replace: the .env the project was created with has to
         // survive the starter turning auth on. mergeEnv also writes the
-        // settings into that text, uncommenting the template's lines.
+        // settings into that text, uncommenting the template's lines — and,
+        // when the starter turns auth on, the Google and GitHub key lines too.
         let current: Record<string, string> = {}
         try {
           current = (await fetchTenantConfig(created.tenantId)) as Record<string, string>
         } catch (e) {
           if (!(e instanceof ApiError && e.status === 404)) throw e
         }
-        await saveTenantConfig(created.tenantId, mergeEnv(current, starter.config))
+        await saveTenantConfig(
+          created.tenantId,
+          mergeEnv(current, starter.config, { tenantBase: `${CORE_PUBLIC_URL}/${created.tenantId}` }),
+        )
       }
       // After the config, never before: rbac.json is refused until the
       // RBAC_ENABLED it depends on has been staged.

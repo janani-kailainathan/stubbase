@@ -17,7 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PLANNED_STARTERS, STARTERS, countRecords } from "../sites/dashboard/src/lib/starters.ts";
-import { RAW_KEY, mergeEnv, parseEnvText, socialLoginConfigured } from "../sites/dashboard/src/lib/env.ts";
+import { RAW_KEY, maskValue, mergeEnv, parseEnvText, socialLoginConfigured } from "../sites/dashboard/src/lib/env.ts";
 import { emailVerificationEnabled, groupEndpoints } from "../sites/dashboard/src/lib/endpoints.ts";
 import { adminAuth, seedTenant, startCore, stopServices, type Service } from "./helpers.ts";
 
@@ -109,6 +109,70 @@ describe("a starter's config merged into a templated .env", () => {
     }
   });
 
+  /** The template's social login lines, as envTemplate writes them. */
+  const SOCIAL = [
+    "# 1.5.1 Google — fill in both values to turn on /auth/google.",
+    "# Register this callback URL in your Google OAuth app:",
+    "#   https://api.example/acme/auth/google/callback",
+    "# AUTH_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com",
+    "# AUTH_GOOGLE_SECRET=GOCSPX-your-secret",
+    "",
+    "# 1.5.2 GitHub — fill in both values to turn on /auth/github.",
+    "# AUTH_GITHUB_CLIENT_ID=Iv1.a1b2c3d4e5f6",
+    "# AUTH_GITHUB_SECRET=your-github-secret",
+    "",
+  ].join("\n");
+  const SOCIAL_KEYS = ["AUTH_GOOGLE_CLIENT_ID", "AUTH_GOOGLE_SECRET", "AUTH_GITHUB_CLIENT_ID", "AUTH_GITHUB_SECRET"];
+  /** The template above has the owner's RESEND_FROM live, so the stored keys have it too. */
+  const OWNER = { RESEND_FROM: "Owner <owner@example.com>" };
+  const linesFor = (raw: string, key: string) => raw.match(new RegExp(`^#?\\s*${key}=.*$`, "gm"));
+
+  test("turning auth on uncomments the Google and GitHub lines in place, empty, and the core leaves them off", async () => {
+    const { [RAW_KEY]: raw, ...keys } = mergeEnv({ ...OWNER, [RAW_KEY]: TEMPLATE + SOCIAL }, { AUTH_ENABLED: "true" });
+    for (const key of SOCIAL_KEYS) expect(linesFor(raw, key)).toEqual([`${key}=`]);
+    // Under the template's own comments, not moved to the end.
+    expect(raw).toContain("#   https://api.example/acme/auth/google/callback\nAUTH_GOOGLE_CLIENT_ID=\nAUTH_GOOGLE_SECRET=");
+    expect(parseEnvText(raw).env).toEqual(keys);
+    expect(socialLoginConfigured(keys)).toBe(false);
+    // …and the .env view shows an empty secret as empty, not as a masked value that looks filled in.
+    expect(maskValue("AUTH_GOOGLE_SECRET", "")).toBe("");
+
+    // Empty is off on the core too, so exposing the lines switches nothing on.
+    await seedTenant(core, "oauth-exposed", { config: keys });
+    expect((await fetch(`${core.base}/oauth-exposed/auth/google`, { redirect: "manual" })).status).toBe(404);
+    expect((await fetch(`${core.base}/oauth-exposed/auth/github`, { redirect: "manual" })).status).toBe(404);
+  });
+
+  test("a line with a value is never touched, and a provider already set up leaves the rest commented", () => {
+    const half = TEMPLATE + SOCIAL.replace("# AUTH_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com", "AUTH_GOOGLE_CLIENT_ID=real-client-id");
+    const partly = mergeEnv({ ...OWNER, AUTH_GOOGLE_CLIENT_ID: "real-client-id", [RAW_KEY]: half }, { AUTH_ENABLED: "true" });
+    expect(linesFor(partly[RAW_KEY], "AUTH_GOOGLE_CLIENT_ID")).toEqual(["AUTH_GOOGLE_CLIENT_ID=real-client-id"]);
+    expect(partly.AUTH_GOOGLE_CLIENT_ID).toBe("real-client-id");
+    expect(linesFor(partly[RAW_KEY], "AUTH_GOOGLE_SECRET")).toEqual(["AUTH_GOOGLE_SECRET="]);
+
+    const whole = half.replace("# AUTH_GOOGLE_SECRET=GOCSPX-your-secret", "AUTH_GOOGLE_SECRET=real-secret");
+    const setUp = mergeEnv(
+      { ...OWNER, AUTH_GOOGLE_CLIENT_ID: "real-client-id", AUTH_GOOGLE_SECRET: "real-secret", [RAW_KEY]: whole },
+      { AUTH_ENABLED: "true" },
+    );
+    expect(linesFor(setUp[RAW_KEY], "AUTH_GITHUB_CLIENT_ID")).toEqual(["# AUTH_GITHUB_CLIENT_ID=Iv1.a1b2c3d4e5f6"]);
+    expect("AUTH_GITHUB_CLIENT_ID" in setUp).toBe(false);
+  });
+
+  test("a .env without the lines gets them, with this project's callback URLs and the guide", () => {
+    const { [RAW_KEY]: raw, ...keys } = mergeEnv({ ...OWNER, [RAW_KEY]: TEMPLATE }, { AUTH_ENABLED: "true" }, { tenantBase: "https://api.example/acme" });
+    for (const key of SOCIAL_KEYS) expect(linesFor(raw, key)).toEqual([`${key}=`]);
+    expect(raw).toContain("#   https://api.example/acme/auth/google/callback");
+    expect(raw).toContain("#   https://api.example/acme/auth/github/callback");
+    expect(raw).toContain("# How to get the keys: https://stubbase.dev/guides/google-github-oauth-keys");
+    expect(parseEnvText(raw).env).toEqual(keys);
+  });
+
+  test("the lines stay commented unless the patch switches auth on", () => {
+    const { [RAW_KEY]: raw } = mergeEnv({ ...OWNER, [RAW_KEY]: TEMPLATE + SOCIAL }, { QA_MODE: "true" });
+    for (const key of SOCIAL_KEYS) expect(linesFor(raw, key)?.[0].startsWith("# ")).toBe(true);
+  });
+
   test("a key the template does not offer is appended, and a config with no text only merges keys", () => {
     const appended = mergeEnv({ [RAW_KEY]: TEMPLATE }, { SCHEMA_POSTS: "{}" })[RAW_KEY];
     expect(appended.trimEnd().endsWith("SCHEMA_POSTS={}")).toBe(true);
@@ -120,11 +184,11 @@ describe("a starter's config merged into a templated .env", () => {
 });
 
 /**
- * The .env view's social login hint tells an owner sign-in is off until a
- * provider has both keys. That has to be the core's own
- * rule, or the hint would vanish while the route still 404s.
+ * Turning auth on uncomments the Google and GitHub lines until a provider has
+ * both keys. That has to be the core's own rule, or the lines would stop being
+ * offered while the route still 404s.
  */
-describe("the social login hint agrees with the core", () => {
+describe("social login counts as set up exactly when the core routes it", () => {
   test("a provider counts as set up only with both its keys, exactly as the core routes it", async () => {
     const half = { AUTH_ENABLED: "true", AUTH_GOOGLE_CLIENT_ID: "client-id-only" };
     const whole = { ...half, AUTH_GOOGLE_SECRET: "a-secret" };
@@ -137,7 +201,7 @@ describe("the social login hint agrees with the core", () => {
     expect(socialLoginConfigured(whole)).toBe(true);
     expect((await fetch(`${core.base}/oauth-whole/auth/google`, { redirect: "manual" })).status).toBe(302);
 
-    // Forkful ships no keys, so the hint shows for it.
+    // Forkful ships no keys, so applying it offers the key lines.
     const forkful = STARTERS.find((s) => s.id === "recipes")!;
     expect(socialLoginConfigured(forkful.config)).toBe(false);
   });

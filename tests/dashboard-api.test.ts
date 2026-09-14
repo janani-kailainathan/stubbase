@@ -358,6 +358,48 @@ describe("project provisioning", () => {
     // The OAuth callbacks it tells you to register are this project's own.
     expect(raw).toContain(`/${project.tenantId}/auth/google/callback`);
     expect(raw).toContain(`/${project.tenantId}/auth/github/callback`);
+    // …with the guide to getting the keys above each provider's pair.
+    expect((raw as string).match(/^# How to get the keys: https:\/\/stubbase\.dev\/guides\/google-github-oauth-keys$/gm)).toHaveLength(2);
+  }, 15_000);
+
+  test("a new project's .env is numbered as a hierarchy, and its contents list matches it", async () => {
+    const project = await createProject(owner.token, "Numbered");
+    const lines = ((await readConfig(project.tenantId)).__raw as string).split("\n");
+
+    // The contents list: "#   1. Auth", "#      1.1 Sign-up…", "#          1.5.1 Google".
+    const from = lines.indexOf("# Sections, in order:") + 1;
+    const contents = lines.slice(from, lines.indexOf("#", from)).map((line) => {
+      const m = /^#\s+(\d+(?:\.\d+)*)\.?\s+(.+)$/.exec(line);
+      expect({ line, parsed: Boolean(m) }).toEqual({ line, parsed: true });
+      return { number: m![1], title: m![2] };
+    });
+
+    // The headings themselves, in the order they appear.
+    const headings = lines.flatMap((line) => {
+      const m =
+        /^# ══ (\d+)\. (.+?) ═+$/.exec(line) ??
+        /^# ── (\d+\.\d+) (.+?) ─+$/.exec(line) ??
+        /^# (\d+\.\d+\.\d+) (.+?) — /.exec(line);
+      return m ? [{ number: m[1], title: m[2] }] : [];
+    });
+
+    const numbers = headings.map((h) => h.number);
+    expect(numbers).toEqual(["1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.5.1", "1.5.2", "2", "2.1", "2.2", "3", "4", "5"]);
+    expect(contents.map((c) => c.number)).toEqual(numbers);
+    // Each heading reads as its contents entry does (a heading may add a note, e.g. "(needs AUTH_ENABLED=true)").
+    headings.forEach((h, i) => expect({ n: h.number, starts: h.title.startsWith(contents[i].title) }).toEqual({ n: h.number, starts: true }));
+    // Every number is inside the one before it or its sibling: no 1.5.1 without a 1.5, no gap in a level.
+    numbers.forEach((n, i) => {
+      const parts = n.split(".").map(Number);
+      const prev = i === 0 ? [0] : numbers[i - 1].split(".").map(Number);
+      const child = parts.length === prev.length + 1 && parts.slice(0, -1).join(".") === prev.join(".") && parts.at(-1) === 1;
+      const next = parts.length <= prev.length && parts.slice(0, -1).join(".") === prev.slice(0, parts.length - 1).join(".") && parts.at(-1) === prev[parts.length - 1] + 1;
+      expect({ n, follows: child || next }).toEqual({ n, follows: true });
+    });
+    // Cross-references in the comments point at sections that exist.
+    const refs = [...lines.join("\n").matchAll(/\((\d+(?:\.\d+)+)\)|Shared by (\d+(?:\.\d+)+) and (\d+(?:\.\d+)+)/g)].flatMap((m) => m.slice(1).filter(Boolean));
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) expect({ ref, exists: numbers.includes(ref) }).toEqual({ ref, exists: true });
   }, 15_000);
 
   test("saving the template untouched is allowed on any plan, and changes nothing", async () => {
