@@ -148,12 +148,13 @@ const singularize = (n: string) =>
   n.endsWith("ies") ? `${n.slice(0, -3)}y` : n.endsWith("ss") || !n.endsWith("s") ? n : n.slice(0, -1);
 
 describe("starter examples", () => {
-  test("the list really does escalate: plain, then relations, then auth, then roles", () => {
+  test("the list really does escalate: plain, then auth alone, then relations, then both, then roles", () => {
     // The order is the pitch — a card claiming `relations` must have foreign
-    // keys, and one claiming neither must be a single flat resource.
-    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "blog", "storefront", "recipes", "helpdesk", "accounts"]);
+    // keys, and one without it must be a single flat resource.
+    expect(STARTERS.map((s) => s.id)).toEqual(["tracker", "signin", "blog", "storefront", "recipes", "helpdesk", "accounts"]);
     expect(STARTERS.map((s) => s.features)).toEqual([
       [],
+      ["auth"],
       ["relations"],
       ["relations", "auth"],
       ["relations", "auth"],
@@ -189,12 +190,13 @@ describe("starter examples", () => {
   });
 
   test("the placeholders stay placeholders, and stay distinguishable", () => {
-    // Nine cards on the empty state: six real, three not written yet. The grid
-    // renders both lists, so a placeholder that drifted into looking real —
-    // duplicate id, empty resource list — would be a card promising an example
-    // that cannot be seeded. Moving one into STARTERS is what makes the rest of
-    // this suite start covering it.
-    expect(STARTERS.length + PLANNED_STARTERS.length).toBe(9);
+    // Nine cards on the empty state: the real starters, then as many placeholders
+    // as still fit (StarterGrid slices the list). The grid renders both, so a
+    // placeholder that drifted into looking real — duplicate id, empty resource
+    // list — would be a card promising an example that cannot be seeded.
+    // Moving one into STARTERS is what makes the rest of this suite cover it.
+    expect(STARTERS.length).toBeLessThanOrEqual(9);
+    expect(STARTERS.length + PLANNED_STARTERS.length).toBeGreaterThanOrEqual(9);
 
     const ids = new Set(STARTERS.map((s) => s.id));
     for (const planned of PLANNED_STARTERS) {
@@ -208,7 +210,7 @@ describe("starter examples", () => {
       // A `relations` claim needs somewhere for the relation to point.
       if (planned.features.includes("relations")) expect(planned.resources.length).toBeGreaterThan(1);
     }
-    expect(ids.size).toBe(9);
+    expect(ids.size).toBe(STARTERS.length + PLANNED_STARTERS.length);
   });
 
   test("every foreign key resolves to a record that exists", () => {
@@ -286,7 +288,7 @@ describe("starter examples", () => {
 
   test("each auth starter reads publicly but refuses an unauthenticated write", async () => {
     const authOnly = STARTERS.filter((s) => s.features.includes("auth") && !s.features.includes("rbac"));
-    expect(authOnly.map((s) => s.id)).toEqual(["storefront", "recipes"]);
+    expect(authOnly.map((s) => s.id)).toEqual(["signin", "storefront", "recipes"]);
     for (const starter of authOnly) {
       const resource = Object.keys(starter.resources)[0];
 
@@ -317,7 +319,7 @@ describe("starter examples", () => {
 
   test("each auth starter's sessions last what its .env says, and a refresh keeps one going", async () => {
     const withAuth = STARTERS.filter((s) => s.config?.AUTH_ENABLED === "true");
-    expect(withAuth.map((s) => s.id)).toEqual(["storefront", "recipes", "helpdesk", "accounts"]);
+    expect(withAuth.map((s) => s.id)).toEqual(["signin", "storefront", "recipes", "helpdesk", "accounts"]);
     for (const starter of withAuth) {
       const base = `${core.base}/${starter.id}-w`;
       const json = { "content-type": "application/json" };
@@ -373,6 +375,52 @@ describe("starter examples", () => {
     }
     // The simplest auth starter turns it off; the rest keep the default.
     expect(withAuth.filter((s) => !emailVerificationEnabled(s.config)).map((s) => s.id)).toEqual(["storefront"]);
+  }, 30_000);
+
+  test("Sign-in basics: signup with verification, login, and forgot and reset password all work before email is set up", async () => {
+    const starter = STARTERS.find((s) => s.id === "signin")!;
+    const base = `${core.base}/signin-w`;
+    const [resource] = Object.keys(starter.resources);
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+      fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    const email = "sam@signin.example";
+
+    // Signup makes no account yet; with no Resend key the code is in the Logs tab.
+    const started = await post("/auth/signup", { email, password: "password123" });
+    expect(started.status).toBe(202);
+    const { verificationId, delivery } = (await started.json()) as { verificationId: string; delivery: string };
+    expect(delivery).toBe("logs");
+    expect((await post("/auth/login", { email, password: "password123" })).status).toBe(403);
+    // A resent code is the one that works.
+    const resent = await post("/auth/signup/resend", { verificationId });
+    expect(resent.status).toBe(202);
+    const code = await loggedCode("signin-w", resent.headers.get("x-correlation-id"));
+    expect((await post("/auth/signup/verify", { verificationId, code })).status).toBe(201);
+
+    // Login hands out a token that can post where an anonymous caller cannot.
+    const login = await post("/auth/login", { email, password: "password123" });
+    expect(login.status).toBe(200);
+    const { token } = (await login.json()) as { token: string };
+    const asSam = { authorization: `Bearer ${token}` };
+    expect((await post(`/${resource}`, { title: "Hello" })).status).toBe(401);
+    expect((await post(`/${resource}`, { title: "Hello" }, asSam)).status).toBe(201);
+
+    // Forgot and reset: the code, from the log again, sets a new password and ends the old session.
+    const forgot = await post("/auth/forgot-password", { email });
+    expect(forgot.status).toBe(202);
+    const resetCode = await loggedCode("signin-w", forgot.headers.get("x-correlation-id"));
+    expect((await post("/auth/reset-password", { email, code: resetCode, password: "a-new-password" })).status).toBe(200);
+    expect((await post(`/${resource}`, { title: "Again" }, asSam)).status).toBe(401);
+    expect((await post("/auth/login", { email, password: "password123" })).status).toBe(401);
+    expect((await post("/auth/login", { email, password: "a-new-password" })).status).toBe(200);
+
+    // Auth and nothing else: no roles, no social login.
+    expect(starter.rbac).toBeUndefined();
+    expect(socialLoginConfigured(starter.config)).toBe(false);
   }, 30_000);
 
   test("Forkful keeps its non-public resources behind sign-in", async () => {

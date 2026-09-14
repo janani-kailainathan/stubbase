@@ -2,9 +2,12 @@
  * Starter APIs offered on a project's empty state.
  *
  * Ordered simplest to richest, so the list doubles as a tour of what the engine
- * does: plain CRUD, then relations, then relations behind auth, then roles.
+ * does: plain CRUD, then auth on its own, then relations, then relations behind
+ * auth, then roles.
  *
  *   tracker     one flat resource — filtering, sorting, pagination
+ *   signin      auth and nothing else: signup with email verification, login,
+ *               forgot and reset password, one public resource to prove the token
  *   blog        `<singular>Id` foreign keys, so ?_expand= nests records
  *   storefront  the same, with AUTH_ENABLED: public reads, authenticated writes,
  *               and email verification switched off so signup is one call
@@ -39,7 +42,7 @@
 import type { RbacRules } from './rbac'
 
 export interface Starter {
-  id: 'tracker' | 'blog' | 'storefront' | 'recipes' | 'helpdesk' | 'accounts'
+  id: 'tracker' | 'signin' | 'blog' | 'storefront' | 'recipes' | 'helpdesk' | 'accounts'
   title: string
   blurb: string
   /** Capabilities this example demonstrates, beyond plain CRUD. */
@@ -79,6 +82,40 @@ export const STARTERS: Starter[] = [
         { id: '8', title: 'Compress the hero images', status: 'todo', priority: 'low', assignee: 'sam', estimate: 1 },
         { id: '9', title: 'Fix the mobile nav', status: 'done', priority: 'medium', assignee: 'mira', estimate: 2 },
         { id: '10', title: 'Rate-limit the public plane', status: 'todo', priority: 'high', assignee: 'ada', estimate: 5 },
+      ],
+    },
+  },
+  {
+    id: 'signin',
+    title: 'Sign-in basics',
+    blurb: 'Signup, email verification, login and password reset — nothing else.',
+    features: ['auth'],
+    example: '/announcements?pinned=true&_sort=publishedAt&_direction=desc',
+    // Auth on its own: no relations, no roles, no social login — the email and
+    // password lifecycle end to end. Signup answers with a verificationId, and
+    // the account exists once /auth/signup/verify gets the code back; login,
+    // refresh and logout keep a session going; forgot-password and
+    // reset-password get someone back in. With no Resend key both kinds of code
+    // show in the Logs tab, so every step can be tried from the playground the
+    // moment it is deployed. The one resource is there to prove the token:
+    // anyone reads the announcements, posting one needs an account.
+    config: {
+      AUTH_ENABLED: 'true',
+      AUTH_EMAIL_VERIFICATION: 'true',
+      AUTH_PUBLIC_ROUTES: 'announcements',
+    },
+    resources: {
+      announcements: [
+        { id: '1', title: 'Welcome aboard', body: 'Create an account with /auth/signup to post your own announcements.', pinned: true, publishedAt: '2026-03-02' },
+        { id: '2', title: 'Check your inbox after signing up', body: 'A 6-digit code confirms your email. Send it to /auth/signup/verify.', pinned: true, publishedAt: '2026-03-04' },
+        { id: '3', title: 'Forgot your password?', body: 'Ask /auth/forgot-password for a code, then set a new password with /auth/reset-password.', pinned: true, publishedAt: '2026-03-06' },
+        { id: '4', title: 'Stay signed in', body: 'Trade your refresh token at /auth/refresh before the access token runs out.', pinned: false, publishedAt: '2026-03-09' },
+        { id: '5', title: 'Signing out everywhere', body: 'Changing or resetting a password ends every other session.', pinned: false, publishedAt: '2026-03-12' },
+        { id: '6', title: 'Codes expire after 15 minutes', body: 'Ask for a new one with /auth/signup/resend if yours ran out.', pinned: false, publishedAt: '2026-03-15' },
+        { id: '7', title: 'Five tries per code', body: 'After five wrong guesses a code stops working. Request a fresh one.', pinned: false, publishedAt: '2026-03-18' },
+        { id: '8', title: 'Scheduled maintenance', body: 'Sign-in will be briefly unavailable on Sunday at 02:00 UTC.', pinned: false, publishedAt: '2026-03-21' },
+        { id: '9', title: 'New: log out from one device', body: 'Send /auth/logout your token and only that session ends.', pinned: false, publishedAt: '2026-03-24' },
+        { id: '10', title: 'Choose a longer password', body: 'Passwords need at least 8 characters; longer is better.', pinned: false, publishedAt: '2026-03-27' },
       ],
     },
   },
