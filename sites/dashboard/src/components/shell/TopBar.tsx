@@ -337,7 +337,10 @@ function useMinDuration(active: boolean, ms = 450): boolean {
 function DeployControls({ tenantId }: { tenantId: string | undefined }) {
   const status = useProjectStatus(tenantId)
   const setStatus = useSetProjectStatus(tenantId)
-  const stopped = status !== 'active'
+  // No project means nothing is serving. useProjectStatus reads as active until
+  // a status loads, and with no tenant nothing ever loads — which put a Stop
+  // icon on the first screen of an account with no projects.
+  const stopped = !tenantId || status !== 'active'
   const queryClient = useQueryClient()
   const current = useCurrentProject()
   const [confirmingStop, setConfirmingStop] = useState(false)
@@ -390,7 +393,9 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
       <button
         onClick={() => deploy.mutate()}
         disabled={!tenantId || busy}
-        className="flex cursor-pointer items-center gap-1.5 rounded-l bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+        // Hover and pointer only while it can be pressed: a disabled button that
+        // still lights up under the mouse reads as broken, not as unavailable.
+        className="flex items-center gap-1.5 rounded-l bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors enabled:cursor-pointer enabled:hover:bg-primary-hover disabled:opacity-60"
       >
         {/* Progress lives on the icon, not the label. Swapping the word to
             "Deploying…" and back inside ~50ms stutters; the word only changes
@@ -408,8 +413,8 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
             monospace. Without it the button resizes with its label, and being
             in the right-aligned group it drags the mode toggle sideways. */}
         {/* With no project there is nothing deployed, so "Redeploy" would be a
-            lie on the very first screen a new account sees. */}
-        <span className="w-[8ch] text-center">{stopped || !tenantId ? 'Deploy' : 'Redeploy'}</span>
+            lie on the very first screen a new account sees — `stopped` covers it. */}
+        <span className="w-[8ch] text-center">{stopped ? 'Deploy' : 'Redeploy'}</span>
       </button>
       {/* The second segment: start/stop, one click from Deploy. Red on hover
           while live, so what a click here does is plain before it happens. */}
@@ -418,8 +423,8 @@ function DeployControls({ tenantId }: { tenantId: string | undefined }) {
         aria-label={stopped ? 'Start API' : 'Stop API'}
         onClick={() => (stopped ? changeStatus.mutate('active') : setConfirmingStop(true))}
         disabled={!tenantId || busy}
-        className={`flex cursor-pointer items-center rounded-r border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors disabled:opacity-60 ${
-          stopped ? 'hover:bg-primary-hover' : 'hover:bg-danger-fill'
+        className={`flex items-center rounded-r border-l border-black/20 bg-primary px-2 text-primary-foreground transition-colors enabled:cursor-pointer disabled:opacity-60 ${
+          stopped ? 'enabled:hover:bg-primary-hover' : 'enabled:hover:bg-danger-fill'
         }`}
       >
         {changeStatus.isPending ? (
