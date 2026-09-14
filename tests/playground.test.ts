@@ -383,6 +383,41 @@ describe("token autofill", () => {
   }, 20_000);
 });
 
+describe("the auth samples", () => {
+  test("are one account across the routes, and each is a request a real core accepts", async () => {
+    await seedTenant(core, "samples", { posts: [], config: { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" } });
+    const sample = (path: string) => JSON.parse(initialInputs(find("POST", path), null).body);
+    const call = async (path: string, payload: unknown, token = "") => {
+      const endpoint = find("POST", path);
+      const res = await fetch(`${core.base}${requestPath("samples", endpoint, "")}`, {
+        method: "POST",
+        headers: requestHeaders(endpoint, { chaos: {} }, { token, authEnabled: true, qaMode: false }),
+        body: JSON.stringify(payload),
+      });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    };
+
+    // The same account everywhere, so signup, then login, change and reset line up with nothing retyped.
+    const signup = sample("/auth/signup");
+    expect(sample("/auth/login")).toEqual({ email: signup.email, password: signup.password });
+    expect(sample("/auth/forgot-password")).toEqual({ email: signup.email });
+    expect(sample("/auth/reset-password")).toMatchObject({ email: signup.email });
+    expect(sample("/auth/change-password")).toMatchObject({ currentPassword: signup.password });
+    expect(sample("/auth/change-password").password).toBe(sample("/auth/reset-password").password);
+
+    // Sent as they stand, each passes the core's validation.
+    const created = await call("/auth/signup", signup);
+    expect(created.status).toBe(201);
+    expect((await call("/auth/login", sample("/auth/login"))).status).toBe(200);
+    expect((await call("/auth/change-password", sample("/auth/change-password"), created.json.token)).status).toBe(200);
+    expect((await call("/auth/forgot-password", sample("/auth/forgot-password"))).status).toBe(202);
+    // Only the reset's placeholder code is wrong, and it is refused as a code, not as a malformed body.
+    expect((await call("/auth/reset-password", sample("/auth/reset-password"))).json).toEqual({
+      error: "invalid or expired reset code",
+    });
+  }, 20_000);
+});
+
 /**
  * A Send is added to the Usage panel the moment it returns. What it may add has
  * to match what the core actually meters, and what it shows must not drop back

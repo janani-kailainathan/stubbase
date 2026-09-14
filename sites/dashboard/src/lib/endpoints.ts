@@ -40,6 +40,19 @@ export function endpointsFor(resources: string[]): Endpoint[] {
 }
 
 /**
+ * The one account every auth sample uses, so a signup, then a login, a password
+ * change or a reset all work in the playground without retyping anything. The
+ * domain is example.com because it is reserved (RFC 2606) and can never be
+ * somebody's inbox: a project with RESEND_API_KEY really sends these emails, and
+ * a plausible-looking address on a real provider would put codes in a
+ * stranger's mail. Without a key the code shows in the Logs tab.
+ * tests/playground.test.ts sends every sample to a real core.
+ */
+const SAMPLE_EMAIL = 'testuser@example.com'
+const SAMPLE_PASSWORD = 'password123'
+const SAMPLE_NEW_PASSWORD = 'password456'
+
+/**
  * The tenant's auth plane. These routes are not resources — they appear and
  * disappear with AUTH_ENABLED rather than with a file, which is why they are a
  * fixed list here instead of coming from the project's `resources`.
@@ -52,7 +65,7 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: false,
     kind: 'auth',
     sample: {
-      request: { email: 'ada@example.com', password: 'at least 8 chars', name: 'Ada' },
+      request: { email: SAMPLE_EMAIL, password: SAMPLE_PASSWORD, name: 'Test User' },
     },
   },
   {
@@ -84,7 +97,7 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: false,
     kind: 'auth',
     sample: {
-      request: { email: 'ada@example.com', password: 'at least 8 chars' },
+      request: { email: SAMPLE_EMAIL, password: SAMPLE_PASSWORD },
     },
   },
   {
@@ -115,7 +128,7 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: false,
     kind: 'auth',
     sample: {
-      request: { currentPassword: 'at least 8 chars', password: 'a new password' },
+      request: { currentPassword: SAMPLE_PASSWORD, password: SAMPLE_NEW_PASSWORD },
     },
   },
   {
@@ -125,7 +138,7 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: false,
     kind: 'auth',
     sample: {
-      request: { email: 'ada@example.com' },
+      request: { email: SAMPLE_EMAIL },
     },
   },
   {
@@ -135,7 +148,7 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: false,
     kind: 'auth',
     sample: {
-      request: { email: 'ada@example.com', code: '123456', password: 'a new password' },
+      request: { email: SAMPLE_EMAIL, code: '123456', password: SAMPLE_NEW_PASSWORD },
     },
   },
   // Account management — answered only for a role with `_users` rights in rbac.json.
@@ -153,7 +166,8 @@ export const AUTH_ENDPOINTS: Endpoint[] = [
     needsId: true,
     kind: 'auth',
     sample: {
-      request: { role: 'staff' },
+      // `user` is a role in every project without rules; with rules, use one of yours.
+      request: { role: 'user' },
     },
   },
 ]
