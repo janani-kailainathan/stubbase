@@ -567,6 +567,21 @@ with the code already filled in.
   account.
 - The page answers the same whether or not an address has an account.
 
+### 2.3 Change your password
+
+Signed in and want a new password? Open the account menu (your initial, top
+right), choose **Profile**, and use the **Password** section. Enter your current
+password and the new one, and you stay signed in on this device while every
+other device is signed out.
+
+- Your current password is always asked for, so someone at your unlocked
+  computer cannot lock you out.
+- Forgotten it? **Use an email code instead** sends you a 6-digit code, the
+  same as on the login page.
+- Signed up with Google or GitHub? You have no password yet, so the Password
+  section offers **Set a password** and uses the emailed code.
+- A reset code you asked for earlier stops working once you change your password.
+
 ---
 
 ## 3. Env settings — the central reference

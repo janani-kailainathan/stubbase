@@ -25,12 +25,15 @@ export function PasswordInput({
   onChange,
   autoComplete,
   autoFocus,
+  inputClassName = authInputClass,
 }: {
   id: string
   value: string
   onChange: (value: string) => void
   autoComplete: 'new-password' | 'current-password'
   autoFocus?: boolean
+  /** The field's look. Defaults to the auth pages'; the dashboard passes its own. */
+  inputClassName?: string
 }) {
   const [visible, setVisible] = useState(false)
   return (
@@ -44,7 +47,7 @@ export function PasswordInput({
         placeholder="••••••••"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`${authInputClass} w-full pr-11`}
+        className={`${inputClassName} w-full pr-11`}
       />
       <button
         type="button"
@@ -70,11 +73,14 @@ export function CodeInput({
   value,
   onChange,
   autoFocus,
+  inputClassName = `${authInputClass} text-lg`,
 }: {
   id: string
   value: string
   onChange: (value: string) => void
   autoFocus?: boolean
+  /** The field's look, text size included. Defaults to the auth pages' large code field. */
+  inputClassName?: string
 }) {
   return (
     <input
@@ -88,7 +94,7 @@ export function CodeInput({
       placeholder="000000"
       value={value}
       onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-      className={`${authInputClass} text-center font-mono text-lg tracking-[0.5em]`}
+      className={`${inputClassName} text-center font-mono tracking-[0.5em]`}
     />
   )
 }

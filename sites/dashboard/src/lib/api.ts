@@ -120,6 +120,12 @@ export interface ApiUser {
   planName: string
   monthlyRequests: number
   features: PlanFeature[]
+  /**
+   * False for an account made by Google or GitHub, which has no password to
+   * change and sets one by emailed code. Absent on a session stored before the
+   * field existed — read it after refreshUser(), not from storage alone.
+   */
+  hasPassword?: boolean
 }
 
 export interface AuthResponse {
@@ -174,6 +180,14 @@ export const resetPassword = (email: string, code: string, password: string) =>
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, code, password }),
+  })
+
+/** Signed in: needs the current password. This session stays; every other one ends. */
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  request<{ user: ApiUser }>(`${APP_API_URL}/auth/change-password`, {
+    method: 'POST',
+    headers: appHeaders(true),
+    body: JSON.stringify({ currentPassword, newPassword }),
   })
 
 export const login = (email: string, password: string) =>

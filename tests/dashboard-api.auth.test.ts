@@ -26,6 +26,7 @@ import {
   PASSWORD,
   as,
   jsonHeaders,
+  loggedResetCode,
   loggedSignupCode,
   readDbOf,
   sha256hex,
@@ -546,6 +547,100 @@ describe("password reset", () => {
   }, 20_000);
 });
 
+// ── Change password ────────────────────────────────────────────────
+
+/** "Change password" in the account menu: signed in, with the current password. */
+describe("change password", () => {
+  const NEW_PASSWORD = "a-brand-new-password";
+  const change = (token: string | null, body: unknown) =>
+    fetch(`${app.base}/auth/change-password`, {
+      method: "POST",
+      headers: jsonHeaders(token ?? undefined),
+      body: JSON.stringify(body),
+    });
+  const login = (email: string, password: string) =>
+    fetch(`${app.base}/auth/login`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ email, password }) });
+  const me = (token: string) => fetch(`${app.base}/auth/me`, { headers: as(token) });
+  const tokenFrom = async (res: Response) => (await res.json()).token as string;
+
+  test("needs a session, and /auth/me says the account has a password", async () => {
+    expect((await change(null, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).status).toBe(401);
+    const account = await signup();
+    expect((await (await me(account.token)).json()).user.hasPassword).toBe(true);
+  }, 20_000);
+
+  test("the right current password changes it, keeps this session and ends every other one", async () => {
+    const account = await signup();
+    const otherDevice = await tokenFrom(await login(account.email, PASSWORD));
+
+    const res = await change(account.token, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+    expect((await res.json()).user).toMatchObject({ email: account.email, hasPassword: true });
+
+    expect((await me(account.token)).status).toBe(200);
+    expect((await me(otherDevice)).status).toBe(401);
+    expect((await login(account.email, PASSWORD)).status).toBe(401);
+    expect((await login(account.email, NEW_PASSWORD)).status).toBe(200);
+  }, 20_000);
+
+  test("a wrong current password changes nothing and signs nobody out", async () => {
+    const account = await signup();
+    const otherDevice = await tokenFrom(await login(account.email, PASSWORD));
+
+    const res = await change(account.token, { currentPassword: "not-my-password", newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(403);
+    expect((await login(account.email, PASSWORD)).status).toBe(200);
+    expect((await login(account.email, NEW_PASSWORD)).status).toBe(401);
+    expect((await me(otherDevice)).status).toBe(200);
+  }, 20_000);
+
+  test("refuses a missing current password, and a short or unchanged new one", async () => {
+    const account = await signup();
+    for (const body of [
+      { newPassword: NEW_PASSWORD },
+      { currentPassword: PASSWORD, newPassword: "short" },
+      { currentPassword: PASSWORD },
+      { currentPassword: PASSWORD, newPassword: PASSWORD },
+    ])
+      expect((await change(account.token, body)).status).toBe(400);
+    expect((await login(account.email, PASSWORD)).status).toBe(200);
+  }, 20_000);
+
+  test("a reset code requested before the change cannot undo it", async () => {
+    const account = await signup();
+    await fetch(`${app.base}/auth/forgot-password`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email: account.email }),
+    });
+    const code = await loggedResetCode(app, account.email);
+
+    expect((await change(account.token, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).status).toBe(200);
+    const reset = await fetch(`${app.base}/auth/reset-password`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email: account.email, code, password: "someone-elses-password" }),
+    });
+    expect(await reset.json()).toEqual({ error: "invalid or expired reset code" });
+    expect((await login(account.email, NEW_PASSWORD)).status).toBe(200);
+  }, 20_000);
+
+  test("two changes racing from the same current password: exactly one wins", async () => {
+    const account = await signup();
+    const [one, two] = await Promise.all([
+      change(account.token, { currentPassword: PASSWORD, newPassword: "racer-one-password" }),
+      change(account.token, { currentPassword: PASSWORD, newPassword: "racer-two-password" }),
+    ]);
+    expect([one.status, two.status].filter((s) => s === 200)).toHaveLength(1);
+
+    const [winner, loser] = one.status === 200
+      ? ["racer-one-password", "racer-two-password"]
+      : ["racer-two-password", "racer-one-password"];
+    expect((await login(account.email, winner)).status).toBe(200);
+    expect((await login(account.email, loser)).status).toBe(401);
+  }, 20_000);
+});
+
 
 // ── OAuth sign-in ──────────────────────────────────────────────────
 
@@ -844,6 +939,22 @@ describe("OAuth sign-in", () => {
       body: JSON.stringify({ email, password: "attacker-password" }),
     });
     expect(login.status).toBe(401);
+  }, 20_000);
+
+  test("an OAuth account has no password to change, and is told to use an emailed code", async () => {
+    const email = `nopassword-${Date.now()}@test.co`;
+    const token = new URLSearchParams(fragment(await signIn("google", email))).get("token")!;
+
+    const me = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).json();
+    expect(me.user.hasPassword).toBe(false);
+
+    const res = await fetch(`${oauthApp.base}/auth/change-password`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ currentPassword: "anything-at-all", newPassword: PASSWORD }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("code sent to your email");
   }, 20_000);
 
   test("an OAuth session token is stored hashed, like every other session", async () => {

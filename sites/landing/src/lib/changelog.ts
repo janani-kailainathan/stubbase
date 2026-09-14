@@ -76,7 +76,7 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
-        text: 'Password reset for Stubbase accounts: a six-digit code or a one-click link by email, and a reset signs you out everywhere else.',
+        text: 'Password reset and change for Stubbase accounts: forgot it, and a six-digit code or one-click link arrives by email; signed in, change it from the account menu with your current password. Either way your other devices are signed out.',
       },
       {
         kind: 'added',

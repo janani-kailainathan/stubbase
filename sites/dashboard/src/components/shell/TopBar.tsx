@@ -14,6 +14,7 @@ import {
   Square,
   Trash2,
   TriangleAlert,
+  UserRound,
   X,
 } from 'lucide-react'
 import { deployProject, LANDING_URL, type ApiUser } from '@/lib/api'
@@ -495,6 +496,7 @@ function StatusBadge({ tenantId }: { tenantId: string }) {
  */
 function ProfileMenu({ user, onSignOut }: { user: ApiUser | null; onSignOut: () => void }) {
   const displayName = user?.name?.trim() || user?.email.split('@')[0] || 'Account'
+  const navigate = useNavigate()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -516,6 +518,15 @@ function ProfileMenu({ user, onSignOut }: { user: ApiUser | null; onSignOut: () 
             </div>
             <DropdownMenuSeparator className="my-1 bg-muted" />
           </>
+        )}
+        {user && (
+          <DropdownMenuItem
+            onSelect={() => navigate('/account')}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-heading"
+          >
+            <UserRound className="h-3.5 w-3.5" />
+            <span className="font-mono text-xs">Profile</span>
+          </DropdownMenuItem>
         )}
         <DropdownMenuItem
           onSelect={onSignOut}

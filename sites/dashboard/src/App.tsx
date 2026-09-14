@@ -5,6 +5,7 @@ import AuthCallback from '@/pages/AuthCallback'
 import Editor from '@/pages/Editor'
 import ForgotPassword from '@/pages/ForgotPassword'
 import Login from '@/pages/Login'
+import Profile from '@/pages/Profile'
 import Signup from '@/pages/Signup'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -20,6 +21,14 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route
+          path="/account"
+          element={
+            <RequireAuth>
+              <Profile />
+            </RequireAuth>
+          }
+        />
         <Route path="/auth/callback" element={<AuthCallback />} />
         {/*
           Which project is open lives in the URL and nowhere else, so a reload

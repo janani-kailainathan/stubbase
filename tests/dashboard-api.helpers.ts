@@ -67,18 +67,21 @@ export function setPlanOn(service: Service, email: string, plan: string) {
 let seq = 0;
 
 /**
- * The newest sign-up code a service logged for `email`. Needs
+ * The newest code of one kind a service logged for `email`. Needs
  * DASHBOARD_EMAIL_LOG_CODES, which `startApp` turns on unless a suite overrides it.
  */
-export async function loggedSignupCode(on: Service, email: string): Promise<string> {
+async function loggedCode(on: Service, kind: "sign-up verification" | "password reset", email: string): Promise<string> {
   const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`sign-up verification code for ${escaped} is (\\d{6})`, "g");
+  const pattern = new RegExp(`${kind} code for ${escaped} is (\\d{6})`, "g");
   const newest = () => [...on.output.join("").matchAll(pattern)].at(-1)?.[1] ?? "";
   await waitFor(() => newest() !== "");
   const code = newest();
-  if (!code) throw new Error(`no sign-up code was logged for ${email}`);
+  if (!code) throw new Error(`no ${kind} code was logged for ${email}`);
   return code;
 }
+
+export const loggedSignupCode = (on: Service, email: string) => loggedCode(on, "sign-up verification", email);
+export const loggedResetCode = (on: Service, email: string) => loggedCode(on, "password reset", email);
 
 /**
  * Signs up a fresh account on the given service — both legs, the sign-up and

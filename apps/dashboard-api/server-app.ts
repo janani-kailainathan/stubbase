@@ -14,6 +14,7 @@
  *   POST   /auth/login                          { email, password }
  *   POST   /auth/forgot-password                { email } → 202 for every address, code emailed
  *   POST   /auth/reset-password                 { email, code, password } → session
+ *   POST   /auth/change-password                (auth) { currentPassword, newPassword } → { user }
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
  *   GET    /auth/providers                      which OAuth buttons to show
@@ -350,6 +351,13 @@ const publicUser = (u: User) => {
     planName: plan.name,
     monthlyRequests: plan.monthlyRequests,
     features: plan.features,
+    // Whether the account can sign in with a password at all. An account made
+    // by Google or GitHub cannot, so the account menu offers "Set a password"
+    // (by emailed code) instead of "Change password" (by current password).
+    hasPassword:
+      (db.query("SELECT password_hash IS NOT NULL AS p FROM users WHERE id = ?").get(u.id) as {
+        p: number;
+      } | null)?.p === 1,
   };
 };
 
@@ -776,6 +784,53 @@ async function resetPassword(req: Request): Promise<Response> {
   db.query("DELETE FROM sessions WHERE user_id = ?").run(row.id);
   const user = db.query("SELECT id, email, name, plan FROM users WHERE id = ?").get(row.id) as User;
   return json({ token: createSession(user.id), user: publicUser(user) });
+}
+
+// ── Change password (signed in) ───────────────────────────────────
+//
+// The account menu's "Change password". A session alone is not enough: the
+// current password is asked for, so an unlocked laptop or a stolen session
+// token can neither lock the owner out nor turn itself into a lasting login.
+// For the same reason an account with no password (made by Google or GitHub)
+// cannot set one here — it uses the emailed reset code, which proves the mailbox.
+//
+// Every other session ends; the one making the change stays signed in. An
+// outstanding reset code dies too, so a code requested before the change cannot
+// quietly undo it. The UPDATE lands only over the hash that was verified, so two
+// changes racing from the same current password — or a reset landing during the
+// awaits — cannot be overwritten by a request that checked a password now gone.
+
+async function changePassword(req: Request, user: User): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const currentPassword =
+    typeof (body as any)?.currentPassword === "string" ? (body as any).currentPassword : "";
+  const newPassword = typeof (body as any)?.newPassword === "string" ? (body as any).newPassword : "";
+  if (!currentPassword) return err(400, "'currentPassword' is required");
+  if (newPassword.length < MIN_PASSWORD_LEN)
+    return err(400, `'newPassword' must be at least ${MIN_PASSWORD_LEN} characters`);
+  if (newPassword === currentPassword)
+    return err(400, "the new password must be different from the current one");
+
+  const row = db.query("SELECT password_hash FROM users WHERE id = ?").get(user.id) as {
+    password_hash: string | null;
+  } | null;
+  if (!row?.password_hash)
+    return err(409, "this account has no password yet: set one with a code sent to your email");
+  if (!(await Bun.password.verify(currentPassword, row.password_hash)))
+    return err(403, "current password is incorrect");
+
+  const hash = await Bun.password.hash(newPassword, ARGON);
+  const changed = db
+    .query("UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?")
+    .run(hash, user.id, row.password_hash);
+  if (changed.changes === 0)
+    return err(409, "your password was changed by another request; sign in again and retry");
+
+  const token = (req.headers.get("authorization") ?? "").slice(7);
+  db.query("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, sha256hex(token));
+  db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
+  return json({ user: publicUser(user) });
 }
 
 // ── OAuth sign-in (Google / GitHub) ───────────────────────────────
@@ -2943,6 +2998,8 @@ async function route(req: Request): Promise<Response> {
       return logout(req);
     if (req.method === "GET" && segments[1] === "me" && segments.length === 2)
       return json({ user: publicUser(user) });
+    if (req.method === "POST" && segments[1] === "change-password" && segments.length === 2)
+      return changePassword(req, user);
     return err(404, "not found");
   }
 

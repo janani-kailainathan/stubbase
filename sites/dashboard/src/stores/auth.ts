@@ -16,6 +16,10 @@ interface AuthState {
   verifySignup: (verificationId: string, code: string) => Promise<void>
   /** Sets a new password with the emailed reset code; every other session ends and this one starts. */
   resetPassword: (email: string, code: string, password: string) => Promise<void>
+  /** Signed in, with the current password. This session stays; every other one ends. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  /** Re-reads the account from /auth/me — the stored copy may predate a field or a change. */
+  refreshUser: () => Promise<void>
   /** Adopt a session minted by the OAuth callback (arrives in a URL fragment). */
   adoptSession: (token: string) => Promise<void>
   logout: () => void
@@ -45,6 +49,20 @@ export const useAuthStore = create<AuthState>()(
         const res = await api.resetPassword(email, code, password)
         setAuthToken(res.token)
         set({ token: res.token, user: res.user })
+      },
+
+      changePassword: async (currentPassword, newPassword) => {
+        const { user } = await api.changePassword(currentPassword, newPassword)
+        set({ user })
+      },
+
+      refreshUser: async () => {
+        const token = get().token
+        if (!token) return
+        const { user } = await api.me()
+        // Only for the session that asked: a logout (or another sign-in) while
+        // this was in flight must not have an account written back over it.
+        if (get().token === token) set({ user })
       },
 
       adoptSession: async (token) => {

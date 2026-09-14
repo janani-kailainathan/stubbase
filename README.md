@@ -25,6 +25,7 @@ POST   /auth/signup/verify                 { verificationId, code } → { token,
 POST   /auth/signup/resend                 { verificationId } → 202, a new code replaces the last
 POST   /auth/forgot-password               { email } → 202 for every address; code + link emailed
 POST   /auth/reset-password                { email, code, password } → { token, user }; ends every other session
+POST   /auth/change-password               (auth) { currentPassword, newPassword } → { user }; this session stays, others end
 POST   /auth/login                         { email, password } → { token, user }
 POST   /auth/logout                        (auth) revoke session
 GET    /auth/me                            (auth)
