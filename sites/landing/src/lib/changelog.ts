@@ -72,6 +72,10 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
+        text: 'Email verification for new Stubbase accounts: a password sign-up is confirmed with a six-digit code sent to your inbox before the account exists.',
+      },
+      {
+        kind: 'added',
         text: 'MCP over HTTP and SSE, so an agent can query a project with read-only SQL using a developer API key.',
       },
       {

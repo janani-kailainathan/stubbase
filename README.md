@@ -20,7 +20,9 @@ The dashboard backend (`apps/dashboard-api/server-app.ts`) owns users, sessions,
 **Dashboard API** (`api.app.stubbase.dev`; auth = `Authorization: Bearer <session token>`):
 
 ```
-POST   /auth/signup                        { email, password, name? } → { token, user }
+POST   /auth/signup                        { email, password, name? } → 202 { verificationId, email, expiresIn }; code emailed
+POST   /auth/signup/verify                 { verificationId, code } → { token, user } — creates the account
+POST   /auth/signup/resend                 { verificationId } → 202, a new code replaces the last
 POST   /auth/login                         { email, password } → { token, user }
 POST   /auth/logout                        (auth) revoke session
 GET    /auth/me                            (auth)
@@ -201,9 +203,13 @@ Then (no `/etc/hosts` edits needed — `*.localhost` resolves to 127.0.0.1):
 
 ```bash
 curl http://api.stubbase.localhost/demo/todos
-TOKEN=$(curl -s -X POST http://api.app.stubbase.localhost/auth/signup \
+ID=$(curl -s -X POST http://api.app.stubbase.localhost/auth/signup \
   -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","password":"a-password"}' | jq -r .token)
+  -d '{"email":"you@example.com","password":"a-password"}' | jq -r .verificationId)
+# the stack logs the code instead of mailing it: docker compose logs dashboard-api
+TOKEN=$(curl -s -X POST http://api.app.stubbase.localhost/auth/signup/verify \
+  -H 'content-type: application/json' \
+  -d "{\"verificationId\":\"$ID\",\"code\":\"<code from the log>\"}" | jq -r .token)
 curl -X POST http://api.app.stubbase.localhost/projects \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"name":"My API"}'

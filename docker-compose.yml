@@ -38,6 +38,12 @@ services:
       DASHBOARD_GOOGLE_SECRET: ${DASHBOARD_GOOGLE_SECRET:-}
       DASHBOARD_GITHUB_CLIENT_ID: ${DASHBOARD_GITHUB_CLIENT_ID:-}
       DASHBOARD_GITHUB_SECRET: ${DASHBOARD_GITHUB_SECRET:-}
+      # Sign-up verification emails, through Stubbase's own Resend account.
+      # Codes are also logged (`docker compose logs dashboard-api`), so this
+      # stack can create accounts with no key at all. Local stack only.
+      DASHBOARD_RESEND_API_KEY: ${DASHBOARD_RESEND_API_KEY:-}
+      DASHBOARD_EMAIL_FROM: ${DASHBOARD_EMAIL_FROM:-}
+      DASHBOARD_EMAIL_LOG_CODES: "true"
       # From .env (gitignored — see .env.example). Unset = AI route answers 503.
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
       AI_MODEL_NAME: ${AI_MODEL_NAME:-models/gemini-3.5-flash-lite}

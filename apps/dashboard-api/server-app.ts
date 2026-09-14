@@ -8,7 +8,9 @@
  *
  * Routes (auth = `Authorization: Bearer <session token>`):
  *   GET    /                                    health
- *   POST   /auth/signup                         { email, password, name? }
+ *   POST   /auth/signup                         { email, password, name? } → 202, code emailed
+ *   POST   /auth/signup/verify                  { verificationId, code } → session
+ *   POST   /auth/signup/resend                  { verificationId } → 202, new code emailed
  *   POST   /auth/login                          { email, password }
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
@@ -33,7 +35,7 @@
  *   POST   /projects/<tenantId>/mcp/message     JSON-RPC 2.0 inbox
  */
 import { Database } from "bun:sqlite";
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import {
   AIError,
   CO_PILOT_TOOLS,
@@ -155,6 +157,25 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS developer_api_keys_tenant ON developer_api_keys(tenant_id);
+  -- A password sign-up waiting for its email code. Not an account: the users
+  -- row is only written when the code comes back (see verifySignup).
+  CREATE TABLE IF NOT EXISTS signup_verifications (
+    id              TEXT PRIMARY KEY,   -- handle held by the browser that signed up
+    email           TEXT NOT NULL,
+    name            TEXT,
+    password_hash   TEXT NOT NULL,
+    code_hash       TEXT NOT NULL,      -- HMAC of the code; '' once locked by wrong guesses
+    code_expires_at TEXT NOT NULL,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS signup_verifications_email ON signup_verifications(email);
+  -- One row per verification email sent, kept an hour: the per-address throttle.
+  CREATE TABLE IF NOT EXISTS signup_email_sends (
+    email   TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS signup_email_sends_email ON signup_email_sends(email);
 `);
 // Migrate pre-auth databases (users table without the new columns).
 const userCols = (db.query("PRAGMA table_info(users)").all() as { name: string }[]).map(
@@ -317,6 +338,128 @@ const publicUser = (u: User) => {
   };
 };
 
+// ── Email verification (password sign-up) ─────────────────────────
+//
+// A password sign-up is not an account until the mailbox has answered. Signup
+// stores a *pending* sign-up and emails a 6-digit code through Stubbase's own
+// Resend account; verifySignup trades the code for the users row and a session.
+// OAuth needs none of this — both providers are only accepted with an address
+// they verified themselves.
+//
+// This is what makes signInWithIdentity's join-by-email safe for password
+// accounts. Without it, anyone could register a victim's address with their own
+// password, and the victim's later Google sign-in would link into an account
+// the attacker can still log in to.
+//
+// A code and never a link, and the code completes only the pending sign-up it
+// was issued for — the one whose id the signing-up browser holds. A link would
+// carry that id to whoever clicks it: an attacker who signs up with your address
+// mails you a link, and clicking it creates *their* account (their password) on
+// your address. With a code, the attacker's email carries a code for a sign-up
+// you do not hold, and typing it into your own is simply wrong.
+//
+// Six digits are guessable, so the limits are the security, as for tenant
+// password reset: a code lives SIGNUP_CODE_TTL_MIN, SIGNUP_MAX_ATTEMPTS wrong
+// guesses lock it, and an address gets at most SIGNUP_MAX_SENDS_PER_HOUR emails
+// (sign-ups and resends together), persisted so a restart does not reset it.
+// Codes are stored as an HMAC under a key derived from ADMIN_SECRET, never a
+// bare hash: a million candidates is nothing to brute-force from a leaked file.
+
+// Stubbase's own Resend account — not a tenant's RESEND_API_KEY, which lives in
+// that project's config.json and mails that project's users.
+const RESEND_API_KEY = process.env.DASHBOARD_RESEND_API_KEY ?? "";
+// A subdomain of its own, so account mail keeps a sending reputation apart from
+// stubbase.dev and from any marketing mail. Resend matches the from domain
+// exactly: notify.stubbase.dev is the domain verified there, not stubbase.dev.
+const EMAIL_FROM = process.env.DASHBOARD_EMAIL_FROM || "Stubbase <no-reply@notify.stubbase.dev>";
+// Env-overridable strictly so tests and the local stack can point it at a mock.
+const RESEND_API_URL = process.env.RESEND_API_URL || "https://api.resend.com/emails";
+/** Local dev and tests only: write each sign-up code to the log. NEVER set in production. */
+const LOG_SIGNUP_CODES = process.env.DASHBOARD_EMAIL_LOG_CODES === "true";
+
+const SIGNUP_CODE_TTL_MIN = 15;
+const SIGNUP_PENDING_TTL_HOURS = 24;
+const SIGNUP_MAX_ATTEMPTS = 5;
+const SIGNUP_MAX_SENDS_PER_HOUR = 5;
+const SIGNUP_ID_RE = /^[0-9a-f]{32}$/;
+const SIGNUP_CODE_RE = /^\d{6}$/;
+const SIGNUP_CODE_KEY = createHash("sha256").update(`signup-code:${ADMIN_SECRET}`).digest();
+
+if (LOG_SIGNUP_CODES)
+  console.warn(
+    "[app] DASHBOARD_EMAIL_LOG_CODES=true: sign-up verification codes are written to this log. Local dev and tests only.",
+  );
+else if (!RESEND_API_KEY)
+  console.warn(
+    "[app] DASHBOARD_RESEND_API_KEY is unset: email sign-up answers 503 until it is set (OAuth sign-in is unaffected).",
+  );
+
+const emailSignupAvailable = () => Boolean(RESEND_API_KEY) || LOG_SIGNUP_CODES;
+
+/** Bound to the pending sign-up as well as the code, so a hash can never be moved to another row. */
+const signupCodeHash = (id: string, code: string) =>
+  createHmac("sha256", SIGNUP_CODE_KEY).update(`${id}:${code}`).digest("base64url");
+
+const pendingSignup = (id: string, email: string) => ({
+  verificationId: id,
+  email,
+  expiresIn: SIGNUP_CODE_TTL_MIN * 60,
+});
+
+const userExists = (email: string) =>
+  db.query("SELECT 1 FROM users WHERE email = ?").get(email) !== null;
+
+/**
+ * Counts one email against the address's hourly allowance, or refuses. Callers
+ * run it in the same synchronous turn as the write it guards, so concurrent
+ * requests cannot all read the same count.
+ */
+function claimSignupSend(email: string): boolean {
+  db.query("DELETE FROM signup_email_sends WHERE sent_at <= datetime('now', '-1 hour')").run();
+  const { n } = db
+    .query("SELECT COUNT(*) AS n FROM signup_email_sends WHERE email = ?")
+    .get(email) as { n: number };
+  if (n >= SIGNUP_MAX_SENDS_PER_HOUR) return false;
+  db.query("INSERT INTO signup_email_sends (email) VALUES (?)").run(email);
+  return true;
+}
+
+/** Mails (and, with LOG_SIGNUP_CODES, logs) a code. False when Resend refused it. */
+async function deliverSignupCode(email: string, code: string): Promise<boolean> {
+  if (LOG_SIGNUP_CODES) console.log(`[app] sign-up verification code for ${email} is ${code}`);
+  if (!RESEND_API_KEY) return true;
+
+  const text = [
+    `Your Stubbase verification code is ${code}.`,
+    `Enter it on the sign-up page to finish creating your account. It expires in ${SIGNUP_CODE_TTL_MIN} minutes.`,
+    "If you did not try to create a Stubbase account, ignore this email: no account is created without this code.",
+  ].join("\n\n");
+  const html = [
+    `<p>Your Stubbase verification code is <strong style="font-size:1.25em;letter-spacing:0.1em">${code}</strong>.</p>`,
+    `<p>Enter it on the sign-up page to finish creating your account. It expires in ${SIGNUP_CODE_TTL_MIN} minutes.</p>`,
+    `<p>If you did not try to create a Stubbase account, ignore this email: no account is created without this code.</p>`,
+  ].join("\n");
+
+  const res = await fetch(RESEND_API_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: email,
+      subject: "Your Stubbase verification code",
+      text,
+      html,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  if (res?.ok) return true;
+  // Resend explains itself (an unverified sending domain, a bad key), and the
+  // operator reading this log is the only person who can fix either.
+  const reason = res ? `${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}` : "unreachable";
+  console.error(`[app] Resend did not accept a sign-up email for ${email}: ${reason}`);
+  return false;
+}
+
 async function signup(req: Request): Promise<Response> {
   const body = await readJsonBody(req);
   if (body instanceof Response) return body;
@@ -327,21 +470,128 @@ async function signup(req: Request): Promise<Response> {
   if (!EMAIL_RE.test(email)) return err(400, "valid 'email' is required");
   if (password.length < MIN_PASSWORD_LEN)
     return err(400, `'password' must be at least ${MIN_PASSWORD_LEN} characters`);
+  // Fails closed: an account nobody verified is exactly what this exists to stop.
+  if (!emailSignupAvailable())
+    return err(503, "email sign-up is not available: this server has no email provider configured");
+  // Before the hash, so a taken address costs no 19 MiB argon2 run…
+  if (userExists(email)) return err(409, "email already registered");
 
   const hash = await Bun.password.hash(password, ARGON);
+
+  // …and again after it, because the hash yielded. From here to the INSERT is
+  // one synchronous turn, so the throttle count cannot be raced.
+  if (userExists(email)) return err(409, "email already registered");
+  if (!claimSignupSend(email))
+    return err(429, "too many verification emails for this address; try again in an hour");
+
+  db.query("DELETE FROM signup_verifications WHERE created_at <= datetime('now', ?)").run(
+    `-${SIGNUP_PENDING_TTL_HOURS} hours`,
+  );
+  const id = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  db.query(
+    `INSERT INTO signup_verifications (id, email, name, password_hash, code_hash, code_expires_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', ?))`,
+  ).run(id, email, name, hash, signupCodeHash(id, code), `+${SIGNUP_CODE_TTL_MIN} minutes`);
+
+  if (!(await deliverSignupCode(email, code))) {
+    // Nobody received a code, so there is nothing to verify. The send still
+    // counts: failures must not become a way around the hourly limit.
+    db.query("DELETE FROM signup_verifications WHERE id = ?").run(id);
+    return err(502, "could not send the verification email; try again shortly");
+  }
+  return json(pendingSignup(id, email), 202);
+}
+
+/**
+ * Trades a sign-up's code for the account and a session.
+ *
+ * Everything after the body is read is synchronous — bun:sqlite never yields —
+ * so two requests racing with the same code cannot both pass the comparison:
+ * the first deletes the row before the second can read it.
+ */
+async function verifySignup(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const id = typeof (body as any)?.verificationId === "string" ? (body as any).verificationId : "";
+  const code = typeof (body as any)?.code === "string" ? (body as any).code.trim() : "";
+  if (!SIGNUP_ID_RE.test(id)) return err(400, "'verificationId' is required");
+  if (!SIGNUP_CODE_RE.test(code)) return err(400, "'code' must be the 6-digit code from the email");
+
+  // One answer for every way a code can be wrong, so none of them can be told apart.
+  const invalid = () => err(400, "invalid or expired verification code");
+  const row = db
+    .query(
+      `SELECT email, name, password_hash, code_hash, code_expires_at > datetime('now') AS live
+       FROM signup_verifications WHERE id = ? AND created_at > datetime('now', ?)`,
+    )
+    .get(id, `-${SIGNUP_PENDING_TTL_HOURS} hours`) as {
+    email: string;
+    name: string | null;
+    password_hash: string;
+    code_hash: string;
+    live: number;
+  } | null;
+  if (!row || !row.code_hash || !row.live) return invalid();
+
+  const given = Buffer.from(signupCodeHash(id, code), "base64url");
+  const stored = Buffer.from(row.code_hash, "base64url");
+  if (given.length !== stored.length || !timingSafeEqual(given, stored)) {
+    // `attempts` on the right-hand side is the value before this update.
+    db.query(
+      `UPDATE signup_verifications
+       SET attempts = attempts + 1,
+           code_hash = CASE WHEN attempts + 1 >= ? THEN '' ELSE code_hash END
+       WHERE id = ?`,
+    ).run(SIGNUP_MAX_ATTEMPTS, id);
+    return invalid();
+  }
+
+  // Every pending sign-up for the address goes, not just this one: the mailbox
+  // has answered, so a sign-up someone else started for it must never complete.
+  db.query("DELETE FROM signup_verifications WHERE email = ?").run(row.email);
   try {
     db.query("INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)").run(
-      email,
-      name,
-      hash,
+      row.email,
+      row.name,
+      row.password_hash,
     );
   } catch {
+    // An OAuth sign-in created the account while this code was in flight.
     return err(409, "email already registered");
   }
   const user = db
     .query("SELECT id, email, name, plan FROM users WHERE email = ?")
-    .get(email) as User;
+    .get(row.email) as User;
   return json({ token: createSession(user.id), user: publicUser(user) }, 201);
+}
+
+/** A fresh code for a pending sign-up: replaces the last one and resets its guesses. */
+async function resendSignupCode(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const id = typeof (body as any)?.verificationId === "string" ? (body as any).verificationId : "";
+  if (!SIGNUP_ID_RE.test(id)) return err(400, "'verificationId' is required");
+  if (!emailSignupAvailable())
+    return err(503, "email sign-up is not available: this server has no email provider configured");
+
+  const row = db
+    .query("SELECT email FROM signup_verifications WHERE id = ? AND created_at > datetime('now', ?)")
+    .get(id, `-${SIGNUP_PENDING_TTL_HOURS} hours`) as { email: string } | null;
+  if (!row) return err(404, "this sign-up has expired; start again");
+  if (!claimSignupSend(row.email))
+    return err(429, "too many verification emails for this address; try again in an hour");
+
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  db.query(
+    `UPDATE signup_verifications
+     SET code_hash = ?, code_expires_at = datetime('now', ?), attempts = 0
+     WHERE id = ?`,
+  ).run(signupCodeHash(id, code), `+${SIGNUP_CODE_TTL_MIN} minutes`, id);
+
+  if (!(await deliverSignupCode(row.email, code)))
+    return err(502, "could not send the verification email; try again shortly");
+  return json(pendingSignup(id, row.email), 202);
 }
 
 async function login(req: Request): Promise<Response> {
@@ -2495,6 +2745,10 @@ async function route(req: Request): Promise<Response> {
   if (segments[0] === "auth") {
     if (req.method === "POST" && segments[1] === "signup" && segments.length === 2)
       return signup(req);
+    if (req.method === "POST" && segments[1] === "signup" && segments.length === 3) {
+      if (segments[2] === "verify") return verifySignup(req);
+      if (segments[2] === "resend") return resendSignupCode(req);
+    }
     if (req.method === "POST" && segments[1] === "login" && segments.length === 2)
       return login(req);
 

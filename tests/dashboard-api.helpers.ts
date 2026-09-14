@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import type { Service } from "./helpers.ts";
+import { waitFor, type Service } from "./helpers.ts";
 
 /** The SPA origin both suites allow-list when booting a dashboard API. */
 export const ALLOWED_ORIGIN = "http://localhost:5173";
@@ -66,15 +66,39 @@ export function setPlanOn(service: Service, email: string, plan: string) {
 
 let seq = 0;
 
-/** Signs up a fresh account on the given service and returns its session. */
-export async function signupOn(on: Service): Promise<Account> {
-  const email = `user${++seq}-${Date.now()}@test.co`;
-  const res = await fetch(`${on.base}/auth/signup`, {
+/**
+ * The newest sign-up code a service logged for `email`. Needs
+ * DASHBOARD_EMAIL_LOG_CODES, which `startApp` turns on unless a suite overrides it.
+ */
+export async function loggedSignupCode(on: Service, email: string): Promise<string> {
+  const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`sign-up verification code for ${escaped} is (\\d{6})`, "g");
+  const newest = () => [...on.output.join("").matchAll(pattern)].at(-1)?.[1] ?? "";
+  await waitFor(() => newest() !== "");
+  const code = newest();
+  if (!code) throw new Error(`no sign-up code was logged for ${email}`);
+  return code;
+}
+
+/**
+ * Signs up a fresh account on the given service — both legs, the sign-up and
+ * the emailed code — and returns its session.
+ */
+export async function signupOn(on: Service, email = `user${++seq}-${Date.now()}@test.co`): Promise<Account> {
+  const started = await fetch(`${on.base}/auth/signup`, {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({ email, password: PASSWORD }),
   });
-  if (res.status !== 201) throw new Error(`signup failed: ${res.status} ${await res.text()}`);
+  if (started.status !== 202) throw new Error(`signup failed: ${started.status} ${await started.text()}`);
+  const { verificationId } = await started.json();
+
+  const res = await fetch(`${on.base}/auth/signup/verify`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ verificationId, code: await loggedSignupCode(on, email) }),
+  });
+  if (res.status !== 201) throw new Error(`signup verify failed: ${res.status} ${await res.text()}`);
   const body = await res.json();
   return { token: body.token, email, id: body.user.id };
 }

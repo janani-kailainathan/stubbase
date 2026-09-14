@@ -127,11 +127,37 @@ export interface AuthResponse {
   user: ApiUser
 }
 
+/**
+ * A password sign-up waiting for the code emailed to its address. Not an
+ * account yet: the Dashboard API writes the account only when the code comes
+ * back, and the code completes only the sign-up whose `verificationId` this is.
+ */
+export interface PendingSignup {
+  verificationId: string
+  email: string
+  /** Seconds the emailed code stays valid. */
+  expiresIn: number
+}
+
 export const signup = (email: string, password: string, name?: string) =>
-  request<AuthResponse>(`${APP_API_URL}/auth/signup`, {
+  request<PendingSignup>(`${APP_API_URL}/auth/signup`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password, name }),
+  })
+
+export const verifySignup = (verificationId: string, code: string) =>
+  request<AuthResponse>(`${APP_API_URL}/auth/signup/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ verificationId, code }),
+  })
+
+export const resendSignupCode = (verificationId: string) =>
+  request<PendingSignup>(`${APP_API_URL}/auth/signup/resend`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ verificationId }),
   })
 
 export const login = (email: string, password: string) =>

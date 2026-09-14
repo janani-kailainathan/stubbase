@@ -1,33 +1,80 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { LANDING_URL } from '@/lib/api'
+import * as api from '@/lib/api'
+import { ApiError, LANDING_URL, type PendingSignup } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { AuthLayout, AuthLogo, OAuthButtons, authInputClass, authLabelClass } from './auth-shared'
+
+/**
+ * The sign-up this tab is verifying, kept in sessionStorage so a reload — or a
+ * phone that drops the tab while you fetch the code from your mail app — comes
+ * back to the code step instead of starting over. It is not a credential: the
+ * id completes nothing without the code from the email, and it is per tab.
+ */
+const PENDING_KEY = 'stubbase-pending-signup'
+
+function readPending(): PendingSignup | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? 'null')
+    return typeof value?.verificationId === 'string' && typeof value?.email === 'string'
+      ? value
+      : null
+  } catch {
+    return null
+  }
+}
+
+function writePending(pending: PendingSignup | null) {
+  try {
+    if (pending) sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending))
+    else sessionStorage.removeItem(PENDING_KEY)
+  } catch {
+    // Storage blocked: the code step still works, it just won't survive a reload.
+  }
+}
 
 export default function Signup() {
   const user = useAuthStore((s) => s.user)
   const signup = useAuthStore((s) => s.signup)
-  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pending, setPending] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [pending, setPending] = useState<PendingSignup | null>(readPending)
 
   if (user) return <Navigate to="/" replace />
 
+  const track = (next: PendingSignup | null) => {
+    writePending(next)
+    setPending(next)
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password || pending) return
-    setPending(true)
+    if (!email || !password || submitting) return
+    setSubmitting(true)
     try {
-      await signup(email, password, name || undefined)
-      navigate('/', { replace: true })
+      track(await signup(email, password, name || undefined))
+      setPassword('')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Signup failed')
     } finally {
-      setPending(false)
+      setSubmitting(false)
     }
+  }
+
+  if (pending) {
+    return (
+      <VerifyEmail
+        pending={pending}
+        onResent={track}
+        onRestart={() => {
+          setEmail(pending.email)
+          track(null)
+        }}
+      />
+    )
   }
 
   return (
@@ -89,10 +136,10 @@ export default function Signup() {
           </div>
           <button
             type="submit"
-            disabled={pending}
+            disabled={submitting}
             className="mt-1 rounded bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
-            {pending ? 'Creating account…' : 'Create account'}
+            {submitting ? 'Creating account…' : 'Create account'}
           </button>
         </form>
         <p className="mt-6 text-center text-xs leading-relaxed text-subtle">
@@ -104,6 +151,123 @@ export default function Signup() {
           <a href={`${LANDING_URL}/privacy`} className="text-primary-accent hover:text-primary-ink">
             Privacy Policy
           </a>.
+        </p>
+      </div>
+    </AuthLayout>
+  )
+}
+
+/**
+ * Step two: the 6-digit code from the email. Deliberately typed here rather
+ * than clicked from the email — the code completes only the sign-up this tab
+ * started, so a sign-up someone else began with your address can never be
+ * finished by you following their email.
+ */
+function VerifyEmail({
+  pending,
+  onResent,
+  onRestart,
+}: {
+  pending: PendingSignup
+  onResent: (next: PendingSignup) => void
+  onRestart: () => void
+}) {
+  const verifySignup = useAuthStore((s) => s.verifySignup)
+  const navigate = useNavigate()
+  const [code, setCode] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [resending, setResending] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (code.length !== 6 || verifying) return
+    setVerifying(true)
+    try {
+      await verifySignup(pending.verificationId, code)
+      writePending(null)
+      navigate('/', { replace: true })
+    } catch (error) {
+      setCode('')
+      toast.error(error instanceof Error ? error.message : 'Verification failed')
+      setVerifying(false)
+    }
+  }
+
+  const resend = async () => {
+    if (resending) return
+    setResending(true)
+    try {
+      onResent(await api.resendSignupCode(pending.verificationId))
+      setCode('')
+      toast.success(`We sent a new code to ${pending.email}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not send a new code')
+      // The pending sign-up is gone (expired); there is nothing left to resend for.
+      if (error instanceof ApiError && error.status === 404) onRestart()
+    } finally {
+      setResending(false)
+    }
+  }
+
+  return (
+    <AuthLayout>
+      <div className="mb-8 text-center">
+        <AuthLogo />
+        <h1 className="mb-2 text-2xl font-extrabold text-foreground">Check your email</h1>
+        <p className="text-sm text-muted-foreground">
+          We sent a 6-digit code to{' '}
+          <span className="font-medium break-words text-foreground">{pending.email}</span>. Enter it
+          below to finish creating your account.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-8">
+        <form className="flex flex-col gap-5" onSubmit={submit}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="code" className={authLabelClass}>
+              Verification code
+            </label>
+            <input
+              id="code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              required
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className={`${authInputClass} text-center font-mono text-lg tracking-[0.5em]`}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={verifying || code.length !== 6}
+            className="mt-1 rounded bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          >
+            {verifying ? 'Verifying…' : 'Verify email'}
+          </button>
+        </form>
+        <p className="mt-6 text-center text-xs leading-relaxed text-subtle">
+          The code expires in {Math.round(pending.expiresIn / 60) || 15} minutes. Didn't get it?{' '}
+          <button
+            type="button"
+            onClick={resend}
+            disabled={resending}
+            className="text-primary-accent hover:text-primary-ink disabled:opacity-60"
+          >
+            {resending ? 'Sending…' : 'Send a new code'}
+          </button>{' '}
+          or{' '}
+          <button
+            type="button"
+            onClick={onRestart}
+            className="text-primary-accent hover:text-primary-ink"
+          >
+            use a different email
+          </button>
+          .
         </p>
       </div>
     </AuthLayout>

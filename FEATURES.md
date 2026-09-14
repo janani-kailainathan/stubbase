@@ -533,7 +533,22 @@ _To be written — placeholder._
 
 ## 2. App-level features — the Stubbase platform
 
-_Nothing listed yet._
+### 2.1 Email verification when you sign up
+
+When you create a Stubbase account with an email address and a password, we
+email you a 6-digit code first. Enter it on the sign-up page and your account is
+created and you are signed straight in. Until then there is no account to log in
+to — and nobody else can create one on your address, because they would need the
+code from your inbox.
+
+- The code lasts 15 minutes and works once. Didn't get it? **Send a new code**
+  replaces the old one.
+- Five wrong tries and that code stops working; send a new one.
+- An address gets at most five codes an hour.
+- Type the code on the page where you signed up. It only finishes *that*
+  sign-up, so a code email you did not ask for is safe to ignore.
+- Signing up with **Google** or **GitHub** needs no code: they have already
+  verified your address.
 
 ---
 

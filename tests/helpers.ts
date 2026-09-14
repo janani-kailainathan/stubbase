@@ -98,11 +98,13 @@ export async function startCore(
  * Dashboard API against a scratch SQLite file.
  *
  * The repo-root .env is auto-loaded into this process, so anything a developer
- * keeps there would otherwise reach the service under test. Two families are
+ * keeps there would otherwise reach the service under test. Three families are
  * cleared explicitly: AI, so a real key can never turn a test run into a billed
- * provider call, and the dashboard's OAuth credentials, so whether a suite sees
+ * provider call; the dashboard's OAuth credentials, so whether a suite sees
  * Google and GitHub sign-in configured is decided by the test rather than by
- * whose machine it runs on.
+ * whose machine it runs on; and its Resend key, so a sign-up never mails a real
+ * address. Sign-up codes are logged instead (`loggedSignupCode` reads them); a
+ * suite that tests the email itself points RESEND_API_URL at a stub.
  */
 export async function startApp(
   root: string,
@@ -118,6 +120,8 @@ export async function startApp(
     DASHBOARD_GOOGLE_SECRET: "",
     DASHBOARD_GITHUB_CLIENT_ID: "",
     DASHBOARD_GITHUB_SECRET: "",
+    DASHBOARD_RESEND_API_KEY: "",
+    DASHBOARD_EMAIL_LOG_CODES: "true",
     ...env,
   });
 }

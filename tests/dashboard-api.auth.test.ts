@@ -26,6 +26,7 @@ import {
   PASSWORD,
   as,
   jsonHeaders,
+  loggedSignupCode,
   readDbOf,
   sha256hex,
   signupOn,
@@ -62,7 +63,7 @@ afterAll(async () => {
 // ── Authentication ─────────────────────────────────────────────────
 
 describe("authentication", () => {
-  test("signup issues a session and rejects duplicates", async () => {
+  test("a verified signup issues a session and rejects duplicates", async () => {
     const account = await signup();
     expect(account.token).toBeString();
 
@@ -186,6 +187,189 @@ describe("authentication", () => {
     }).then((r) => r.json());
     expect(login.user).not.toHaveProperty("password_hash");
     expect(login.user).not.toHaveProperty("passwordHash");
+  }, 20_000);
+});
+
+// ── Email verification ─────────────────────────────────────────────
+
+/**
+ * Password sign-up, end-to-end against a stub Resend.
+ *
+ * The mailer is a real HTTP server the service posts to, so what is asserted is
+ * what would reach a mailbox: the key, the sender, the address and the code.
+ * Each rule the limits rest on is broken here on purpose.
+ */
+describe("email verification", () => {
+  const mail: { from: string; to: string; subject: string; text: string; authorization: string | null }[] = [];
+  let mailStatus = 200;
+  let mailer: ReturnType<typeof Bun.serve>;
+  let mailApp: Service;
+  let unconfigured: Service;
+
+  beforeAll(async () => {
+    mailer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as any;
+        if (mailStatus !== 200)
+          return Response.json({ message: "The stubbase.test domain is not verified" }, { status: mailStatus });
+        mail.push({ ...body, authorization: req.headers.get("authorization") });
+        return Response.json({ id: `email_${mail.length}` });
+      },
+    });
+    [mailApp, unconfigured] = await Promise.all([
+      startApp(ROOT, "mail-app", {
+        CORE_API_URL: core.base,
+        DASHBOARD_EMAIL_LOG_CODES: "",
+        DASHBOARD_RESEND_API_KEY: "re_test_key",
+        DASHBOARD_EMAIL_FROM: "Stubbase <no-reply@stubbase.test>",
+        RESEND_API_URL: `http://127.0.0.1:${mailer.port}/emails`,
+      }),
+      startApp(ROOT, "no-mail-app", { CORE_API_URL: core.base, DASHBOARD_EMAIL_LOG_CODES: "" }),
+    ]);
+    running.push(mailApp, unconfigured);
+  }, 30_000);
+
+  afterAll(() => mailer.stop(true));
+
+  let n = 0;
+  const freshEmail = (tag: string) => `${tag}-${++n}-${Date.now()}@test.co`;
+  const post = (route: string, body: unknown, on: Service = mailApp) =>
+    fetch(`${on.base}/auth/${route}`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify(body) });
+  const codesTo = (to: string) =>
+    mail.filter((m) => m.to === to).map((m) => /\b(\d{6})\b/.exec(m.text)?.[1] ?? "");
+  const lastCodeTo = (to: string) => codesTo(to).at(-1) ?? "";
+  const begin = async (email: string, password = PASSWORD) => {
+    const res = await post("signup", { email, password });
+    expect(res.status).toBe(202);
+    return (await res.json()).verificationId as string;
+  };
+  const verify = (verificationId: string, code: string) => post("signup/verify", { verificationId, code });
+  const login = (email: string, password = PASSWORD) => post("login", { email, password });
+  const otherThan = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, "0");
+  const readMailDb = <T,>(fn: (db: Database) => T): T => readDbOf(mailApp, fn);
+  const INVALID = { error: "invalid or expired verification code" };
+
+  test("signup mails a code through Resend and creates no account until it comes back", async () => {
+    const email = freshEmail("mailed");
+    const res = await post("signup", { email, password: PASSWORD, name: "Ada" });
+    expect(res.status).toBe(202);
+    const pending = await res.json();
+    expect(pending).toEqual({ verificationId: expect.stringMatching(/^[0-9a-f]{32}$/), email, expiresIn: 900 });
+
+    const [sent] = mail.filter((m) => m.to === email);
+    expect(sent.authorization).toBe("Bearer re_test_key");
+    expect(sent.from).toBe("Stubbase <no-reply@stubbase.test>");
+    const code = lastCodeTo(email);
+    expect(code).toMatch(/^\d{6}$/);
+
+    // Pending is not an account: nothing to log in to, and the code is not at rest.
+    expect(readMailDb((db) => db.query("SELECT 1 FROM users WHERE email = ?").get(email))).toBeNull();
+    expect((await login(email)).status).toBe(401);
+    const row = readMailDb((db) =>
+      db.query("SELECT code_hash, password_hash FROM signup_verifications WHERE email = ?").get(email),
+    ) as { code_hash: string; password_hash: string };
+    expect(row.code_hash).not.toContain(code);
+    expect(row.code_hash).not.toBe(sha256hex(code));
+    expect(row.password_hash).toStartWith("$argon2id$");
+
+    const done = await verify(pending.verificationId, code);
+    expect(done.status).toBe(201);
+    const { token, user } = await done.json();
+    expect(user).toMatchObject({ email, name: "Ada" });
+    expect((await fetch(`${mailApp.base}/auth/me`, { headers: as(token) })).status).toBe(200);
+    expect((await login(email)).status).toBe(200);
+
+    // Spent, and a taken address is refused without mailing anyone.
+    expect(await (await verify(pending.verificationId, code)).json()).toEqual(INVALID);
+    expect((await post("signup", { email, password: PASSWORD })).status).toBe(409);
+    expect(codesTo(email)).toHaveLength(1);
+  }, 20_000);
+
+  test("wrong guesses all read alike, and the fifth locks the code", async () => {
+    const email = freshEmail("guess");
+    const id = await begin(email);
+    const code = lastCodeTo(email);
+
+    expect((await verify("not-an-id", code)).status).toBe(400);
+    expect((await verify(id, "12ab56")).status).toBe(400);
+    for (let i = 0; i < 5; i++) {
+      const wrong = await verify(id, otherThan(code));
+      expect(wrong.status).toBe(400);
+      expect(await wrong.json()).toEqual(INVALID);
+    }
+    // Locked: even the right code is now just "invalid".
+    expect(await (await verify(id, code)).json()).toEqual(INVALID);
+
+    // A new code starts over, and the old one stays dead.
+    const resent = await post("signup/resend", { verificationId: id });
+    expect(resent.status).toBe(202);
+    const fresh = lastCodeTo(email);
+    if (fresh !== code) expect((await verify(id, code)).status).toBe(400);
+    expect((await verify(id, fresh)).status).toBe(201);
+  }, 20_000);
+
+  test("an expired code is refused", async () => {
+    const email = freshEmail("expired");
+    const id = await begin(email);
+    const { Database: WritableDb } = await import("bun:sqlite");
+    const db = new WritableDb(join(mailApp.dir, "app.sqlite"));
+    try {
+      db.exec("PRAGMA busy_timeout = 5000;");
+      db.query("UPDATE signup_verifications SET code_expires_at = datetime('now', '-1 minute') WHERE id = ?").run(id);
+    } finally {
+      db.close();
+    }
+    expect(await (await verify(id, lastCodeTo(email))).json()).toEqual(INVALID);
+  }, 20_000);
+
+  test("a code completes only the sign-up it was issued for", async () => {
+    // Someone else starts a sign-up with your address and their own password,
+    // then you start yours. Their email lands in your inbox too — and must be
+    // useless to both of you.
+    const email = freshEmail("victim");
+    const theirs = await begin(email, "attacker-password");
+    const yours = await begin(email);
+    const [theirCode, yourCode] = codesTo(email);
+
+    if (theirCode !== yourCode) expect((await verify(yours, theirCode)).status).toBe(400);
+    expect((await verify(yours, yourCode)).status).toBe(201);
+
+    // Verifying ended every other pending sign-up for the address.
+    expect(await (await verify(theirs, theirCode)).json()).toEqual(INVALID);
+    expect((await post("signup/resend", { verificationId: theirs })).status).toBe(404);
+    expect((await login(email, "attacker-password")).status).toBe(401);
+    expect((await login(email)).status).toBe(200);
+  }, 30_000);
+
+  test("an address gets at most five emails an hour, sign-ups and resends together", async () => {
+    const email = freshEmail("throttle");
+    const id = await begin(email);
+    for (let i = 0; i < 4; i++) expect((await post("signup/resend", { verificationId: id })).status).toBe(202);
+
+    expect((await post("signup/resend", { verificationId: id })).status).toBe(429);
+    expect((await post("signup", { email, password: PASSWORD })).status).toBe(429);
+    expect(codesTo(email)).toHaveLength(5);
+  }, 30_000);
+
+  test("Resend refusing the email is a 502 and leaves nothing to verify", async () => {
+    const email = freshEmail("bounced");
+    mailStatus = 403;
+    try {
+      expect((await post("signup", { email, password: PASSWORD })).status).toBe(502);
+    } finally {
+      mailStatus = 200;
+    }
+    expect(
+      readMailDb((db) => db.query("SELECT COUNT(*) AS n FROM signup_verifications WHERE email = ?").get(email)),
+    ).toEqual({ n: 0 });
+  }, 20_000);
+
+  test("without an email provider, password sign-up is refused rather than let through unverified", async () => {
+    const email = freshEmail("nomail");
+    expect((await post("signup", { email, password: PASSWORD }, unconfigured)).status).toBe(503);
+    expect((await post("signup/resend", { verificationId: "0".repeat(32) }, unconfigured)).status).toBe(503);
+    expect(readDbOf(unconfigured, (db) => db.query("SELECT 1 FROM users WHERE email = ?").get(email))).toBeNull();
   }, 20_000);
 });
 
@@ -438,12 +622,7 @@ describe("OAuth sign-in", () => {
 
   test("OAuth links to an existing password account with the same email", async () => {
     const email = `linked-${Date.now()}@test.co`;
-    const created = await fetch(`${oauthApp.base}/auth/signup`, {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify({ email, password: PASSWORD }),
-    });
-    const passwordUser = (await created.json()).user;
+    const passwordUser = await signupOn(oauthApp, email);
 
     const res = await signIn("google", email);
     const token = new URLSearchParams(fragment(res)).get("token")!;
@@ -457,6 +636,42 @@ describe("OAuth sign-in", () => {
     });
     expect(still.status).toBe(200);
   });
+
+  test("OAuth never inherits a password from a sign-up nobody verified", async () => {
+    // The pre-hijack: someone registers your address with their password, you
+    // later sign in with Google, and the link-by-email join lands you in an
+    // account they can still log in to. A pending sign-up is not an account, so
+    // the OAuth sign-in creates a fresh one and the stale code cannot finish.
+    const email = `prehijack-${Date.now()}@test.co`;
+    const started = await fetch(`${oauthApp.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: "attacker-password" }),
+    });
+    expect(started.status).toBe(202);
+    const { verificationId } = await started.json();
+
+    const res = await signIn("google", email);
+    expect(new URLSearchParams(fragment(res)).get("token")).toBeString();
+    expect(
+      readOauthDb(
+        (db) => db.query("SELECT password_hash FROM users WHERE email = ?").get(email) as any,
+      ).password_hash,
+    ).toBeNull();
+
+    const finished = await fetch(`${oauthApp.base}/auth/signup/verify`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ verificationId, code: await loggedSignupCode(oauthApp, email) }),
+    });
+    expect(finished.status).toBe(409);
+    const login = await fetch(`${oauthApp.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: "attacker-password" }),
+    });
+    expect(login.status).toBe(401);
+  }, 20_000);
 
   test("an OAuth session token is stored hashed, like every other session", async () => {
     const email = `hashed-${Date.now()}@test.co`;

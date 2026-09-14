@@ -66,6 +66,10 @@ docker-compose service `core` · systemd `deploy/files/stubbase-core.service`
 | `SESSION_TTL_DAYS` | `30` | Lifetime of opaque session tokens (stored sha256-hashed). |
 | `DASHBOARD_GOOGLE_CLIENT_ID` / `DASHBOARD_GOOGLE_SECRET` | *(unset = button hidden)* | **Stubbase's own** Google OAuth app, for signing in to the dashboard. Both halves present ⇒ `GET /auth/google` (+ `/callback`) and `POST /auth/google/one-tap` go live and the SPA renders the button. Not to be confused with a *tenant's* `AUTH_GOOGLE_*` (§2), which lives in that project's `config.json` and logs in that project's end users. |
 | `DASHBOARD_GITHUB_CLIENT_ID` / `DASHBOARD_GITHUB_SECRET` | *(unset = button hidden)* | Same for GitHub. |
+| `DASHBOARD_RESEND_API_KEY` | *(unset = email sign-up answers `503`)* | **Stubbase's own** Resend key, for dashboard sign-up verification. `POST /auth/signup` emails a 6-digit code and the account is created only by `POST /auth/signup/verify`. Without a key (and without `DASHBOARD_EMAIL_LOG_CODES`) password sign-up is **refused**, never let through unverified; OAuth sign-in is unaffected and the service still boots, with a warning. Not a *tenant's* `RESEND_API_KEY` (§2), which mails that project's users. |
+| `DASHBOARD_EMAIL_FROM` | `Stubbase <no-reply@notify.stubbase.dev>` | From address for those emails. Its domain must be verified in the Resend account **exactly** — verifying `notify.stubbase.dev` does not cover `@stubbase.dev`, or the reverse — or Resend refuses the send and sign-up answers `502` (the reason is logged). The default is a subdomain on purpose, so account mail keeps its sending reputation apart from the apex and from any future marketing mail. |
+| `DASHBOARD_EMAIL_LOG_CODES` | unset (off) | `true` writes every sign-up code to this service's log, so accounts can be created with no email provider — `scripts/dev.ts`, docker-compose and the test harness set it. The service warns at boot while it is on. **Local dev/tests only — never set in production**: the log would hold a working code for every sign-up. |
+| `RESEND_API_URL` | `https://api.resend.com/emails` | Upstream for sign-up emails. Override only to point at a mock (same name, same purpose as the Core's). |
 | `DASHBOARD_URL` | first `ALLOWED_ORIGINS` entry, else `https://app.stubbase.dev` | Where a finished OAuth sign-in bounces the browser: `<DASHBOARD_URL>/auth/callback#token=…`, and `/login#error=…` on failure. A constant on purpose — taking it from the request would be an open redirect that hands out session tokens. |
 | `OAUTH_CALLBACK_BASE` | *(derived from the request)* | Origin the provider calls back on, i.e. the `redirect_uri` registered in the provider console. Defaults to `x-forwarded-proto`/`x-forwarded-host` (correct behind Caddy). Set it where the browser reaches this service through a path prefix — `scripts/dev.ts` points it at the Vite proxy (`http://localhost:5173/api/app`) so the dev flow stays on one origin. |
 | `OAUTH_GOOGLE_AUTH_URL` / `OAUTH_GOOGLE_TOKEN_URL` / `OAUTH_GOOGLE_USERINFO_URL` | Google's real endpoints | Override only to point at a mock (same names, same purpose as the Core's). |
@@ -94,6 +98,11 @@ The dashboard's OAuth secrets travel the same road, and are optional:
 `STUBBASE_GITHUB_CLIENT_ID` / `STUBBASE_GITHUB_SECRET` in the deploying
 shell → the same template → the same `EnvironmentFile`. A pair with either
 half missing is simply not written, and that provider's button never appears.
+
+So does the sign-up email key: `STUBBASE_RESEND_API_KEY` (and optionally
+`STUBBASE_EMAIL_FROM`) in the deploying shell → `DASHBOARD_RESEND_API_KEY` /
+`DASHBOARD_EMAIL_FROM` in the same `EnvironmentFile`. Unset, the deploy still
+succeeds and password sign-up answers `503` until it is set.
 
 ---
 

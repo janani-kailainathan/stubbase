@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import * as api from '@/lib/api'
-import { setAuthToken, setUnauthorizedHandler, type ApiUser } from '@/lib/api'
+import { setAuthToken, setUnauthorizedHandler, type ApiUser, type PendingSignup } from '@/lib/api'
 import { forgetAllTabLogs } from '@/lib/log-storage'
 import { queryClient } from '@/lib/query'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -10,7 +10,10 @@ interface AuthState {
   token: string | null
   user: ApiUser | null
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, name?: string) => Promise<void>
+  /** Starts a sign-up; no session yet — the account exists once its emailed code is verified. */
+  signup: (email: string, password: string, name?: string) => Promise<PendingSignup>
+  /** Finishes a sign-up with the code from the email, which is what opens the session. */
+  verifySignup: (verificationId: string, code: string) => Promise<void>
   /** Adopt a session minted by the OAuth callback (arrives in a URL fragment). */
   adoptSession: (token: string) => Promise<void>
   logout: () => void
@@ -28,8 +31,10 @@ export const useAuthStore = create<AuthState>()(
         set({ token: res.token, user: res.user })
       },
 
-      signup: async (email, password, name) => {
-        const res = await api.signup(email, password, name)
+      signup: (email, password, name) => api.signup(email, password, name),
+
+      verifySignup: async (verificationId, code) => {
+        const res = await api.verifySignup(verificationId, code)
         setAuthToken(res.token)
         set({ token: res.token, user: res.user })
       },

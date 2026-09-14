@@ -80,6 +80,10 @@ const services: Service[] = [
       // page simply shows no provider buttons.
       DASHBOARD_URL: `http://localhost:${DASHBOARD_PORT}`,
       OAUTH_CALLBACK_BASE: `http://localhost:${DASHBOARD_PORT}/api/app`,
+      // Sign-up verification codes print in this service's output, so an
+      // account can be created without an email provider. Put a
+      // DASHBOARD_RESEND_API_KEY in the repo-root .env to mail them as well.
+      DASHBOARD_EMAIL_LOG_CODES: "true",
     },
   },
   {
