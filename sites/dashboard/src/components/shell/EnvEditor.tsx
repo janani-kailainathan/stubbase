@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Suspense, lazy, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Check, X } from 'lucide-react'
 import { useTenantConfig, useSaveTenantConfig } from '@/hooks/config'
@@ -11,6 +11,9 @@ import {
   parseEnvText,
 } from '@/lib/env'
 import { useWorkspaceStore } from '@/stores/workspace'
+
+// CodeMirror, loaded only once someone starts editing.
+const EnvTextEditor = lazy(() => import('./EnvTextEditor'))
 
 // ── Highlighting ──────────────────────────────────────────────────
 // Comments dim, keys bright, numbers amber inside values — matching the
@@ -141,15 +144,17 @@ export function EnvView({ tenantId }: { tenantId: string }) {
   const changeDraft = useWorkspaceStore((s) => s.changeDraft)
   const { data, isLoading, error } = useTenantConfig(tenantId)
 
+  // Highlighted while editing too: a plain textarea showed commented and live
+  // lines in one colour, which is exactly the difference the view makes plain.
   if (editing) {
     return (
-      <textarea
-        value={draft}
-        onChange={(e) => changeDraft(e.target.value)}
-        spellCheck={false}
-        placeholder={'AUTH_ENABLED=true\nAUTH_PUBLIC_ROUTES=posts,comments'}
-        className="min-h-0 w-full flex-1 resize-none bg-code-bg p-4 font-mono text-[13px] text-heading placeholder-faintest focus:outline-none"
-      />
+      <Suspense
+        fallback={
+          <div className="min-h-0 flex-1 bg-code-bg p-4 font-mono text-xs text-faint">Loading editor&hellip;</div>
+        }
+      >
+        <EnvTextEditor value={draft} onChange={changeDraft} />
+      </Suspense>
     )
   }
 
