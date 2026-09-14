@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Eye, EyeOff } from 'lucide-react'
 import * as api from '@/lib/api'
 import { LANDING_URL, type OauthProvider } from '@/lib/api'
 import { ThemeToggle } from '@/components/shell/ThemeToggle'
@@ -8,6 +9,54 @@ export const authInputClass =
   'rounded-md border border-border bg-code-bg px-4 py-2.5 text-sm text-foreground placeholder-subtle focus:border-primary focus:outline-none'
 
 export const authLabelClass = 'text-xs font-semibold tracking-wide text-subtle uppercase'
+
+/**
+ * The password field on both auth pages, with a show/hide toggle.
+ *
+ * The toggle is a real button — reachable by Tab and announced as a pressed or
+ * unpressed "Show password" — rather than a clickable icon. Its mousedown is
+ * cancelled so a click leaves the caret in the field instead of stealing focus
+ * mid-typing. `autoComplete` tells password managers which kind of field this
+ * is: `new-password` to offer a generated one, `current-password` to fill in.
+ */
+export function PasswordInput({
+  id,
+  value,
+  onChange,
+  autoComplete,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  autoComplete: 'new-password' | 'current-password'
+}) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type={visible ? 'text' : 'password'}
+        required
+        autoComplete={autoComplete}
+        placeholder="••••••••"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${authInputClass} w-full pr-11`}
+      />
+      <button
+        type="button"
+        aria-label="Show password"
+        aria-pressed={visible}
+        aria-controls={id}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setVisible((v) => !v)}
+        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-subtle transition-colors outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        {visible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+      </button>
+    </div>
+  )
+}
 
 /**
  * The auth screens carry their own theme toggle. They render before there is a

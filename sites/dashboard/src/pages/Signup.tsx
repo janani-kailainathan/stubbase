@@ -4,7 +4,14 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import * as api from '@/lib/api'
 import { ApiError, LANDING_URL, type PendingSignup } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { AuthLayout, AuthLogo, OAuthButtons, authInputClass, authLabelClass } from './auth-shared'
+import {
+  AuthLayout,
+  AuthLogo,
+  OAuthButtons,
+  PasswordInput,
+  authInputClass,
+  authLabelClass,
+} from './auth-shared'
 
 /**
  * The sign-up this tab is verifying, kept in sessionStorage so a reload — or a
@@ -124,14 +131,11 @@ export default function Signup() {
             <label htmlFor="password" className={authLabelClass}>
               Password
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
-              required
-              placeholder="••••••••"
+              autoComplete="new-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={authInputClass}
+              onChange={setPassword}
             />
           </div>
           <button

@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
-import { AuthLayout, AuthLogo, OAuthButtons, authInputClass, authLabelClass } from './auth-shared'
+import {
+  AuthLayout,
+  AuthLogo,
+  OAuthButtons,
+  PasswordInput,
+  authInputClass,
+  authLabelClass,
+} from './auth-shared'
 
 export default function Login() {
   const user = useAuthStore((s) => s.user)
@@ -67,14 +74,11 @@ export default function Login() {
                 Forgot password?
               </a>
             </div>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
-              required
-              placeholder="••••••••"
+              autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={authInputClass}
+              onChange={setPassword}
             />
           </div>
           <button
