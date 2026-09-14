@@ -26,8 +26,8 @@
     dashboard_google_secret: "{{ lookup('env', 'STUBBASE_GOOGLE_SECRET') }}"
     dashboard_github_client_id: "{{ lookup('env', 'STUBBASE_GITHUB_CLIENT_ID') }}"
     dashboard_github_secret: "{{ lookup('env', 'STUBBASE_GITHUB_SECRET') }}"
-    # Stubbase's own Resend account, for dashboard sign-up verification codes.
-    # Without the key the deploy still succeeds, but email sign-up answers 503
+    # Stubbase's own Resend account, for dashboard sign-up and password reset
+    # codes. Without the key the deploy still succeeds, but both answer 503
     # (OAuth sign-in keeps working). The from address's domain must be
     # verified in Resend exactly; unset means
     # "Stubbase <no-reply@notify.stubbase.dev>" (verify notify.stubbase.dev).

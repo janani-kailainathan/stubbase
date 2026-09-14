@@ -76,6 +76,10 @@ export const RELEASES: Release[] = [
       },
       {
         kind: 'added',
+        text: 'Password reset for Stubbase accounts: a six-digit code or a one-click link by email, and a reset signs you out everywhere else.',
+      },
+      {
+        kind: 'added',
         text: 'MCP over HTTP and SSE, so an agent can query a project with read-only SQL using a developer API key.',
       },
       {

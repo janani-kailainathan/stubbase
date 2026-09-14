@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import {
   AuthLayout,
   AuthLogo,
+  CodeInput,
   OAuthButtons,
   PasswordInput,
   authInputClass,
@@ -231,19 +232,7 @@ function VerifyEmail({
             <label htmlFor="code" className={authLabelClass}>
               Verification code
             </label>
-            <input
-              id="code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              required
-              maxLength={6}
-              placeholder="000000"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className={`${authInputClass} text-center font-mono text-lg tracking-[0.5em]`}
-            />
+            <CodeInput id="code" autoFocus value={code} onChange={setCode} />
           </div>
           <button
             type="submit"

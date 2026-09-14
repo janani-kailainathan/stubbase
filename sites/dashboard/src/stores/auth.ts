@@ -14,6 +14,8 @@ interface AuthState {
   signup: (email: string, password: string, name?: string) => Promise<PendingSignup>
   /** Finishes a sign-up with the code from the email, which is what opens the session. */
   verifySignup: (verificationId: string, code: string) => Promise<void>
+  /** Sets a new password with the emailed reset code; every other session ends and this one starts. */
+  resetPassword: (email: string, code: string, password: string) => Promise<void>
   /** Adopt a session minted by the OAuth callback (arrives in a URL fragment). */
   adoptSession: (token: string) => Promise<void>
   logout: () => void
@@ -35,6 +37,12 @@ export const useAuthStore = create<AuthState>()(
 
       verifySignup: async (verificationId, code) => {
         const res = await api.verifySignup(verificationId, code)
+        setAuthToken(res.token)
+        set({ token: res.token, user: res.user })
+      },
+
+      resetPassword: async (email, code, password) => {
+        const res = await api.resetPassword(email, code, password)
         setAuthToken(res.token)
         set({ token: res.token, user: res.user })
       },

@@ -550,6 +550,23 @@ code from your inbox.
 - Signing up with **Google** or **GitHub** needs no code: they have already
   verified your address.
 
+### 2.2 Password reset
+
+Forgot your password? Choose **Forgot password?** on the login page, enter your
+email, and we send you a 6-digit code. Enter it with a new password and you are
+signed straight back in. The email also has a link that opens the reset page
+with the code already filled in.
+
+- The code lasts 15 minutes and works once. Asking again sends a new code, and
+  the old one stops working.
+- Five wrong tries and the code stops working; ask for a new one.
+- An address gets at most five reset emails an hour.
+- Resetting signs your account out everywhere else, so anyone who knew your old
+  password loses access at once.
+- Signed up with Google or GitHub? This is also how you add a password to your
+  account.
+- The page answers the same whether or not an address has an account.
+
 ---
 
 ## 3. Env settings — the central reference

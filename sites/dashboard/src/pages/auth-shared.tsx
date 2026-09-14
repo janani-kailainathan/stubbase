@@ -24,11 +24,13 @@ export function PasswordInput({
   value,
   onChange,
   autoComplete,
+  autoFocus,
 }: {
   id: string
   value: string
   onChange: (value: string) => void
   autoComplete: 'new-password' | 'current-password'
+  autoFocus?: boolean
 }) {
   const [visible, setVisible] = useState(false)
   return (
@@ -38,6 +40,7 @@ export function PasswordInput({
         type={visible ? 'text' : 'password'}
         required
         autoComplete={autoComplete}
+        autoFocus={autoFocus}
         placeholder="••••••••"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -55,6 +58,38 @@ export function PasswordInput({
         {visible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
       </button>
     </div>
+  )
+}
+
+/**
+ * The 6-digit code from an email (sign-up verification, password reset).
+ * Digits only, and `one-time-code` so phones offer the code from the mail.
+ */
+export function CodeInput({
+  id,
+  value,
+  onChange,
+  autoFocus,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  autoFocus?: boolean
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      autoFocus={autoFocus}
+      required
+      maxLength={6}
+      placeholder="000000"
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+      className={`${authInputClass} text-center font-mono text-lg tracking-[0.5em]`}
+    />
   )
 }
 

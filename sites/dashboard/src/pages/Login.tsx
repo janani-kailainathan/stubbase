@@ -70,9 +70,13 @@ export default function Login() {
               <label htmlFor="password" className={authLabelClass}>
                 Password
               </label>
-              <a href="#" className="text-xs text-primary-accent hover:text-primary-ink">
+              <Link
+                to="/forgot-password"
+                state={{ email }}
+                className="text-xs text-primary-accent hover:text-primary-ink"
+              >
                 Forgot password?
-              </a>
+              </Link>
             </div>
             <PasswordInput
               id="password"

@@ -12,6 +12,8 @@
  *   POST   /auth/signup/verify                  { verificationId, code } → session
  *   POST   /auth/signup/resend                  { verificationId } → 202, new code emailed
  *   POST   /auth/login                          { email, password }
+ *   POST   /auth/forgot-password                { email } → 202 for every address, code emailed
+ *   POST   /auth/reset-password                 { email, code, password } → session
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
  *   GET    /auth/providers                      which OAuth buttons to show
@@ -176,6 +178,19 @@ db.exec(`
     sent_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS signup_email_sends_email ON signup_email_sends(email);
+  -- One live "forgot password" code per account; a new request replaces it.
+  CREATE TABLE IF NOT EXISTS password_resets (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id),
+    code_hash  TEXT NOT NULL,           -- HMAC of the code; '' once locked by wrong guesses
+    expires_at TEXT NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  -- One row per reset email sent, kept an hour: the per-address throttle.
+  CREATE TABLE IF NOT EXISTS password_reset_sends (
+    email   TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS password_reset_sends_email ON password_reset_sends(email);
 `);
 // Migrate pre-auth databases (users table without the new columns).
 const userCols = (db.query("PRAGMA table_info(users)").all() as { name: string }[]).map(
@@ -374,8 +389,8 @@ const RESEND_API_KEY = process.env.DASHBOARD_RESEND_API_KEY ?? "";
 const EMAIL_FROM = process.env.DASHBOARD_EMAIL_FROM || "Stubbase <no-reply@notify.stubbase.dev>";
 // Env-overridable strictly so tests and the local stack can point it at a mock.
 const RESEND_API_URL = process.env.RESEND_API_URL || "https://api.resend.com/emails";
-/** Local dev and tests only: write each sign-up code to the log. NEVER set in production. */
-const LOG_SIGNUP_CODES = process.env.DASHBOARD_EMAIL_LOG_CODES === "true";
+/** Local dev and tests only: write each sign-up and password reset code to the log. NEVER set in production. */
+const LOG_EMAIL_CODES = process.env.DASHBOARD_EMAIL_LOG_CODES === "true";
 
 const SIGNUP_CODE_TTL_MIN = 15;
 const SIGNUP_PENDING_TTL_HOURS = 24;
@@ -385,16 +400,16 @@ const SIGNUP_ID_RE = /^[0-9a-f]{32}$/;
 const SIGNUP_CODE_RE = /^\d{6}$/;
 const SIGNUP_CODE_KEY = createHash("sha256").update(`signup-code:${ADMIN_SECRET}`).digest();
 
-if (LOG_SIGNUP_CODES)
+if (LOG_EMAIL_CODES)
   console.warn(
-    "[app] DASHBOARD_EMAIL_LOG_CODES=true: sign-up verification codes are written to this log. Local dev and tests only.",
+    "[app] DASHBOARD_EMAIL_LOG_CODES=true: sign-up and password reset codes are written to this log. Local dev and tests only.",
   );
 else if (!RESEND_API_KEY)
   console.warn(
-    "[app] DASHBOARD_RESEND_API_KEY is unset: email sign-up answers 503 until it is set (OAuth sign-in is unaffected).",
+    "[app] DASHBOARD_RESEND_API_KEY is unset: email sign-up and password reset answer 503 until it is set (OAuth sign-in is unaffected).",
   );
 
-const emailSignupAvailable = () => Boolean(RESEND_API_KEY) || LOG_SIGNUP_CODES;
+const accountEmailAvailable = () => Boolean(RESEND_API_KEY) || LOG_EMAIL_CODES;
 
 /** Bound to the pending sign-up as well as the code, so a hash can never be moved to another row. */
 const signupCodeHash = (id: string, code: string) =>
@@ -409,24 +424,25 @@ const pendingSignup = (id: string, email: string) => ({
 const userExists = (email: string) =>
   db.query("SELECT 1 FROM users WHERE email = ?").get(email) !== null;
 
+/** The two per-address send logs. Constant table names, never input, so safe to interpolate. */
+type EmailSendLog = "signup_email_sends" | "password_reset_sends";
+
 /**
- * Counts one email against the address's hourly allowance, or refuses. Callers
- * run it in the same synchronous turn as the write it guards, so concurrent
- * requests cannot all read the same count.
+ * Counts one email against the address's hourly allowance in `log`, or refuses.
+ * Callers run it in the same synchronous turn as the write it guards, so
+ * concurrent requests cannot all read the same count.
  */
-function claimSignupSend(email: string): boolean {
-  db.query("DELETE FROM signup_email_sends WHERE sent_at <= datetime('now', '-1 hour')").run();
-  const { n } = db
-    .query("SELECT COUNT(*) AS n FROM signup_email_sends WHERE email = ?")
-    .get(email) as { n: number };
-  if (n >= SIGNUP_MAX_SENDS_PER_HOUR) return false;
-  db.query("INSERT INTO signup_email_sends (email) VALUES (?)").run(email);
+function claimEmailSend(log: EmailSendLog, email: string, perHour: number): boolean {
+  db.query(`DELETE FROM ${log} WHERE sent_at <= datetime('now', '-1 hour')`).run();
+  const { n } = db.query(`SELECT COUNT(*) AS n FROM ${log} WHERE email = ?`).get(email) as { n: number };
+  if (n >= perHour) return false;
+  db.query(`INSERT INTO ${log} (email) VALUES (?)`).run(email);
   return true;
 }
 
-/** Mails (and, with LOG_SIGNUP_CODES, logs) a code. False when Resend refused it. */
+/** Mails (and, with LOG_EMAIL_CODES, logs) a code. False when Resend refused it. */
 async function deliverSignupCode(email: string, code: string): Promise<boolean> {
-  if (LOG_SIGNUP_CODES) console.log(`[app] sign-up verification code for ${email} is ${code}`);
+  if (LOG_EMAIL_CODES) console.log(`[app] sign-up verification code for ${email} is ${code}`);
   if (!RESEND_API_KEY) return true;
 
   const text = [
@@ -440,23 +456,22 @@ async function deliverSignupCode(email: string, code: string): Promise<boolean> 
     `<p>If you did not try to create a Stubbase account, ignore this email: no account is created without this code.</p>`,
   ].join("\n");
 
+  return sendAccountEmail(email, "Your Stubbase verification code", text, html);
+}
+
+/** One email through Stubbase's Resend account. False when Resend refused it or was unreachable. */
+async function sendAccountEmail(to: string, subject: string, text: string, html: string): Promise<boolean> {
   const res = await fetch(RESEND_API_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: EMAIL_FROM,
-      to: email,
-      subject: "Your Stubbase verification code",
-      text,
-      html,
-    }),
+    body: JSON.stringify({ from: EMAIL_FROM, to, subject, text, html }),
     signal: AbortSignal.timeout(10_000),
   }).catch(() => null);
   if (res?.ok) return true;
   // Resend explains itself (an unverified sending domain, a bad key), and the
   // operator reading this log is the only person who can fix either.
   const reason = res ? `${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}` : "unreachable";
-  console.error(`[app] Resend did not accept a sign-up email for ${email}: ${reason}`);
+  console.error(`[app] Resend did not accept "${subject}" for ${to}: ${reason}`);
   return false;
 }
 
@@ -471,7 +486,7 @@ async function signup(req: Request): Promise<Response> {
   if (password.length < MIN_PASSWORD_LEN)
     return err(400, `'password' must be at least ${MIN_PASSWORD_LEN} characters`);
   // Fails closed: an account nobody verified is exactly what this exists to stop.
-  if (!emailSignupAvailable())
+  if (!accountEmailAvailable())
     return err(503, "email sign-up is not available: this server has no email provider configured");
   // Before the hash, so a taken address costs no 19 MiB argon2 run…
   if (userExists(email)) return err(409, "email already registered");
@@ -481,7 +496,7 @@ async function signup(req: Request): Promise<Response> {
   // …and again after it, because the hash yielded. From here to the INSERT is
   // one synchronous turn, so the throttle count cannot be raced.
   if (userExists(email)) return err(409, "email already registered");
-  if (!claimSignupSend(email))
+  if (!claimEmailSend("signup_email_sends", email, SIGNUP_MAX_SENDS_PER_HOUR))
     return err(429, "too many verification emails for this address; try again in an hour");
 
   db.query("DELETE FROM signup_verifications WHERE created_at <= datetime('now', ?)").run(
@@ -572,14 +587,14 @@ async function resendSignupCode(req: Request): Promise<Response> {
   if (body instanceof Response) return body;
   const id = typeof (body as any)?.verificationId === "string" ? (body as any).verificationId : "";
   if (!SIGNUP_ID_RE.test(id)) return err(400, "'verificationId' is required");
-  if (!emailSignupAvailable())
+  if (!accountEmailAvailable())
     return err(503, "email sign-up is not available: this server has no email provider configured");
 
   const row = db
     .query("SELECT email FROM signup_verifications WHERE id = ? AND created_at > datetime('now', ?)")
     .get(id, `-${SIGNUP_PENDING_TTL_HOURS} hours`) as { email: string } | null;
   if (!row) return err(404, "this sign-up has expired; start again");
-  if (!claimSignupSend(row.email))
+  if (!claimEmailSend("signup_email_sends", row.email, SIGNUP_MAX_SENDS_PER_HOUR))
     return err(429, "too many verification emails for this address; try again in an hour");
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -607,6 +622,14 @@ async function login(req: Request): Promise<Response> {
   const valid = await Bun.password.verify(password, row?.password_hash ?? DUMMY_HASH);
   if (!row || !row.password_hash || !valid) return err(401, "invalid email or password");
 
+  // A password reset can land while the hash above was verifying. A session
+  // opened on the old password after that would outlive the reset that was
+  // meant to end every session, so the password must still be the one checked.
+  const current = db.query("SELECT password_hash FROM users WHERE id = ?").get(row.id) as {
+    password_hash: string | null;
+  } | null;
+  if (current?.password_hash !== row.password_hash) return err(401, "invalid email or password");
+
   return json({ token: createSession(row.id), user: publicUser(row) });
 }
 
@@ -615,6 +638,144 @@ function logout(req: Request): Response {
   if (header.startsWith("Bearer "))
     db.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256hex(header.slice(7)));
   return json({ ok: true });
+}
+
+// ── Password reset ────────────────────────────────────────────────
+//
+// "Forgot password?" on the login page. Sign-up verification's twin, with the
+// same limits, because it is the same proof: whoever reads the mailbox owns the
+// account.
+//
+//   POST /auth/forgot-password  { email }                  → 202, for every address
+//   POST /auth/reset-password   { email, code, password }  → { token, user }
+//
+// forgot-password answers before any email is sent and says the same thing for
+// every address, throttled or not, so neither its body nor its latency tells a
+// caller who has an account. A failed send is logged rather than reported for
+// the same reason: only a real account could fail. (Sign-up's 409 is still an
+// oracle of its own; that is no reason to add a second one here.)
+//
+// The email carries the code and a link to <DASHBOARD_URL>/forgot-password with
+// the email and code in the fragment. The link's origin is the DASHBOARD_URL
+// constant, never the request's Host: a reset link built from a header is a link
+// an attacker can point at their own server. The fragment never reaches a
+// server, and the page still asks for the new password, so a mail scanner that
+// opens the link spends nothing.
+//
+// One code per account (a new request replaces it), RESET_CODE_TTL_MIN long,
+// locked by RESET_MAX_ATTEMPTS wrong guesses, at most RESET_MAX_SENDS_PER_HOUR
+// emails per address, stored as an HMAC bound to the account. It is spent before
+// the new password's hash awaits, so two requests racing with it cannot both
+// win, and a reset ends every session the account has — whoever knew the old
+// password is who a reset is usually meant to lock out. An account created by
+// OAuth can reset too, which gives it a password: the mailbox is the same proof.
+
+const RESET_CODE_TTL_MIN = 15;
+const RESET_MAX_ATTEMPTS = 5;
+const RESET_MAX_SENDS_PER_HOUR = 5;
+const RESET_CODE_RE = /^\d{6}$/;
+const RESET_CODE_KEY = createHash("sha256").update(`password-reset:${ADMIN_SECRET}`).digest();
+
+/** Bound to the account as well as the code, so a hash can never be moved to another row. */
+const resetCodeHash = (userId: number, code: string) =>
+  createHmac("sha256", RESET_CODE_KEY).update(`${userId}:${code}`).digest("base64url");
+
+function resetEmail(email: string, code: string) {
+  const link = `${DASHBOARD_URL}/forgot-password#${new URLSearchParams({ email, code })}`;
+  const text = [
+    `Your Stubbase password reset code is ${code}.`,
+    `Enter it with a new password on the reset page, or open this link to have it filled in: ${link}`,
+    `It expires in ${RESET_CODE_TTL_MIN} minutes and works once.`,
+    "If you did not ask to reset your password, ignore this email: your password has not changed.",
+  ].join("\n\n");
+  const html = [
+    `<p>Your Stubbase password reset code is <strong style="font-size:1.25em;letter-spacing:0.1em">${code}</strong>.</p>`,
+    `<p>Enter it with a new password on the reset page, or <a href="${link.replace(/&/g, "&amp;")}">choose a new password here</a>.</p>`,
+    `<p>It expires in ${RESET_CODE_TTL_MIN} minutes and works once.</p>`,
+    "<p>If you did not ask to reset your password, ignore this email: your password has not changed.</p>",
+  ].join("\n");
+  return { subject: "Reset your Stubbase password", text, html };
+}
+
+async function forgotPassword(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const email = typeof (body as any)?.email === "string" ? (body as any).email.trim().toLowerCase() : "";
+  if (!EMAIL_RE.test(email)) return err(400, "valid 'email' is required");
+  // Nothing about this depends on who asked, so it gives nobody away.
+  if (!accountEmailAvailable())
+    return err(503, "password reset is not available: this server has no email provider configured");
+
+  const accepted = () =>
+    json({ ok: true, message: "If that email has a Stubbase account, a reset code is on its way." }, 202);
+
+  const user = db.query("SELECT id FROM users WHERE email = ?").get(email) as { id: number } | null;
+  // Throttled quietly: a 429 only an existing account could earn would give the
+  // account away. An unknown address writes nothing, so it cannot grow the log.
+  if (!user || !claimEmailSend("password_reset_sends", email, RESET_MAX_SENDS_PER_HOUR)) return accepted();
+
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  db.query(
+    `INSERT INTO password_resets (user_id, code_hash, expires_at, attempts)
+     VALUES (?, ?, datetime('now', ?), 0)
+     ON CONFLICT(user_id) DO UPDATE
+       SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0`,
+  ).run(user.id, resetCodeHash(user.id, code), `+${RESET_CODE_TTL_MIN} minutes`);
+
+  if (LOG_EMAIL_CODES) console.log(`[app] password reset code for ${email} is ${code}`);
+  if (RESEND_API_KEY) {
+    const mail = resetEmail(email, code);
+    // Not awaited: the reply must not wait on a path only a real account takes.
+    void sendAccountEmail(email, mail.subject, mail.text, mail.html);
+  }
+  return accepted();
+}
+
+async function resetPassword(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const email = typeof (body as any)?.email === "string" ? (body as any).email.trim().toLowerCase() : "";
+  const code = typeof (body as any)?.code === "string" ? (body as any).code.trim() : "";
+  const password = typeof (body as any)?.password === "string" ? (body as any).password : "";
+  if (!EMAIL_RE.test(email)) return err(400, "valid 'email' is required");
+  if (!RESET_CODE_RE.test(code)) return err(400, "'code' must be the 6-digit code from the email");
+  if (password.length < MIN_PASSWORD_LEN)
+    return err(400, `'password' must be at least ${MIN_PASSWORD_LEN} characters`);
+
+  // One answer for every way a code can be wrong, an unknown address included.
+  const invalid = () => err(400, "invalid or expired reset code");
+  const row = db
+    .query(
+      `SELECT u.id, r.code_hash, r.expires_at > datetime('now') AS live
+       FROM users u JOIN password_resets r ON r.user_id = u.id
+       WHERE u.email = ?`,
+    )
+    .get(email) as { id: number; code_hash: string; live: number } | null;
+  if (!row || !row.code_hash || !row.live) return invalid();
+
+  const given = Buffer.from(resetCodeHash(row.id, code), "base64url");
+  const stored = Buffer.from(row.code_hash, "base64url");
+  if (given.length !== stored.length || !timingSafeEqual(given, stored)) {
+    // `attempts` on the right-hand side is the value before this update.
+    db.query(
+      `UPDATE password_resets
+       SET attempts = attempts + 1,
+           code_hash = CASE WHEN attempts + 1 >= ? THEN '' ELSE code_hash END
+       WHERE user_id = ?`,
+    ).run(RESET_MAX_ATTEMPTS, row.id);
+    return invalid();
+  }
+
+  // Spent before anything yields: two requests racing with the same code must
+  // not both get past this line, and the hash below awaits.
+  db.query("DELETE FROM password_resets WHERE user_id = ?").run(row.id);
+
+  const hash = await Bun.password.hash(password, ARGON);
+  db.query("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, row.id);
+  // Every session on every device ends with the old password.
+  db.query("DELETE FROM sessions WHERE user_id = ?").run(row.id);
+  const user = db.query("SELECT id, email, name, plan FROM users WHERE id = ?").get(row.id) as User;
+  return json({ token: createSession(user.id), user: publicUser(user) });
 }
 
 // ── OAuth sign-in (Google / GitHub) ───────────────────────────────
@@ -2751,6 +2912,10 @@ async function route(req: Request): Promise<Response> {
     }
     if (req.method === "POST" && segments[1] === "login" && segments.length === 2)
       return login(req);
+    if (req.method === "POST" && segments[1] === "forgot-password" && segments.length === 2)
+      return forgotPassword(req);
+    if (req.method === "POST" && segments[1] === "reset-password" && segments.length === 2)
+      return resetPassword(req);
 
     // OAuth: unauthenticated by definition — the caller is a browser being
     // bounced between us and the provider, and it has no session yet.

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import AuthCallback from '@/pages/AuthCallback'
 import Editor from '@/pages/Editor'
+import ForgotPassword from '@/pages/ForgotPassword'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 
@@ -18,6 +19,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         {/*
           Which project is open lives in the URL and nowhere else, so a reload

@@ -160,6 +160,22 @@ export const resendSignupCode = (verificationId: string) =>
     body: JSON.stringify({ verificationId }),
   })
 
+/** Always 202 with the same body, whether or not the address has an account. */
+export const forgotPassword = (email: string) =>
+  request<{ ok: true; message: string }>(`${APP_API_URL}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+
+/** Sets the new password, ends every other session and returns a fresh one. */
+export const resetPassword = (email: string, code: string, password: string) =>
+  request<AuthResponse>(`${APP_API_URL}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, code, password }),
+  })
+
 export const login = (email: string, password: string) =>
   request<AuthResponse>(`${APP_API_URL}/auth/login`, {
     method: 'POST',

@@ -20,7 +20,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Database } from "bun:sqlite";
-import { startApp, startCore, stopServices, type Service } from "./helpers.ts";
+import { startApp, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
 import {
   ALLOWED_ORIGIN,
   PASSWORD,
@@ -370,6 +370,179 @@ describe("email verification", () => {
     expect((await post("signup", { email, password: PASSWORD }, unconfigured)).status).toBe(503);
     expect((await post("signup/resend", { verificationId: "0".repeat(32) }, unconfigured)).status).toBe(503);
     expect(readDbOf(unconfigured, (db) => db.query("SELECT 1 FROM users WHERE email = ?").get(email))).toBeNull();
+  }, 20_000);
+});
+
+// ── Password reset ─────────────────────────────────────────────────
+
+/**
+ * "Forgot password?", end-to-end against a stub Resend. The service does not
+ * await the send (so an unknown address answers as fast as a real one), which
+ * is why every assertion about mail waits for it to arrive.
+ */
+describe("password reset", () => {
+  const SPA = "http://localhost:5198";
+  const RESET_SUBJECT = "Reset your Stubbase password";
+  const NEW_PASSWORD = "brand-new-password";
+  const INVALID = { error: "invalid or expired reset code" };
+  const mail: { to: string; subject: string; text: string; html: string }[] = [];
+  let mailer: ReturnType<typeof Bun.serve>;
+  let resetApp: Service;
+  let unconfigured: Service;
+
+  beforeAll(async () => {
+    mailer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        mail.push((await req.json()) as any);
+        return Response.json({ id: `email_${mail.length}` });
+      },
+    });
+    [resetApp, unconfigured] = await Promise.all([
+      // Codes are logged (so signupOn can make accounts) and mailed (so resets can be read back).
+      startApp(ROOT, "reset-app", {
+        CORE_API_URL: core.base,
+        DASHBOARD_URL: SPA,
+        DASHBOARD_RESEND_API_KEY: "re_test_key",
+        RESEND_API_URL: `http://127.0.0.1:${mailer.port}/emails`,
+      }),
+      startApp(ROOT, "reset-no-mail-app", { CORE_API_URL: core.base, DASHBOARD_EMAIL_LOG_CODES: "" }),
+    ]);
+    running.push(resetApp, unconfigured);
+  }, 30_000);
+
+  afterAll(() => mailer.stop(true));
+
+  const post = (route: string, body: unknown, headers: Record<string, string> = {}, on: Service = resetApp) =>
+    fetch(`${on.base}/auth/${route}`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), ...headers },
+      body: JSON.stringify(body),
+    });
+  const forgot = (email: string, headers?: Record<string, string>) => post("forgot-password", { email }, headers);
+  const reset = (email: string, code: string, password = NEW_PASSWORD) =>
+    post("reset-password", { email, code, password });
+  const login = (email: string, password: string) => post("login", { email, password });
+  const me = (token: string) => fetch(`${resetApp.base}/auth/me`, { headers: as(token) });
+  const resetMailTo = (to: string) => mail.filter((m) => m.to === to && m.subject === RESET_SUBJECT);
+  const otherThan = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, "0");
+  /** Waits for the `n`th reset email to `to` and returns its code. */
+  async function nthResetCode(to: string, n: number): Promise<string> {
+    await waitFor(() => resetMailTo(to).length >= n);
+    const code = /\b(\d{6})\b/.exec(resetMailTo(to)[n - 1]?.text ?? "")?.[1];
+    if (!code) throw new Error(`reset email #${n} to ${to} never arrived`);
+    return code;
+  }
+
+  test("answers the same for every address, and mails a code and link only to a real account", async () => {
+    const account = await signupOn(resetApp);
+    const ghostEmail = `ghost-${Date.now()}@test.co`;
+
+    const ghost = await forgot(ghostEmail);
+    // The link must come from DASHBOARD_URL, whatever host the request claims.
+    const real = await forgot(account.email.toUpperCase(), { "x-forwarded-host": "evil.test", "x-forwarded-proto": "https" });
+    expect([ghost.status, real.status]).toEqual([202, 202]);
+    expect(await real.json()).toEqual(await ghost.json());
+
+    const code = await nthResetCode(account.email, 1);
+    const [sent] = resetMailTo(account.email);
+    expect(sent.text).toContain(`${SPA}/forgot-password#${new URLSearchParams({ email: account.email, code })}`);
+    expect(sent.text + sent.html).not.toContain("evil.test");
+    await Bun.sleep(200);
+    expect(mail.some((m) => m.to === ghostEmail)).toBe(false);
+
+    // Stored as an HMAC, never the code itself.
+    const row = readDbOf(resetApp, (db) =>
+      db.query("SELECT code_hash FROM password_resets WHERE user_id = ?").get(account.id),
+    ) as { code_hash: string };
+    expect(row.code_hash).not.toContain(code);
+    expect(row.code_hash).not.toBe(sha256hex(code));
+  }, 20_000);
+
+  test("a correct code sets the new password, ends every session and signs you in", async () => {
+    const account = await signupOn(resetApp);
+    const otherDevice = (await (await login(account.email, PASSWORD)).json()).token;
+    await forgot(account.email);
+    const code = await nthResetCode(account.email, 1);
+
+    const done = await reset(account.email, code);
+    expect(done.status).toBe(200);
+    const { token, user } = await done.json();
+    expect(user.email).toBe(account.email);
+    expect(user).not.toHaveProperty("password_hash");
+
+    for (const stale of [account.token, otherDevice]) expect((await me(stale)).status).toBe(401);
+    expect((await me(token)).status).toBe(200);
+    expect((await login(account.email, PASSWORD)).status).toBe(401);
+    expect((await login(account.email, NEW_PASSWORD)).status).toBe(200);
+
+    // Spent by its first use.
+    expect(await (await reset(account.email, code, "another-password")).json()).toEqual(INVALID);
+  }, 20_000);
+
+  test("wrong guesses read alike, a new request replaces the code, and the fifth wrong guess locks it", async () => {
+    const account = await signupOn(resetApp);
+    await forgot(account.email);
+    const first = await nthResetCode(account.email, 1);
+
+    expect((await reset(account.email, "12ab56")).status).toBe(400);
+    expect((await reset(account.email, first, "short")).status).toBe(400);
+    expect(await (await reset(`ghost-${Date.now()}@test.co`, first)).json()).toEqual(INVALID);
+
+    await forgot(account.email);
+    const second = await nthResetCode(account.email, 2);
+    let wrong = 0;
+    if (first !== second) {
+      expect(await (await reset(account.email, first)).json()).toEqual(INVALID); // replaced
+      wrong++;
+    }
+    for (; wrong < 5; wrong++) expect(await (await reset(account.email, otherThan(second))).json()).toEqual(INVALID);
+    // Locked: even the right code is now just "invalid", and the password never changed.
+    expect(await (await reset(account.email, second)).json()).toEqual(INVALID);
+    expect((await login(account.email, PASSWORD)).status).toBe(200);
+
+    await forgot(account.email);
+    expect((await reset(account.email, await nthResetCode(account.email, 3))).status).toBe(200);
+  }, 30_000);
+
+  test("an expired code is refused", async () => {
+    const account = await signupOn(resetApp);
+    await forgot(account.email);
+    const code = await nthResetCode(account.email, 1);
+    const { Database: WritableDb } = await import("bun:sqlite");
+    const db = new WritableDb(join(resetApp.dir, "app.sqlite"));
+    try {
+      db.exec("PRAGMA busy_timeout = 5000;");
+      db.query("UPDATE password_resets SET expires_at = datetime('now', '-1 minute') WHERE user_id = ?").run(account.id);
+    } finally {
+      db.close();
+    }
+    expect(await (await reset(account.email, code)).json()).toEqual(INVALID);
+  }, 20_000);
+
+  test("two requests racing with one code: exactly one wins", async () => {
+    const account = await signupOn(resetApp);
+    await forgot(account.email);
+    const code = await nthResetCode(account.email, 1);
+
+    const results = await Promise.all([
+      reset(account.email, code, "racer-one-password"),
+      reset(account.email, code, "racer-two-password"),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
+  }, 20_000);
+
+  test("an address gets at most five reset emails an hour, throttled without saying so", async () => {
+    const account = await signupOn(resetApp);
+    for (let i = 0; i < 6; i++) expect((await forgot(account.email)).status).toBe(202);
+    await nthResetCode(account.email, 5);
+    await Bun.sleep(300);
+    expect(resetMailTo(account.email)).toHaveLength(5);
+  }, 20_000);
+
+  test("without an email provider, reset is refused rather than silently doing nothing", async () => {
+    const res = await post("forgot-password", { email: `anyone-${Date.now()}@test.co` }, {}, unconfigured);
+    expect(res.status).toBe(503);
   }, 20_000);
 });
 

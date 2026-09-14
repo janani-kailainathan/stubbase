@@ -38,7 +38,7 @@ services:
       DASHBOARD_GOOGLE_SECRET: ${DASHBOARD_GOOGLE_SECRET:-}
       DASHBOARD_GITHUB_CLIENT_ID: ${DASHBOARD_GITHUB_CLIENT_ID:-}
       DASHBOARD_GITHUB_SECRET: ${DASHBOARD_GITHUB_SECRET:-}
-      # Sign-up verification emails, through Stubbase's own Resend account.
+      # Sign-up and password reset emails, through Stubbase's own Resend account.
       # Codes are also logged (`docker compose logs dashboard-api`), so this
       # stack can create accounts with no key at all. Local stack only.
       DASHBOARD_RESEND_API_KEY: ${DASHBOARD_RESEND_API_KEY:-}
