@@ -8,6 +8,7 @@ import {
   renameProject,
   type ProjectRow,
 } from '@/lib/api'
+import { useWorkspaceStore, type Selection } from '@/stores/workspace'
 
 export const PROJECT_COLORS = [
   'bg-emerald-500',
@@ -81,12 +82,82 @@ export function useCurrentProject(): Project | undefined {
 }
 
 /**
- * Open a project. Switching projects is a navigation now, not a store write,
- * so the back button walks the projects you visited and a refresh stays put.
+ * The workspace's panes, and the path segment each lives at: the pane is part
+ * of the URL, after the project — `/p/<tenantId>/<pane>` — for the same reason
+ * the project is. Keys are the code's names, values the address's; the keys
+ * pane is labelled MCP, so that is what its URL says.
+ */
+export type PaneMode = 'editor' | 'ai' | 'logs' | 'diagnostics' | 'keys'
+
+const PANE_SLUGS: Record<PaneMode, string> = {
+  editor: 'editor',
+  ai: 'ai',
+  logs: 'logs',
+  diagnostics: 'diagnostics',
+  keys: 'mcp',
+}
+
+/** The pane a path segment names, or undefined for anything else. */
+export const paneFromSlug = (slug: string | undefined): PaneMode | undefined =>
+  (Object.keys(PANE_SLUGS) as PaneMode[]).find((pane) => PANE_SLUGS[pane] === slug)
+
+export const projectPath = (tenantId: string, pane: PaneMode = 'editor') =>
+  `/p/${tenantId}/${PANE_SLUGS[pane]}`
+
+/**
+ * The pane the URL names. `/` names none and reads as the editor; a project URL
+ * with no pane or an unknown one is redirected to the editor by Editor.
+ */
+export function usePaneMode(): PaneMode {
+  return paneFromSlug(useParams<{ pane: string }>().pane) ?? 'editor'
+}
+
+/**
+ * Switch pane. A navigation, like switching project: Back returns to the pane
+ * you were on and a reload stays where it is. With no project open there is no
+ * pane to move to. `replace` is for moves the person did not make — leaving a
+ * pane that stopped making sense — so the dead view is not left in history.
+ */
+export function useSetPaneMode(): (pane: PaneMode, options?: { replace?: boolean }) => void {
+  const navigate = useNavigate()
+  const tenantId = useCurrentProjectId()
+  const current = usePaneMode()
+  return useCallback(
+    (pane: PaneMode, options?: { replace?: boolean }) => {
+      if (!tenantId || pane === current) return
+      navigate(projectPath(tenantId, pane), { replace: options?.replace })
+    },
+    [navigate, tenantId, current],
+  )
+}
+
+/**
+ * Open a file or endpoint where it is shown: select it, and bring the editor up
+ * if another pane is open. Every pick a person makes goes through here; the
+ * store's bare `select` is for choosing a default, which must never move you
+ * off the pane in the URL.
+ */
+export function useSelectInEditor(): (selection: Selection) => void {
+  const select = useWorkspaceStore((s) => s.select)
+  const setPaneMode = useSetPaneMode()
+  return useCallback(
+    (selection: Selection) => {
+      select(selection)
+      setPaneMode('editor')
+    },
+    [select, setPaneMode],
+  )
+}
+
+/**
+ * Open a project. Switching projects is a navigation, not a store write, so the
+ * back button walks the projects you visited and a refresh stays put. The pane
+ * comes along: switching project from the logs shows the other project's logs.
  */
 export function useOpenProject(): (tenantId: string) => void {
   const navigate = useNavigate()
-  return useCallback((tenantId: string) => navigate(`/p/${tenantId}`), [navigate])
+  const pane = usePaneMode()
+  return useCallback((tenantId: string) => navigate(projectPath(tenantId, pane)), [navigate, pane])
 }
 
 /** Shared by both ways of creating a project, so a dialog can tell one is in flight. */

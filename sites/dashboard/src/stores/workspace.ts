@@ -30,12 +30,6 @@ export type EditorTab = 'docs' | 'live'
 export type LogView = 'raw' | 'pretty' | 'lifecycle'
 
 /**
- * What the centre pane shows: the file/endpoint editor, the AI chat, the live
- * request log, the diagnostics report, or developer API keys / MCP setup.
- */
-export type PaneMode = 'editor' | 'ai' | 'logs' | 'diagnostics' | 'keys'
-
-/**
  * One item in the chat transcript.
  *
  * `turn` entries are the real conversation in the exact shape the Dashboard
@@ -76,7 +70,6 @@ interface WorkspaceState {
   activeTab: EditorTab
   /** Lives here beside activeTab so the Logs pane header can own its tabs. */
   logView: LogView
-  paneMode: PaneMode
   dataExpanded: boolean
   /**
    * The system folder's open state once someone has clicked it. Null until
@@ -155,7 +148,6 @@ interface WorkspaceState {
   select: (selection: Selection) => void
   setTab: (tab: EditorTab) => void
   setLogView: (view: LogView) => void
-  setPaneMode: (mode: PaneMode) => void
   toggleData: () => void
   setSystemExpanded: (expanded: boolean) => void
   setNewProjectOpen: (open: boolean) => void
@@ -192,7 +184,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   // Pretty is the only Logs view offered for now (LOG_TABS in EditorPane), so it
   // must also be where the pane opens — a hidden view could not be left.
   logView: 'pretty',
-  paneMode: 'editor',
   dataExpanded: true,
   systemExpanded: null,
   newProjectOpen: false,
@@ -223,7 +214,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       selection: null,
       editing: false,
       draft: '',
-      paneMode: 'editor',
       // Request bodies, responses and tenant tokens are another user's data.
       playgroundInputs: {},
       playgroundRuns: {},
@@ -236,18 +226,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
 
   select: (selection) =>
-    // activeTab is deliberately left alone — see its declaration.
-    set({
-      selection,
-      editing: false,
-      paneMode: 'editor', // picking a file means you want to look at it
-    }),
+    // activeTab is deliberately left alone — see its declaration. Which pane is
+    // open is the URL's business: a pick that should bring the editor up goes
+    // through useSelectInEditor (hooks/projects.ts).
+    set({ selection, editing: false }),
 
   setTab: (tab) => set({ activeTab: tab }),
 
   setLogView: (view) => set({ logView: view }),
-
-  setPaneMode: (mode) => set({ paneMode: mode }),
 
   toggleData: () => set((s) => ({ dataExpanded: !s.dataExpanded })),
 

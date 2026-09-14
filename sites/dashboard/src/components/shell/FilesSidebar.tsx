@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { NAME_RE } from '@/lib/api'
 import { rbacEnabled } from '@/lib/rbac'
 import { useTenantConfig } from '@/hooks/config'
-import { useCurrentProject } from '@/hooks/projects'
+import { useCurrentProject, useSelectInEditor } from '@/hooks/projects'
 import { useCreateResources } from '@/hooks/resources'
 import { useSystemFiles } from '@/hooks/system'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -30,7 +30,7 @@ function NewResourceDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const [name, setName] = useState('')
-  const select = useWorkspaceStore((s) => s.select)
+  const select = useSelectInEditor()
   const createResource = useCreateResources(tenantId)
 
   const submit = () => {
@@ -97,7 +97,7 @@ export function FilesSidebar() {
   const selection = useWorkspaceStore((s) => s.selection)
   const dataExpanded = useWorkspaceStore((s) => s.dataExpanded)
   const systemChoice = useWorkspaceStore((s) => s.systemExpanded)
-  const select = useWorkspaceStore((s) => s.select)
+  const select = useSelectInEditor()
   const toggleData = useWorkspaceStore((s) => s.toggleData)
   const setSystemExpanded = useWorkspaceStore((s) => s.setSystemExpanded)
   const collapsed = useWorkspaceStore((s) => s.filesCollapsed)

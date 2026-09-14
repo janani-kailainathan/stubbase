@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
-import { Link, Navigate, NavLink, useLocation, useParams } from 'react-router-dom'
-import { ArrowLeft, UserRound } from 'lucide-react'
+import { Navigate, NavLink, useLocation, useParams } from 'react-router-dom'
+import { UserRound } from 'lucide-react'
 import { TopBar } from '@/components/shell/TopBar'
 import { ProfileSection } from '@/components/settings/ProfileSection'
 
@@ -23,18 +23,16 @@ const SECTIONS: {
  * instead of replaying every section. An unknown section — including the old
  * /settings/password and friends — opens Profile.
  *
- * The back link returns to the project the account menu was opened from. That
- * rides in router state, which survives a reload; without it, `/` opens the
- * first project as it does after sign-in.
+ * There is no back link: the top bar's tabs lead back into the project the
+ * account menu was opened from. That rides in router state `from`, which
+ * survives a reload and is passed along between sections here; without it,
+ * Editor opens `/` and so the first project, as after sign-in.
  */
 export default function Settings() {
   const { section } = useParams<{ section: string }>()
   const location = useLocation()
   const current = SECTIONS.find((s) => s.id === section)
   if (!current) return <Navigate to="/settings/profile" replace state={location.state} />
-
-  const from = (location.state as { from?: string } | null)?.from
-  const fromProject = Boolean(from?.startsWith('/p/'))
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background font-sans text-muted-foreground">
@@ -52,13 +50,6 @@ export default function Settings() {
             aria-label="Settings"
             className="flex flex-col gap-4 xl:sticky xl:top-0 xl:w-44 xl:justify-self-end xl:self-start xl:pr-10 xl:box-content"
           >
-            <Link
-              to={fromProject ? from! : '/'}
-              className="flex w-fit items-center gap-1.5 text-sm text-subtle transition-colors hover:text-heading"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              {fromProject ? 'Back to project' : 'Back to dashboard'}
-            </Link>
             <p className="text-xs font-medium tracking-wide text-faint uppercase">Settings</p>
             {/* Wrapping rows while it sits above the content, and a column once
                 it has the side to itself. */}

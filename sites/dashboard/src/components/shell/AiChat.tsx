@@ -15,7 +15,7 @@ import {
 import { useCoPilotChat, useIsCoPilotThinking } from '@/hooks/ai'
 import { useHasFeature } from '@/hooks/plan'
 import { PlanNotice } from '@/components/shell/PlanNotice'
-import { useCurrentProject } from '@/hooks/projects'
+import { useCurrentProject, useSetPaneMode } from '@/hooks/projects'
 import { useApplyDeletion } from '@/hooks/resources'
 import { AI_EXAMPLES } from '@/lib/ai-examples'
 import { Markdown } from '@/lib/markdown'
@@ -452,7 +452,7 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
   const setInput = useWorkspaceStore((s) => s.setChatInput)
   const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
   const setChatTurns = useWorkspaceStore((s) => s.setChatTurns)
-  const setPaneMode = useWorkspaceStore((s) => s.setPaneMode)
+  const setPaneMode = useSetPaneMode()
   const chat = useCoPilotChat(tenantId)
   const entitled = useHasFeature('ai')
 

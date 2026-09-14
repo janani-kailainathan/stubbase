@@ -33,13 +33,17 @@ import {
   useDeleteProject,
   useOpenProject,
   useProjects,
+  projectPath,
+  usePaneMode,
   useRenameProject,
+  useSetPaneMode,
+  type PaneMode,
   type Project,
 } from '@/hooks/projects'
 import { NewProjectDialog } from '@/components/shell/NewProject'
 import { ThemeToggle } from '@/components/shell/ThemeToggle'
 import { useAuthStore } from '@/stores/auth'
-import { useWorkspaceStore, type PaneMode } from '@/stores/workspace'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 /**
  * Deleting deprovisions the tenant on the core and drops the row — there is no
@@ -244,16 +248,35 @@ function InlineRename({
 /** Switches the centre pane between the editor, AI chat, logs and diagnostics. */
 function ModeToggle() {
   const current = useCurrentProject()
-  const status = useProjectStatus(current?.tenantId)
+  const { data: projects } = useProjects()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const inWorkspace = location.pathname === '/' || location.pathname.startsWith('/p/')
+  // Outside the workspace — the settings page — the tabs are the way back: they
+  // lead into the project the account menu was opened from (router state
+  // `from`), as long as it still exists. There is no separate back link.
+  const fromTenant = (location.state as { from?: string } | null)?.from?.match(/^\/p\/([^/]+)/)?.[1]
+  const target = current ?? (inWorkspace ? undefined : projects?.find((p) => p.tenantId === fromTenant))
+  const status = useProjectStatus(target?.tenantId)
   const stopped = status !== 'active'
-  const paneMode = useWorkspaceStore((s) => s.paneMode)
-  const setPaneMode = useWorkspaceStore((s) => s.setPaneMode)
+  const paneMode = usePaneMode()
+  const setPaneMode = useSetPaneMode()
+
+  const open = (mode: PaneMode) => {
+    if (current) setPaneMode(mode)
+    else if (target) navigate(projectPath(target.tenantId, mode))
+    // Nothing to lead into: Editor still goes to the workspace, which opens the
+    // first project or offers to create one.
+    else if (!inWorkspace) navigate('/')
+  }
 
   // A stopped API serves no traffic and answers 503 on every public route, so
   // these two panes have nothing to show. Stopping while one of them is open
-  // would otherwise strand the user on a dead view — fall back to the editor.
+  // would otherwise strand the user on a dead view — fall back to the editor,
+  // replacing the dead view's URL rather than leaving it in history.
   useEffect(() => {
-    if (stopped && (paneMode === 'logs' || paneMode === 'diagnostics')) setPaneMode('editor')
+    if (stopped && (paneMode === 'logs' || paneMode === 'diagnostics'))
+      setPaneMode('editor', { replace: true })
   }, [stopped, paneMode, setPaneMode])
 
   const modes: { mode: PaneMode; label: string; needsLive?: boolean }[] = [
@@ -271,19 +294,26 @@ function ModeToggle() {
   return (
     <div className="flex items-center gap-1">
       {modes.map(({ mode, label, needsLive }) => {
-        // No project reads as "not live" too — with nothing selected there is
-        // no traffic to stream and nothing to diagnose.
-        const disabled = Boolean(needsLive) && (stopped || !current)
+        // With no project to lead into there is no pane to go to but the editor:
+        // every pane is a place inside a project, and its URL names one.
+        const disabled = !target ? mode !== 'editor' : Boolean(needsLive) && stopped
         return (
           <button
             key={mode}
-            onClick={() => setPaneMode(mode)}
+            onClick={() => open(mode)}
             disabled={disabled}
-            title={disabled ? `Available once the API is live (currently ${status})` : undefined}
+            title={
+              disabled
+                ? target
+                  ? `Available once the API is live (currently ${status})`
+                  : 'Open a project first'
+                : undefined
+            }
             className={
               disabled
                 ? 'cursor-not-allowed rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-faintest'
-                : paneMode === mode
+                : // Settings is no pane, so nothing reads as selected there.
+                  inWorkspace && paneMode === mode
                   ? 'cursor-pointer rounded border border-transparent bg-primary-soft px-2.5 py-1.5 font-mono text-xs text-primary-ink'
                   : 'cursor-pointer rounded border border-transparent px-2.5 py-1.5 font-mono text-xs text-subtle hover:text-emphasis'
             }

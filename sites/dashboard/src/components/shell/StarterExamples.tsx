@@ -5,7 +5,7 @@ import { useSaveRbac } from '@/hooks/rbac'
 import { useCreateResources } from '@/hooks/resources'
 import { mergeEnv } from '@/lib/env'
 import type { Starter } from '@/lib/starters'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useSelectInEditor } from '@/hooks/projects'
 
 /**
  * A project's own empty state — the same starter cards the account-level empty
@@ -18,7 +18,7 @@ export function StarterExamples({ tenantId }: { tenantId: string }) {
   const { data: config } = useTenantConfig(tenantId)
   const saveConfig = useSaveTenantConfig(tenantId)
   const saveRules = useSaveRbac(tenantId)
-  const select = useWorkspaceStore((s) => s.select)
+  const select = useSelectInEditor()
 
   const busy = create.isPending || saveConfig.isPending || saveRules.isPending
 

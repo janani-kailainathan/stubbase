@@ -63,6 +63,16 @@ function App() {
             </RequireAuth>
           }
         />
+        {/* …and which pane of it: /p/<tenantId>/editor|ai|logs|mcp|diagnostics.
+            The bare project URL above redirects to the editor. */}
+        <Route
+          path="/p/:tenantId/:pane"
+          element={
+            <RequireAuth>
+              <Editor />
+            </RequireAuth>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -6,7 +6,7 @@ import type { Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
 import { JsonTree } from '@/lib/json-tree'
 import { sampleRecordBody } from '@/lib/playground'
-import { useCurrentProject } from '@/hooks/projects'
+import { useCurrentProject, usePaneMode } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
 import { useResource, useSaveResource } from '@/hooks/resources'
 import { useSystemFile } from '@/hooks/system'
@@ -600,7 +600,7 @@ export function EditorPane() {
   const groups = useEndpointGroups()
   const selection = useWorkspaceStore((s) => s.selection)
   const activeTab = useWorkspaceStore((s) => s.activeTab)
-  const paneMode = useWorkspaceStore((s) => s.paneMode)
+  const paneMode = usePaneMode()
 
   const tenantId = project?.tenantId
 

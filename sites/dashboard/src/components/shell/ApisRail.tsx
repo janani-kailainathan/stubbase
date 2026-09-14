@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Route } from 'lucide-react'
 import { useEndpointGroups } from '@/hooks/endpoints'
-import { useCurrentProject } from '@/hooks/projects'
+import { useCurrentProject, useSelectInEditor } from '@/hooks/projects'
 import type { Endpoint } from '@/lib/endpoints'
 import { useWorkspaceStore, type Method } from '@/stores/workspace'
 import { UsagePanel } from './UsagePanel'
@@ -20,7 +20,7 @@ const METHOD_BADGE: Record<Method, string> = {
 
 function EndpointRow({ endpoint }: { endpoint: Endpoint }) {
   const selection = useWorkspaceStore((s) => s.selection)
-  const select = useWorkspaceStore((s) => s.select)
+  const select = useSelectInEditor()
 
   // Path, not just resource + method: the auth group holds two POSTs.
   const isSelected =
