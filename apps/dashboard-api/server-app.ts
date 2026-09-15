@@ -18,7 +18,7 @@
  *   POST   /auth/logout                         (auth)
  *   GET    /auth/me                             (auth)
  *   PATCH  /auth/me                             (auth) { name } → { user }
- *   GET    /auth/account                        (auth) read-only facts: plan, allowance, requests used, member since
+ *   GET    /auth/account                        (auth) read-only facts: plan, add-ons, limits, requests used, member since
  *   POST   /auth/delete-account                 (auth) { password } → account removed, every session ended
  *   GET    /auth/sessions                       (auth) this account's signed-in devices
  *   DELETE /auth/sessions/<id>                  (auth) sign one device out
@@ -203,6 +203,15 @@ db.exec(`
     sent_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS password_reset_sends_email ON password_reset_sends(email);
+  -- Add-ons an account holds on top of its plan; see ADDONS. Written by hand
+  -- until there is a payment gateway, like users.plan.
+  CREATE TABLE IF NOT EXISTS account_addons (
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    addon      TEXT NOT NULL,                -- an ADDONS id; anything else adds nothing
+    quantity   INTEGER NOT NULL DEFAULT 1,   -- packs of this kind held
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, addon)
+  );
 `);
 // Migrate pre-auth databases (users table without the new columns).
 const userCols = (db.query("PRAGMA table_info(users)").all() as { name: string }[]).map(
@@ -264,11 +273,15 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 //
 // This service owns the table because it owns users. The Core Engine is
 // deliberately plan-blind: it is multi-tenant infrastructure that has never
-// heard of an account, so it is told a *number* (this tenant's monthly request
-// allowance) rather than a tier name. See the usage-flush reply below.
+// heard of an account, so it is told *numbers* (this tenant's monthly request
+// allowance and per-second limit) rather than a tier name. See the usage-flush
+// reply below.
 //
-// Plans differ in one thing: the monthly request allowance, gated at REQUEST
-// time in the core because that is the only thing in the traffic path. Every
+// Plans differ in their request limits alone — how many a month, and how many a
+// second with a burst on top — both gated at REQUEST time in the core because
+// that is the only thing in the traffic path. Add-ons (ADDONS) raise the monthly
+// allowance on any plan; nothing raises the per-second limit, which is what
+// keeps one account's peak from taking the box down for everyone. Every
 // project feature — auth and roles, webhooks, QA mode — is on every plan, so
 // nothing a project's .env or rbac.json can switch on is refused here. The one
 // exception is the AI Co-Pilot, which costs money on every turn and stays on
@@ -277,7 +290,7 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 type PlanId = "free" | "pro" | "pro_ai";
 /**
  * Capabilities a plan can unlock. Only the Co-Pilot: project features are the
- * same on every plan, which differ by request allowance alone.
+ * same on every plan, which differ by request limits alone.
  */
 type Feature = "ai";
 
@@ -285,34 +298,50 @@ interface Plan {
   id: PlanId;
   name: string;
   monthlyRequests: number;
+  /** Sustained requests per second, one bucket shared by every project of the account. */
+  requestsPerSecond: number;
+  /** Requests that may arrive at once before the per-second rate applies. */
+  burst: number;
   features: readonly Feature[];
 }
 
+// Bursts are generous on purpose: one page load fires several calls at once, and
+// a test runner several workers, and neither should meet a 429 for it.
 const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free",
     name: "Free",
     monthlyRequests: 5_000,
+    requestsPerSecond: 5,
+    burst: 20,
     features: [],
   },
   pro: {
     id: "pro",
     name: "Pro QA",
     monthlyRequests: 50_000,
+    requestsPerSecond: 20,
+    burst: 100,
     features: [],
   },
   pro_ai: {
     id: "pro_ai",
     name: "Pro + AI",
     monthlyRequests: 250_000,
+    requestsPerSecond: 50,
+    burst: 150,
     features: ["ai"],
   },
 };
 
 const DEFAULT_PLAN: PlanId = "free";
 
-/** An unknown or NULL plan string reads as Free — never as unlimited. */
-const planOf = (u: { plan: string }): Plan => PLANS[u.plan as PlanId] ?? PLANS[DEFAULT_PLAN];
+/**
+ * An unknown or NULL plan string reads as Free — never as unlimited. Own keys
+ * only: a plain index would read `constructor` as a plan with no limits at all.
+ */
+const planOf = (u: { plan: string }): Plan =>
+  Object.hasOwn(PLANS, u.plan) ? PLANS[u.plan as PlanId] : PLANS[DEFAULT_PLAN];
 
 const hasFeature = (u: { plan: string }, feature: Feature) =>
   planOf(u).features.includes(feature);
@@ -320,6 +349,80 @@ const hasFeature = (u: { plan: string }, feature: Feature) =>
 /** The cheapest plan that includes a feature — so a refusal can name it. */
 const cheapestPlanWith = (feature: Feature): Plan =>
   (Object.values(PLANS).find((p) => p.features.includes(feature)) ?? PLANS.pro_ai);
+
+// ── Add-ons ───────────────────────────────────────────────────────
+//
+// Request packs, held on top of a plan — any plan, Free included — and
+// stackable: `quantity` packs of one kind add `quantity` times its requests.
+// They raise the monthly allowance and nothing else. Monthly volume is cheap
+// for the box (a million requests averages 0.4 a second over a month); what it
+// cannot absorb is a peak, so the per-second limit stays the plan's.
+//
+// Like a plan, an add-on is a row set by hand until there is a payment gateway:
+//
+//   INSERT INTO account_addons (user_id, addon, quantity)
+//   VALUES ((SELECT id FROM users WHERE email = ?), 'requests_100k', 2)
+//   ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity;
+//
+// The prices are the pricing page's (sites/landing/src/pages/pricing.astro);
+// this is the contract. An id missing from ADDONS adds nothing, so retiring a
+// pack is deleting its entry, never granting whatever the row says.
+
+type AddonId = "requests_100k" | "requests_250k" | "requests_1m";
+
+interface Addon {
+  id: AddonId;
+  name: string;
+  monthlyRequests: number;
+}
+
+const ADDONS: Record<AddonId, Addon> = {
+  requests_100k: { id: "requests_100k", name: "+100,000 requests", monthlyRequests: 100_000 },
+  requests_250k: { id: "requests_250k", name: "+250,000 requests", monthlyRequests: 250_000 },
+  requests_1m: { id: "requests_1m", name: "+1,000,000 requests", monthlyRequests: 1_000_000 },
+};
+
+interface HeldAddon {
+  id: AddonId;
+  name: string;
+  quantity: number;
+  /** What this line adds to the month: the pack's requests times `quantity`. */
+  monthlyRequests: number;
+}
+
+/** The add-ons an account holds that are still sold, smallest pack first. */
+function addonsOf(userId: number): HeldAddon[] {
+  const rows = db
+    .query("SELECT addon, quantity FROM account_addons WHERE user_id = ?")
+    .all(userId) as { addon: string; quantity: number }[];
+  return rows
+    .flatMap(({ addon, quantity }) => {
+      if (!Object.hasOwn(ADDONS, addon)) return [];
+      const count = Math.floor(Number(quantity));
+      if (!(count >= 1)) return [];
+      const pack = ADDONS[addon as AddonId];
+      return [{ id: pack.id, name: pack.name, quantity: count, monthlyRequests: pack.monthlyRequests * count }];
+    })
+    .sort((a, b) => ADDONS[a.id].monthlyRequests - ADDONS[b.id].monthlyRequests);
+}
+
+/**
+ * Everything an account may use: its plan's limits, with its add-ons' requests
+ * on top. The one place the two are combined — quotaFor, /auth/me, /auth/account
+ * and the usage view all read it, so the figure a person is shown is the one
+ * their API is held to.
+ */
+function allowanceOf(u: { id: number; plan: string }) {
+  const plan = planOf(u);
+  const addons = addonsOf(u.id);
+  return {
+    plan,
+    addons,
+    monthlyRequests: plan.monthlyRequests + addons.reduce((n, a) => n + a.monthlyRequests, 0),
+    requestsPerSecond: plan.requestsPerSecond,
+    burst: plan.burst,
+  };
+}
 
 // ── Auth ──────────────────────────────────────────────────────────
 
@@ -390,15 +493,18 @@ function authenticate(req: Request): User | null {
 // keep its own copy of the plan table — and so it cannot disagree with the
 // server that actually enforces.
 const publicUser = (u: User) => {
-  const plan = planOf(u);
+  const allowance = allowanceOf(u);
   return {
     id: u.id,
     email: u.email,
     name: u.name,
-    plan: plan.id,
-    planName: plan.name,
-    monthlyRequests: plan.monthlyRequests,
-    features: plan.features,
+    plan: allowance.plan.id,
+    planName: allowance.plan.name,
+    // The plan's allowance with any add-ons on top: what the core throttles on.
+    monthlyRequests: allowance.monthlyRequests,
+    requestsPerSecond: allowance.requestsPerSecond,
+    burst: allowance.burst,
+    features: allowance.plan.features,
     // Whether the account can sign in with a password at all. An account made
     // by Google or GitHub cannot, so the account menu offers "Set a password"
     // (by emailed code) instead of "Change password" (by current password).
@@ -920,9 +1026,13 @@ async function updateAccount(req: Request, user: User): Promise<Response> {
  * projects' traffic included. It is its own route rather than a field of
  * /auth/me because the SPA persists that response, and a stored usage count
  * would be stale from the moment it was written.
+ *
+ * `monthlyRequests` is quotaFor's `limit` for the same reason, add-ons
+ * included, and `planMonthlyRequests` and `addons` are its two parts, so the
+ * page can say where the number comes from.
  */
 function accountSummary(user: User): Response {
-  const plan = planOf(user);
+  const allowance = allowanceOf(user);
   const row = db
     .query(
       `SELECT created_at, date('now', 'start of month', '+1 month') AS resets_on
@@ -932,9 +1042,13 @@ function accountSummary(user: User): Response {
   return json({
     account: {
       email: user.email,
-      plan: plan.id,
-      planName: plan.name,
-      monthlyRequests: plan.monthlyRequests,
+      plan: allowance.plan.id,
+      planName: allowance.plan.name,
+      monthlyRequests: allowance.monthlyRequests,
+      planMonthlyRequests: allowance.plan.monthlyRequests,
+      addons: allowance.addons,
+      requestsPerSecond: allowance.requestsPerSecond,
+      burst: allowance.burst,
       requestsUsed: accountMonthRequests(user.id),
       // UTC calendar months, as the allowance counts them.
       resetsOn: row.resets_on,
@@ -1035,6 +1149,7 @@ async function deleteAccount(req: Request, user: User): Promise<Response> {
     if (projectCount() > 0) return "projects";
     db.query("DELETE FROM sessions WHERE user_id = ?").run(user.id);
     db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
+    db.query("DELETE FROM account_addons WHERE user_id = ?").run(user.id);
     db.query(
       `UPDATE users
        SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL, deleted_at = datetime('now')
@@ -2847,8 +2962,8 @@ async function ingestUsage(req: Request): Promise<Response> {
   if (rows.length > 0) applyUsage(rows);
   // The reply is the entitlement channel. Usage flows one way and the tenant's
   // allowance flows back on the same trip, so the core learns what it may serve
-  // without ever being taught what a plan or a user is — it gets one number per
-  // tenant, refreshed every flush. That also means a plan change takes effect
+  // without ever being taught what a plan or a user is — it gets a few numbers
+  // per tenant and the opaque name of its rate-limit bucket, refreshed every flush. That also means a plan change takes effect
   // within one USAGE_FLUSH_MS rather than needing anything pushed.
   // Platform tenants are simply left out of the reply: the core has no entry
   // for them and its fail-open path serves them, so exemption needs no
@@ -2891,16 +3006,37 @@ async function ingestUsage(req: Request): Promise<Response> {
  * allowance against its own spend rather than nothing: the core still has
  * counters for it, and the honest answer for an unknown tenant is the smallest
  * plan, never unlimited.
+ *
+ * The per-second limit follows the same rule. `rps` and `burst` are the
+ * owner's plan's, and `bucket` names the account, so every project of it draws
+ * from one bucket in the core — a second project never buys a second rate. An
+ * orphan gets the smallest plan's rate in a bucket of its own.
  */
-function quotaFor(tenantId: string): { tenantId: string; limit: number; used: number } {
+function quotaFor(tenantId: string): {
+  tenantId: string;
+  limit: number;
+  used: number;
+  rps: number;
+  burst: number;
+  bucket: string;
+} {
   const owner = db
     .query(
       `SELECT u.id AS id, u.plan AS plan FROM projects p JOIN users u ON u.id = p.user_id
        WHERE p.tenant_id = ?`,
     )
     .get(tenantId) as { id: number; plan: string } | null;
-  if (owner)
-    return { tenantId, limit: planOf(owner).monthlyRequests, used: accountMonthRequests(owner.id) };
+  if (owner) {
+    const allowance = allowanceOf(owner);
+    return {
+      tenantId,
+      limit: allowance.monthlyRequests,
+      used: accountMonthRequests(owner.id),
+      rps: allowance.requestsPerSecond,
+      burst: allowance.burst,
+      bucket: rateBucket(`account:${owner.id}`),
+    };
+  }
 
   const orphan = db
     .query(
@@ -2908,8 +3044,22 @@ function quotaFor(tenantId: string): { tenantId: string; limit: number; used: nu
        WHERE tenant_id = ? AND date >= date('now', 'start of month')`,
     )
     .get(tenantId) as { n: number };
-  return { tenantId, limit: planOf({ plan: DEFAULT_PLAN }).monthlyRequests, used: orphan.n };
+  const smallest = planOf({ plan: DEFAULT_PLAN });
+  return {
+    tenantId,
+    limit: smallest.monthlyRequests,
+    used: orphan.n,
+    rps: smallest.requestsPerSecond,
+    burst: smallest.burst,
+    bucket: rateBucket(`tenant:${tenantId}`),
+  };
 }
+
+/**
+ * A rate-limit bucket's name as the core is told it. Opaque on purpose: the
+ * core needs to know which tenants share a bucket, never whose account it is.
+ */
+const rateBucket = (owner: string) => `rb-${sha256hex(`rate-bucket:${owner}`).slice(0, 32)}`;
 
 /** Per-project usage: daily rows (newest first) plus a current-month total. */
 function projectUsage(user: User, tenantId: string): Response {
@@ -2933,7 +3083,7 @@ function projectUsage(user: User, tenantId: string): Response {
     tenantId,
     month,
     daily,
-    limit: planOf(user).monthlyRequests,
+    limit: allowanceOf(user).monthlyRequests,
     account: { requests: accountMonthRequests(user.id) },
   });
 }

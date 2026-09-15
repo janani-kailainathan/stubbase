@@ -325,7 +325,7 @@ describe("CORS split", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-expose-headers")).toBe(
-      "X-Total-Count, X-Correlation-Id",
+      "X-Total-Count, X-Correlation-Id, Retry-After",
     );
     expect(res.headers.get("x-total-count")).toBe("2");
   });
@@ -2554,6 +2554,216 @@ describe("request quota", () => {
   }, 30_000);
 });
 
+// ── Rate limit ─────────────────────────────────────────────────────
+
+/**
+ * Requests per second, enforced beside the monthly allowance and learnt the
+ * same way: a quote in the usage flush reply, played back here by a stub sink.
+ * The quote names each tenant's bucket, so a test can make tenants share one
+ * exactly as the Dashboard API does for an account's projects — and the core
+ * still never learns why they share it.
+ */
+describe("rate limit", () => {
+  /** Quotes every tenant that has reported a large allowance plus whatever `rate` returns for it. */
+  function rateSink(rate: (tenantId: string) => Record<string, unknown>) {
+    const used = new Map<string, number>();
+    let flushes = 0;
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { rows?: { tenantId: string; requests: number }[] };
+        for (const row of body.rows ?? [])
+          used.set(row.tenantId, (used.get(row.tenantId) ?? 0) + row.requests);
+        flushes += 1;
+        return Response.json({
+          ok: true,
+          quotas: [...used].map(([tenantId, n]) => ({ tenantId, limit: 1_000_000, used: n, ...rate(tenantId) })),
+        });
+      },
+    });
+    return {
+      server,
+      url: `http://127.0.0.1:${server.port}/_internal/usage`,
+      /** Requests the core has reported, by tenant. */
+      used,
+      get flushes() {
+        return flushes;
+      },
+    };
+  }
+
+  type Sink = ReturnType<typeof rateSink>;
+
+  /** A metered core whose only flushes are the ones a test asks for. */
+  const bootMetered = (name: string, sink: Sink) =>
+    boot(name, { USAGE_SINK_URL: sink.url, USAGE_FLUSH_MS: "600000" });
+
+  const flushNow = async (core: Service, tenant: string, sink: Sink) => {
+    const before = sink.flushes;
+    await fetch(`${core.base}/${tenant}/_admin/flush`, { method: "POST", headers: adminAuth });
+    await waitFor(() => sink.flushes > before);
+  };
+
+  /** One request per tenant so each reports, then a flush so each is quoted. */
+  async function quote(core: Service, sink: Sink, tenants: string[]) {
+    for (const t of tenants) await (await fetch(`${core.base}/${t}/posts`)).arrayBuffer();
+    await flushNow(core, tenants[0], sink);
+  }
+
+  const status = async (url: string, init?: RequestInit) => {
+    const res = await fetch(url, init);
+    await res.arrayBuffer();
+    return res.status;
+  };
+
+  test("a burst is served, then 429 with a Retry-After a browser can read", async () => {
+    const sink = rateSink(() => ({ rps: 0.01, burst: 3, bucket: "burst" }));
+    try {
+      const core = await bootMetered("rate-burst", sink);
+      await seed(core, "r", { posts: [{ id: "1" }] });
+      await quote(core, sink, ["r"]);
+
+      for (let i = 0; i < 3; i++) expect(await status(`${core.base}/r/posts`)).toBe(200);
+      const refused = await fetch(`${core.base}/r/posts`);
+      expect(refused.status).toBe(429);
+      expect(await refused.json()).toMatchObject({ error: "rate limit exceeded", limit: 0.01, burst: 3 });
+      // One token per 100 s and none left: the wait is a whole refill.
+      expect(refused.headers.get("retry-after")).toBe("100");
+      expect(refused.headers.get("access-control-allow-origin")).toBe("*");
+      expect(refused.headers.get("access-control-expose-headers")).toContain("Retry-After");
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("the bucket refills at the quoted rate", async () => {
+    const sink = rateSink(() => ({ rps: 2, burst: 2, bucket: "refill" }));
+    try {
+      const core = await bootMetered("rate-refill", sink);
+      await seed(core, "r", { posts: [{ id: "1" }] });
+      await quote(core, sink, ["r"]);
+
+      for (let i = 0; i < 2; i++) expect(await status(`${core.base}/r/posts`)).toBe(200);
+      expect(await status(`${core.base}/r/posts`)).toBe(429);
+      await Bun.sleep(600); // a token comes back every 500 ms
+      expect(await status(`${core.base}/r/posts`)).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("tenants quoted one bucket share it, and another bucket is untouched", async () => {
+    const sink = rateSink((t) => ({ rps: 0.01, burst: 2, bucket: t === "solo" ? "own" : "shared" }));
+    try {
+      const core = await bootMetered("rate-shared", sink);
+      for (const t of ["one", "two", "solo"]) await seed(core, t, { posts: [{ id: "1" }] });
+      await quote(core, sink, ["one", "two", "solo"]);
+
+      expect(await status(`${core.base}/one/posts`)).toBe(200);
+      expect(await status(`${core.base}/two/posts`)).toBe(200);
+      // Two tokens between them, not two each.
+      expect(await status(`${core.base}/one/posts`)).toBe(429);
+      expect(await status(`${core.base}/two/posts`)).toBe(429);
+      expect(await status(`${core.base}/solo/posts`)).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("the whole public plane draws on one bucket before any token is checked, and _admin never does", async () => {
+    const sink = rateSink(() => ({ rps: 0.01, burst: 2, bucket: "plane" }));
+    try {
+      const core = await bootMetered("rate-plane", sink);
+      await seed(core, "p", { posts: [{ id: "1" }], config: { AUTH_ENABLED: "true" } });
+      await quote(core, sink, ["p"]);
+
+      expect(await status(`${core.base}/p/openapi.json`)).toBe(200);
+      // Past the limit and then refused by auth: a request that gets through spends its token.
+      expect(await status(`${core.base}/p/posts`)).toBe(401);
+
+      // Both tokens are gone, whichever surface spent them.
+      const post = (path: string, body: unknown) =>
+        status(`${core.base}/p/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      expect(await status(`${core.base}/p/openapi.json`)).toBe(429);
+      expect(await post("auth/signup", { email: "a@b.co", password: "password123" })).toBe(429);
+      expect(await post("_notify/email", {})).toBe(429);
+      // 429 rather than 401: the limit answers before the missing token is noticed.
+      expect(await status(`${core.base}/p/posts`)).toBe(429);
+
+      for (let i = 0; i < 5; i++) expect(await status(`${core.base}/p/_admin/files/posts`, { headers: adminAuth })).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a rate limit's 429s are logged but not counted", async () => {
+    const sink = rateSink(() => ({ rps: 0.01, burst: 2, bucket: "refusals" }));
+    try {
+      const core = await bootMetered("rate-refusals", sink);
+      await seed(core, "busy", { posts: [{ id: "1" }] });
+      await quote(core, sink, ["busy"]);
+
+      for (let i = 0; i < 2; i++) expect(await status(`${core.base}/busy/posts`)).toBe(200);
+      for (let i = 0; i < 4; i++) expect(await status(`${core.base}/busy/posts`)).toBe(429);
+
+      // Still in the owner's log — read first, since flushing through this tenant evicts its ring.
+      const log = await fetch(`${core.base}/busy/_admin/logs`, { headers: adminAuth }).then((r) => r.json());
+      expect(log.entries.filter((e: { status: number }) => e.status === 429)).toHaveLength(4);
+
+      // One before the quote and two after it; the four refusals served nothing.
+      await flushNow(core, "busy", sink);
+      expect(sink.used.get("busy")).toBe(3);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a quote with no rate, or a malformed one, is not rate limited", async () => {
+    // Fail-open, as for the allowance: a missing or broken rate must never read as zero.
+    const sink = rateSink((t) =>
+      t === "none"
+        ? {}
+        : t === "broken"
+          ? { rps: "fast", burst: -1, bucket: "bucket" }
+          : { rps: 0.01, burst: 1, bucket: "bad name!" },
+    );
+    try {
+      const core = await bootMetered("rate-open", sink);
+      const tenants = ["none", "broken", "badbucket"];
+      for (const t of tenants) await seed(core, t, { posts: [{ id: "1" }] });
+      await quote(core, sink, tenants);
+
+      for (let i = 0; i < 25; i++)
+        for (const t of tenants) expect(await status(`${core.base}/${t}/posts`)).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+
+  test("a changed rate applies from the next flush", async () => {
+    let rate = { rps: 0.01, burst: 1 };
+    const sink = rateSink(() => ({ ...rate, bucket: "upgrade" }));
+    try {
+      const core = await bootMetered("rate-change", sink);
+      await seed(core, "u", { posts: [{ id: "1" }] });
+      await quote(core, sink, ["u"]);
+      expect(await status(`${core.base}/u/posts`)).toBe(200);
+      expect(await status(`${core.base}/u/posts`)).toBe(429);
+
+      rate = { rps: 1_000, burst: 5 }; // an upgrade
+      await flushNow(core, "u", sink);
+      await Bun.sleep(20);
+      for (let i = 0; i < 5; i++) expect(await status(`${core.base}/u/posts`)).toBe(200);
+    } finally {
+      sink.server.stop(true);
+    }
+  }, 30_000);
+});
+
 // ── Live request log + SSE ─────────────────────────────────────────
 
 /**
@@ -2632,6 +2842,7 @@ describe("live request log", () => {
     expect(stages).toEqual([
       "statusGuard",
       "quotaGuard",
+      "rateGuard",
       "authGuard",
       "rbacGuard",
       "chaosGuard",
@@ -2660,6 +2871,7 @@ describe("live request log", () => {
     expect(entry.lifecycle.map((s: any) => s.stage)).toEqual([
       "statusGuard",
       "quotaGuard",
+      "rateGuard",
       "authGuard",
     ]);
     stream.close();

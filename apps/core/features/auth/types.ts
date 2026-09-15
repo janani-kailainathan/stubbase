@@ -137,7 +137,7 @@ export interface AuthHost<T extends AuthTenant> {
   /** ADMIN_SECRET: the root every per-tenant key is derived from. Never stored. */
   secret: string;
   getTenant(tenantId: string): Promise<T | null>;
-  /** A stopped project's 503 or a spent allowance's 429, else null. */
+  /** A stopped project's 503, a spent allowance's 429 or an empty rate-limit bucket's 429, else null. */
   refused(tenantId: string, tenant: T): Response | null;
   /** Write-through for `system/users.json`. */
   saveUsers(tenantId: string, tenant: T): Promise<unknown>;

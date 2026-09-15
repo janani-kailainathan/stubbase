@@ -27,7 +27,10 @@ const tiers = [
         label: 'Compute',
         value: 'Ephemeral instances (Endpoints sleep after 5 mins of inactivity).',
       },
-      { label: 'Limits', value: '5,000 requests/month. Public APIs only.' },
+      {
+        label: 'Limits',
+        value: '5,000 requests/month. 5 requests/second, bursts of 20. Public APIs only.',
+      },
       {
         label: 'Features',
         value: 'Basic CRUD generation, JSON upload, ?_expand= relational routing.',
@@ -44,7 +47,7 @@ const tiers = [
     featured: true,
     specs: [
       { label: 'Compute', value: 'Always-on, zero-latency endpoints.' },
-      { label: 'Limits', value: '50,000 requests/month.' },
+      { label: 'Limits', value: '50,000 requests/month. 20 requests/second, bursts of 100.' },
       {
         label: 'Features',
         value:
@@ -62,7 +65,7 @@ const tiers = [
     featured: false,
     specs: [
       { label: 'Compute', value: 'High-availability, priority execution.' },
-      { label: 'Limits', value: '250,000 requests/month.' },
+      { label: 'Limits', value: '250,000 requests/month. 50 requests/second, bursts of 150.' },
       {
         label: 'Features',
         value:
@@ -70,6 +73,19 @@ const tiers = [
       },
     ],
   },
+];
+
+/**
+ * Request packs, sold on top of any plan — Free included — and stackable. Each
+ * raises the monthly allowance only; the per-second limit stays the plan's.
+ * `comingSoon` for the paid tiers' reason: priced in full, nothing to buy until
+ * billing opens. The pack sizes are the contract in ADDONS
+ * (apps/dashboard-api/server-app.ts); keep the two in step.
+ */
+const addons = [
+  { name: '+100,000 requests', price: '$5', perThousand: '$0.05', comingSoon: true },
+  { name: '+250,000 requests', price: '$10', perThousand: '$0.04', comingSoon: true },
+  { name: '+1,000,000 requests', price: '$19', perThousand: '$0.019', comingSoon: true },
 ];
 
 const ctaClass = {
@@ -101,19 +117,32 @@ const offerSchema = {
   name: 'Stubbase',
   description:
     'Flat, predictable limits. Start mocking APIs for free, upgrade for continuous CI/CD reliability and AI features.',
-  offers: tiers.map((tier) => ({
-    '@type': 'Offer',
-    name: tier.name,
-    description: tier.tagline,
-    price: tier.price.replace('$', ''),
-    priceCurrency: 'USD',
-    // A tier that cannot be bought yet is a PreOrder, not InStock. The prices
-    // are real and worth publishing; claiming they are purchasable is not.
-    availability: tier.comingSoon
-      ? 'https://schema.org/PreOrder'
-      : 'https://schema.org/InStock',
-    url: new URL('/pricing', Astro.site).toString(),
-  })),
+  offers: [
+    ...tiers.map((tier) => ({
+      '@type': 'Offer',
+      name: tier.name,
+      description: tier.tagline,
+      price: tier.price.replace('$', ''),
+      priceCurrency: 'USD',
+      // A tier that cannot be bought yet is a PreOrder, not InStock. The prices
+      // are real and worth publishing; claiming they are purchasable is not.
+      availability: tier.comingSoon
+        ? 'https://schema.org/PreOrder'
+        : 'https://schema.org/InStock',
+      url: new URL('/pricing', Astro.site).toString(),
+    })),
+    ...addons.map((addon) => ({
+      '@type': 'Offer',
+      name: `Request add-on: ${addon.name}`,
+      description: 'Monthly requests on top of any plan',
+      price: addon.price.replace('$', ''),
+      priceCurrency: 'USD',
+      availability: addon.comingSoon
+        ? 'https://schema.org/PreOrder'
+        : 'https://schema.org/InStock',
+      url: new URL('/pricing#add-ons', Astro.site).toString(),
+    })),
+  ],
 };
 ---
 
@@ -283,6 +312,54 @@ const offerSchema = {
                   </div>
                 ))}
               </dl>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section id="add-ons">
+    <div class="mx-auto max-w-6xl px-6 pb-20">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Any Plan</h2>
+        <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
+          Need more requests than your plan includes? Add a request pack to any plan, Free
+          included, and stack as many as you need. Packs raise your monthly requests; your
+          per-second limit stays your plan's.
+        </p>
+      </div>
+
+      <div class="grid gap-6 md:grid-cols-3">
+        {
+          addons.map((addon) => (
+            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
+              <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
+                {addon.name}
+                {addon.comingSoon && (
+                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                    Not active yet
+                  </span>
+                )}
+              </h3>
+              <p class="mb-6 text-sm font-medium text-muted-foreground">
+                {addon.perThousand} per 1,000 requests
+              </p>
+              <p class="mb-6 text-4xl font-extrabold text-foreground">
+                <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
+                  {addon.price}
+                </span>
+                <span class="text-base font-medium text-subtle">/mo</span>
+              </p>
+              {/* Inert for the tiers' reason: there is nothing to buy yet. */}
+              {addon.comingSoon && (
+                <p
+                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  aria-disabled="true"
+                >
+                  Not available yet
+                </p>
+              )}
             </article>
           ))
         }

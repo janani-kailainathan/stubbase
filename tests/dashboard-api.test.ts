@@ -38,6 +38,7 @@ import {
   as,
   jsonHeaders,
   readDbOf,
+  setAddonOn,
   setPlanOn,
   sha256hex,
   signupOn,
@@ -53,6 +54,7 @@ const running: Service[] = [];
 // where it needs one, which is why the shared helpers all take a Service.
 const readDb = <T,>(fn: (db: Database) => T): T => readDbOf(app, fn);
 const setPlan = (email: string, plan: string) => setPlanOn(app, email, plan);
+const setAddon = (email: string, addon: string, quantity = 1) => setAddonOn(app, email, addon, quantity);
 const signup = (on: Service = app) => signupOn(on);
 
 /** Signs up an account that is entitled to everything. */
@@ -1408,18 +1410,24 @@ describe("plans and entitlements", () => {
     expect(user.plan).toBe("free");
     expect(user.planName).toBe("Free");
     expect(user.monthlyRequests).toBe(5_000);
+    expect(user.requestsPerSecond).toBe(5);
+    expect(user.burst).toBe(20);
     // Resolved server-side so the browser never keeps its own plan table.
     expect(user.features).toEqual([]);
   }, 30_000);
 
   test("an unknown plan string reads as Free, never as unlimited", async () => {
     const owner = await signup();
-    setPlan(owner.email, "enterprise-gold"); // a typo, or a tier that went away
-    const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) =>
-      r.json(),
-    );
-    expect(user.monthlyRequests).toBe(5_000);
-    expect(user.features).toEqual([]);
+    // A typo, a tier that went away, and names every JavaScript object answers to.
+    for (const plan of ["enterprise-gold", "constructor", "__proto__"]) {
+      setPlan(owner.email, plan);
+      const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) =>
+        r.json(),
+      );
+      expect(user.monthlyRequests).toBe(5_000);
+      expect(user.requestsPerSecond).toBe(5);
+      expect(user.features).toEqual([]);
+    }
   }, 30_000);
 
   test("every plan can switch on every project feature, and deploy it", async () => {
@@ -1538,8 +1546,10 @@ describe("plans and entitlements", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    // One number per tenant — the core is never told what a plan is.
-    expect(body.quotas).toEqual([{ tenantId, limit: 50_000, used: 12 }]);
+    // Numbers per tenant — the core is never told what a plan is.
+    expect(body.quotas).toEqual([
+      { tenantId, limit: 50_000, used: 12, rps: 20, burst: 100, bucket: expect.any(String) },
+    ]);
   }, 30_000);
 
   /** Report usage the way the core does; returns the quotas it is answered with, by tenant. */
@@ -1552,7 +1562,7 @@ describe("plans and entitlements", () => {
     });
     expect(res.status).toBe(200);
     const { quotas } = (await res.json()) as {
-      quotas: { tenantId: string; limit: number; used: number }[];
+      quotas: { tenantId: string; limit: number; used: number; rps: number; burst: number; bucket: string }[];
     };
     return new Map(quotas.map((q) => [q.tenantId, q]));
   }
@@ -1608,8 +1618,8 @@ describe("plans and entitlements", () => {
       { tenantId: b.tenantId, requests: 12 },
     ]);
     // Not 30 and 12 against 50,000 each: 42 against the one allowance.
-    expect(quotas.get(a.tenantId)).toEqual({ tenantId: a.tenantId, limit: 50_000, used: 42 });
-    expect(quotas.get(b.tenantId)).toEqual({ tenantId: b.tenantId, limit: 50_000, used: 42 });
+    expect(quotas.get(a.tenantId)).toMatchObject({ tenantId: a.tenantId, limit: 50_000, used: 42 });
+    expect(quotas.get(b.tenantId)).toMatchObject({ tenantId: b.tenantId, limit: 50_000, used: 42 });
   }, 30_000);
 
   test("one project's report quotes the account's idle projects too, so they stop together", async () => {
@@ -1619,7 +1629,7 @@ describe("plans and entitlements", () => {
 
     const quotas = await reportUsage([{ tenantId: busy.tenantId, requests: 5_000 }]);
     // The idle project sent nothing this minute, but the pool it draws on is spent.
-    expect(quotas.get(idle.tenantId)).toEqual({ tenantId: idle.tenantId, limit: 5_000, used: 5_000 });
+    expect(quotas.get(idle.tenantId)).toMatchObject({ tenantId: idle.tenantId, limit: 5_000, used: 5_000 });
   }, 30_000);
 
   test("another account's traffic never joins the pool", async () => {
@@ -1745,8 +1755,8 @@ describe("plans and entitlements", () => {
 
     const quotas = await reportUsage([{ tenantId: "legacy-a", requests: 1 }], upgraded);
     // 7 + 5 from before the upgrade, 1 after; the platform tenant's 1,000 stays out.
-    expect(quotas.get("legacy-a")).toEqual({ tenantId: "legacy-a", limit: 50_000, used: 13 });
-    expect(quotas.get("legacy-b")).toEqual({ tenantId: "legacy-b", limit: 50_000, used: 13 });
+    expect(quotas.get("legacy-a")).toMatchObject({ tenantId: "legacy-a", limit: 50_000, used: 13 });
+    expect(quotas.get("legacy-b")).toMatchObject({ tenantId: "legacy-b", limit: 50_000, used: 13 });
     expect(quotas.has("public")).toBe(false);
   }, 30_000);
 
@@ -1758,7 +1768,14 @@ describe("plans and entitlements", () => {
       body: JSON.stringify({ rows: [{ tenantId: "orphaned", date, requests: 4, bytes: 40 }] }),
     });
     expect((await res.json()).quotas).toEqual([
-      { tenantId: "orphaned", limit: 5_000, used: 4 },
+      {
+        tenantId: "orphaned",
+        limit: 5_000,
+        used: 4,
+        rps: 5,
+        burst: 20,
+        bucket: expect.stringMatching(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/),
+      },
     ]);
   }, 30_000);
 
@@ -1771,6 +1788,95 @@ describe("plans and entitlements", () => {
       headers: as(owner.token),
     }).then((r) => r.json());
     expect(usage.limit).toBe(250_000);
+  }, 30_000);
+
+  test("each plan quotes its per-second limit, in one bucket per account", async () => {
+    const owner = await signup();
+    const stranger = await signup();
+    setPlan(owner.email, "pro_ai");
+    const a = await createProject(owner.token, "RateA", { posts: [] });
+    const b = await createProject(owner.token, "RateB", { posts: [] });
+    const other = await createProject(stranger.token, "RateOther", { posts: [] });
+
+    const quotas = await reportUsage([
+      { tenantId: a.tenantId, requests: 1 },
+      { tenantId: other.tenantId, requests: 1 },
+    ]);
+    expect(quotas.get(a.tenantId)).toMatchObject({ rps: 50, burst: 150 });
+    expect(quotas.get(other.tenantId)).toMatchObject({ rps: 5, burst: 20 });
+    // A second project draws on the first one's bucket rather than bringing a rate of its own…
+    expect(quotas.get(b.tenantId)!.bucket).toBe(quotas.get(a.tenantId)!.bucket);
+    // …and another account's projects never do.
+    expect(quotas.get(other.tenantId)!.bucket).not.toBe(quotas.get(a.tenantId)!.bucket);
+    // A name the core will accept.
+    for (const { bucket } of quotas.values()) expect(bucket).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/);
+
+    const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(user).toMatchObject({ requestsPerSecond: 50, burst: 150 });
+  }, 30_000);
+
+  test("add-ons raise the monthly allowance on any plan, stack, and leave the rate alone", async () => {
+    const owner = await signup(); // Free: 5,000
+    const { tenantId } = await createProject(owner.token, "Packed", { posts: [] });
+    setAddon(owner.email, "requests_100k", 2);
+    setAddon(owner.email, "requests_1m");
+    const total = 5_000 + 2 * 100_000 + 1_000_000;
+
+    // The core is held to the sum…
+    const quotas = await reportUsage([{ tenantId, requests: 3 }]);
+    expect(quotas.get(tenantId)).toMatchObject({ limit: total, used: 3, rps: 5, burst: 20 });
+
+    // …and everywhere the allowance is shown, it is the same number.
+    const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(user).toMatchObject({ plan: "free", monthlyRequests: total, requestsPerSecond: 5 });
+    const usage = await fetch(`${app.base}/projects/${tenantId}/usage`, { headers: as(owner.token) }).then((r) =>
+      r.json(),
+    );
+    expect(usage.limit).toBe(total);
+    const { account } = await fetch(`${app.base}/auth/account`, { headers: as(owner.token) }).then((r) =>
+      r.json(),
+    );
+    expect(account).toMatchObject({
+      monthlyRequests: total,
+      planMonthlyRequests: 5_000,
+      requestsPerSecond: 5,
+      burst: 20,
+    });
+    expect(account.addons).toEqual([
+      { id: "requests_100k", name: "+100,000 requests", quantity: 2, monthlyRequests: 200_000 },
+      { id: "requests_1m", name: "+1,000,000 requests", quantity: 1, monthlyRequests: 1_000_000 },
+    ]);
+  }, 30_000);
+
+  test("an add-on that is not sold, or held fewer than once, adds nothing", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "NotPacked", { posts: [] });
+    setAddon(owner.email, "requests_unlimited", 5); // retired, mistyped, or never real
+    setAddon(owner.email, "constructor"); // a name every JavaScript object answers to
+    setAddon(owner.email, "requests_250k", 0);
+    setAddon(owner.email, "requests_1m", -3);
+
+    const quotas = await reportUsage([{ tenantId, requests: 1 }]);
+    expect(quotas.get(tenantId)?.limit).toBe(5_000);
+    const { account } = await fetch(`${app.base}/auth/account`, { headers: as(owner.token) }).then((r) =>
+      r.json(),
+    );
+    expect(account).toMatchObject({ monthlyRequests: 5_000, addons: [] });
+  }, 30_000);
+
+  test("deleting an account gives up its add-ons", async () => {
+    const owner = await signup();
+    setAddon(owner.email, "requests_250k");
+    const res = await fetch(`${app.base}/auth/delete-account`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ password: PASSWORD }),
+    });
+    expect(res.status).toBe(200);
+    const held = readDb((db) =>
+      db.query("SELECT COUNT(*) AS n FROM account_addons WHERE user_id = ?").get(owner.id),
+    );
+    expect(held).toEqual({ n: 0 });
   }, 30_000);
 });
 

@@ -38,7 +38,7 @@
  * Per-tenant behavior is configured by an optional system/config.json (flat
  * object of env-style keys, compiled from the dashboard's simulated .env
  * editor). CRUD requests flow through a middleware PIPELINE:
- * statusGuard → quotaGuard → authGuard → rbacGuard → chaosGuard →
+ * statusGuard → quotaGuard → rateGuard → authGuard → rbacGuard → chaosGuard →
  * validationGuard → beforeWebhookGuard → coreOperation → afterWebhookGuard.
  *
  * Features live in ./features/<name>/ and never import this file — it starts
@@ -357,8 +357,59 @@ function meter(tenantId: string, res: Response): Response {
 interface QuotaState {
   limit: number;
   used: number; // month-to-date, as last reconciled plus local increments
+  /** The per-second limit, when the reply quoted one; see "Rate limit". */
+  rate?: RateQuote;
 }
 const quotas = new Map<string, QuotaState>();
+
+// ── Rate limit ────────────────────────────────────────────────────
+// Requests per second, as a token bucket: `burst` requests may arrive at once,
+// and the bucket refills at `rps`. The allowance above bounds a month; this
+// bounds a moment, which is what the box actually runs out of — writes that
+// arrive faster than a resource can be saved pile whole-file snapshots onto its
+// write chain until the process is killed.
+//
+// It rides the same flush reply and stays just as blind: the reply names a
+// `bucket`, and tenants quoted the same name draw from one bucket. The
+// Dashboard API names one per account, so more projects never buy more requests
+// per second — the monthly pool's rule, applied to a second.
+//
+// Nothing is reconciled, unlike the allowance: this one process sees every
+// request, so the count is exact. Fail-open the same way — a tenant with no
+// quote, or a quote without a valid rate, is not rate limited.
+
+interface RateQuote {
+  rps: number;
+  burst: number;
+  bucket: string;
+}
+
+interface Bucket {
+  tokens: number;
+  at: number; // performance.now() when `tokens` was last brought up to date
+  rps: number;
+  burst: number;
+}
+const buckets = new Map<string, Bucket>();
+
+/**
+ * A flush reply's rate, or undefined. A malformed one reads as absent rather
+ * than as zero, which would refuse every request the project gets.
+ */
+function parseRate(q: { rps?: unknown; burst?: unknown; bucket?: unknown }): RateQuote | undefined {
+  const rps = Number(q.rps);
+  const burst = Number(q.burst);
+  if (!Number.isFinite(rps) || rps <= 0 || !Number.isFinite(burst) || burst < 1) return undefined;
+  if (typeof q.bucket !== "string" || !NAME_RE.test(q.bucket)) return undefined;
+  return { rps, burst, bucket: q.bucket };
+}
+
+/** A bucket that has refilled is the same as no bucket, so it is dropped rather than kept for ever. */
+function pruneBuckets() {
+  const now = performance.now();
+  for (const [name, b] of buckets)
+    if (b.tokens + ((now - b.at) / 1000) * b.rps >= b.burst) buckets.delete(name);
+}
 
 /** True once a tenant has spent its monthly allowance. Unknown tenants pass. */
 const overQuota = (tenantId: string) => {
@@ -375,6 +426,7 @@ function countAgainstQuota(tenantId: string) {
 let flushInFlight: Promise<void> | null = null;
 
 async function doFlushUsage(): Promise<void> {
+  pruneBuckets();
   if (usage.size === 0) return;
   const snapshot = [...usage.entries()];
   usage.clear(); // new requests accumulate into a fresh map while we ship
@@ -395,7 +447,14 @@ async function doFlushUsage(): Promise<void> {
     // ignored rather than fatal: a bad reply must not lose the usage we just
     // shipped, and an absent quota simply serves (see the fail-open note).
     const reply = (await res.json().catch(() => null)) as {
-      quotas?: { tenantId?: unknown; limit?: unknown; used?: unknown }[];
+      quotas?: {
+        tenantId?: unknown;
+        limit?: unknown;
+        used?: unknown;
+        rps?: unknown;
+        burst?: unknown;
+        bucket?: unknown;
+      }[];
     } | null;
     for (const q of reply?.quotas ?? []) {
       const id = q?.tenantId;
@@ -403,7 +462,7 @@ async function doFlushUsage(): Promise<void> {
       const used = Number(q?.used);
       if (typeof id !== "string" || !NAME_RE.test(id)) continue;
       if (!Number.isFinite(limit) || !Number.isFinite(used) || limit < 0 || used < 0) continue;
-      quotas.set(id, { limit, used });
+      quotas.set(id, { limit, used, rate: parseRate(q) });
     }
   } catch (e) {
     // Sink unreachable: fold the counts back in so a transient outage
@@ -737,7 +796,7 @@ function persistSystem(state: TenantState, tenantId: string, name: SystemFileNam
 const auth = createAuth<TenantState>({
   secret: ADMIN_SECRET!,
   getTenant,
-  refused: (tenantId, state) => statusBlocked(state) ?? quotaBlocked(tenantId),
+  refused: (tenantId, state) => statusBlocked(state) ?? quotaBlocked(tenantId) ?? rateBlocked(tenantId),
   saveUsers: (tenantId, state) => persistSystem(state, tenantId, "users"),
   saveSignups: (tenantId, state) => persistSystem(state, tenantId, "signups"),
   saveResets: (tenantId, state) => persistSystem(state, tenantId, "reset-password"),
@@ -1147,7 +1206,7 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
   if (req.method !== "GET") return err(405, "method not allowed");
   const state = await getTenant(tenantId);
   if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
+  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId) ?? rateBlocked(tenantId);
   if (blocked) return blocked;
   const cfg = state.config;
   const secured = (resource: string, method: string) =>
@@ -1265,7 +1324,7 @@ async function handleNotify(req: Request, tenantId: string, segments: string[]):
     return err(404, "unknown notify route");
   const state = await getTenant(tenantId);
   if (!state) return err(404, "tenant not found");
-  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId);
+  const blocked = statusBlocked(state) ?? quotaBlocked(tenantId) ?? rateBlocked(tenantId);
   if (blocked) return blocked;
   const cfg = state.config;
   if (!cfg.auth.enabled) return err(404, "notifications require AUTH_ENABLED");
@@ -2081,6 +2140,40 @@ function quotaBlocked(tenantId: string): Response | null {
 
 const quotaGuard: Middleware = (ctx) => quotaBlocked(ctx.tenantId) ?? undefined;
 
+// 429 once a tenant's bucket is empty, with Retry-After saying when the next
+// request would be served. Same reach as quotaBlocked, and after it on every
+// surface: a spent month is the more useful answer, and a request the quota
+// refuses should not also spend a token. Before authGuard for the quota's
+// reason — a flood should stop costing work before signatures are checked.
+// A request that passes takes its token whatever happens to it next, so a 401
+// or a 404 still counts; only the platform's own refusals are free.
+function rateBlocked(tenantId: string): Response | null {
+  const rate = quotas.get(tenantId)?.rate;
+  if (!rate) return null;
+  const now = performance.now();
+  let b = buckets.get(rate.bucket);
+  if (!b) {
+    b = { tokens: rate.burst, at: now, rps: rate.rps, burst: rate.burst };
+    buckets.set(rate.bucket, b);
+  }
+  // A changed plan arrives with the next flush, and the bucket takes it here.
+  b.rps = rate.rps;
+  b.burst = rate.burst;
+  b.tokens = Math.min(b.burst, b.tokens + ((now - b.at) / 1000) * b.rps);
+  b.at = now;
+  if (b.tokens >= 1) {
+    b.tokens -= 1;
+    return null;
+  }
+  const retryAfter = Math.max(1, Math.ceil((1 - b.tokens) / b.rps));
+  const res = json({ error: "rate limit exceeded", limit: b.rps, burst: b.burst, retryAfter }, 429);
+  res.headers.set("retry-after", String(retryAfter));
+  refusals.add(res); // logged, not metered — see `refusals`
+  return res;
+}
+
+const rateGuard: Middleware = (ctx) => rateBlocked(ctx.tenantId) ?? undefined;
+
 const authGuard: Middleware = (ctx) => {
   const cfg = ctx.state.config.auth;
   if (!cfg.enabled) return;
@@ -2410,6 +2503,7 @@ const coreOperation: Middleware = async (ctx) => {
 const PIPELINE: Middleware[] = [
   statusGuard,
   quotaGuard,
+  rateGuard,
   authGuard,
   rbacGuard,
   chaosGuard,
@@ -2468,8 +2562,8 @@ async function handleCrud(
 
 function cors(res: Response): Response {
   res.headers.set("access-control-allow-origin", "*");
-  // pagination total and the log correlation id must be readable cross-origin
-  res.headers.set("access-control-expose-headers", "X-Total-Count, X-Correlation-Id");
+  // pagination total, the log correlation id and a rate limit's wait must be readable cross-origin
+  res.headers.set("access-control-expose-headers", "X-Total-Count, X-Correlation-Id, Retry-After");
   return res;
 }
 

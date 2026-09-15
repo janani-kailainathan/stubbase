@@ -94,6 +94,11 @@ export const RELEASES: Release[] = [
         kind: 'added',
         text: 'Duplicate a project from the project menu: its resources as they are in the editor, and its .env and roles if you choose. The copy starts stopped, with none of the original’s accounts or developer keys.',
       },
+      {
+        kind: 'added',
+        text: 'A per-second rate limit on every plan, with bursts for page loads and parallel tests, and request add-ons that raise any plan’s monthly allowance. A request over the limit gets a 429 with Retry-After and is never counted toward your month.',
+        href: '/pricing',
+      },
     ],
   },
 ];

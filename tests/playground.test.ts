@@ -494,6 +494,48 @@ describe("the usage panel's instant count", () => {
     }
   }, 30_000);
 
+  test("a rate limit's 429 from a real core is not counted", async () => {
+    let flushes = 0;
+    const sink = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { rows?: { tenantId: string }[] };
+        flushes += 1;
+        return Response.json({
+          ok: true,
+          quotas: (body.rows ?? []).map((r) => ({
+            tenantId: r.tenantId,
+            limit: 1_000_000,
+            used: 1,
+            rps: 0.01,
+            burst: 1,
+            bucket: "playground",
+          })),
+        });
+      },
+    });
+    let metered: Service | undefined;
+    try {
+      metered = await startCore(ROOT, "core-rate", {
+        USAGE_SINK_URL: `http://127.0.0.1:${sink.port}/_internal/usage`,
+        USAGE_FLUSH_MS: "600000",
+      });
+      await seedTenant(metered, "hurried", { posts: [{ id: "p1" }] });
+      await fetch(`${metered.base}/hurried/posts`);
+      await fetch(`${metered.base}/hurried/_admin/flush`, { method: "POST", headers: adminAuth });
+      await waitFor(() => flushes > 0);
+
+      expect((await fetch(`${metered.base}/hurried/posts`)).status).toBe(200);
+      const res = await fetch(`${metered.base}/hurried/posts`);
+      const refused = { status: res.status, body: await res.text() };
+      expect(refused.status).toBe(429);
+      expect(countsAsUsage(refused)).toBe(false);
+    } finally {
+      sink.stop(true);
+      if (metered) await stopServices([metered]);
+    }
+  }, 30_000);
+
   const NOW = Date.parse("2026-09-12T10:00:00Z");
   const usage = (over: Partial<UsageResponse> = {}): UsageResponse => ({
     tenantId: "t",

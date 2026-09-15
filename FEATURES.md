@@ -667,14 +667,21 @@ other device is signed out.
 
 The first card in **Settings** shows what your account is: the email address
 you sign in with, your plan, when you joined, how many of your monthly requests
-you have used and when that count starts again, and how many projects you have.
-It is also where you switch the dashboard between light and dark — the choice
-carries over to the Stubbase website.
+you have used and when that count starts again, how many projects you have, your
+rate limit and any add-ons. It is also where you switch the dashboard between
+light and dark — the choice carries over to the Stubbase website.
 
 - Requests are counted across all your projects together — projects you have
   since deleted included — because the allowance is one pool for the account.
 - The count starts again on the first of each month (UTC).
 - The figure catches up with new traffic about once a minute.
+- Your rate limit is how many requests per second all your projects share, plus
+  a burst of more at once. A request over it gets `429 Too Many Requests` with a
+  `Retry-After` header saying how many seconds to wait, and it does not count
+  toward your monthly requests.
+- Add-ons are request packs on top of your plan. Any plan can have them, and you
+  can hold more than one. They raise your monthly requests; your rate limit stays
+  your plan's. They are not on sale yet.
 
 ### 2.5 Delete your account
 

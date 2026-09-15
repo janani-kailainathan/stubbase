@@ -30,7 +30,7 @@ POST   /auth/login                         { email, password } → { token, user
 POST   /auth/logout                        (auth) revoke session
 GET    /auth/me                            (auth)
 PATCH  /auth/me                            (auth) { name } → { user }; an empty name clears it
-GET    /auth/account                       (auth) → { account: { email, plan, planName, monthlyRequests, requestsUsed, resetsOn, memberSince } }
+GET    /auth/account                       (auth) → { account: { email, plan, planName, monthlyRequests, planMonthlyRequests, addons, requestsPerSecond, burst, requestsUsed, resetsOn, memberSince } }
 GET    /auth/sessions                      (auth) → { sessions: [{ id, userAgent, createdAt, lastUsedAt, expiresAt, current }] }
 DELETE /auth/sessions/<id>                 (auth) sign one device out
 DELETE /auth/sessions/others               (auth) sign out every device but this one → { ended }

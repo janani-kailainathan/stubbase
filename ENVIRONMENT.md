@@ -320,15 +320,37 @@ Locally, `scripts/seed-dev-users.ts` (run automatically by `scripts/dev.ts`)
 creates one account per plan — `free@`, `pro@` and `ai@stubbase.dev`, password
 `devpassword123` — so all three sides can be exercised without touching SQL.
 
-| Plan id | Name | Requests/month | Unlocks |
-|---|---|---|---|
-| `free` | Free | 5,000 | — |
-| `pro` | Pro QA | 50,000 | — |
-| `pro_ai` | Pro + AI | 250,000 | `ai` |
+| Plan id | Name | Requests/month | Requests/second | Burst | Unlocks |
+|---|---|---|---|---|---|
+| `free` | Free | 5,000 | 5 | 20 | — |
+| `pro` | Pro QA | 50,000 | 20 | 100 | — |
+| `pro_ai` | Pro + AI | 250,000 | 50 | 150 | `ai` |
 
 An unknown or absent plan string reads as **Free**, never as unlimited.
 
-**Plans differ by request allowance.** Every project feature — auth and roles,
+### Add-ons
+
+Request packs an account holds on top of its plan — any plan, Free included —
+defined by `ADDONS` in the same file. Each adds its requests to the monthly
+allowance, `quantity` times over; none changes the per-second limit. Like a plan,
+an add-on is set by hand until there is a payment gateway:
+
+```sql
+INSERT INTO account_addons (user_id, addon, quantity)
+VALUES ((SELECT id FROM users WHERE email = 'someone@example.com'), 'requests_100k', 2)
+ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity;
+```
+
+| Add-on id | Adds per month |
+|---|---|
+| `requests_100k` | 100,000 |
+| `requests_250k` | 250,000 |
+| `requests_1m` | 1,000,000 |
+
+An id missing from `ADDONS`, or a quantity below 1, adds nothing. Deleting the
+account removes its add-ons.
+
+**Plans differ by request limits.** Every project feature — auth and roles,
 webhooks, QA mode — is on every plan, so nothing a project's `.env` or
 `rbac.json` switches on is refused. The one gated feature is the AI Co-Pilot
 (`ai`): `POST /projects/<id>/ai/chat` answers `402` below Pro + AI, because every
@@ -342,24 +364,35 @@ the flush reply, so the core's fail-open path serves them with no special case.
 
 **The request allowance is enforced at request time, in the core.** The core
 never learns what a plan is: the Dashboard API answers each usage flush with
-one number per tenant (`quotas: [{ tenantId, limit, used }]`), and the core
+a quote per tenant (`quotas: [{ tenantId, limit, used, rps, burst, bucket }]`), and the core
 serves until `used >= limit`, then answers `429` on the whole public plane —
 CRUD, auth, notify and openapi together, with `_admin` still reachable so the
 owner can see why. Between flushes the count advances locally, so overshoot is
 bounded by `USAGE_FLUSH_MS` per project.
 
 **The allowance is one pool per account, not per project.** `limit` is the
-owner's plan and `used` is the account's month-to-date total across all its
+owner's plan plus its add-ons, and `used` is the account's month-to-date total across all its
 projects — including projects deleted this month, since each usage row records
 the account it was charged to — so creating more projects never raises how many
 requests an account can make. A flush reply quotes every project of each account
 that reported, so an account's idle projects stop as soon as a busy one spends
 the pool.
 
+**The per-second limit is a token bucket in the core, one per account.** Up to
+`burst` requests are served at once and the bucket refills at `rps` a second;
+an empty bucket answers `429` with `Retry-After` (whole seconds) on the same
+public plane, checked after the monthly allowance and before authentication.
+`bucket` is an opaque name the Dashboard API derives from the account, so every
+project of an account draws from one bucket while the core still never learns
+whose it is. Nothing is reconciled — one process sees every request — and a
+refused request is logged but not counted as usage. A plan change reaches the
+bucket with the next flush.
+
 A tenant the core has never been quoted a limit for is **served** (fresh boot,
-sink unreachable, first request of the month). Metering failing must not take
-customer traffic down. That also means quotas are unenforced entirely when
-`USAGE_SINK_URL` is unset.
+sink unreachable, first request of the month), and so is one quoted without a
+valid rate. Metering failing must not take customer traffic down. That also
+means quotas and rate limits are unenforced entirely when `USAGE_SINK_URL` is
+unset.
 
 ## 3. Frontend build env
 

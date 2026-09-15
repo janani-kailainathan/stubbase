@@ -55,9 +55,9 @@ export const acceptsQuery = (endpoint: Endpoint) =>
  * the Usage panel may add the moment a Send returns (hooks/usage.ts).
  *
  * Mirrors the core's metering. Every answer counts, errors included, except no
- * answer at all and the two refusals the platform sends in the owner's stead:
- * a stopped project's 503 and a spent allowance's 429, which the core logs but
- * does not meter. They are recognised by the JSON those refusals carry rather
+ * answer at all and the refusals the platform sends in the owner's stead: a
+ * stopped project's 503, and the 429 of a spent allowance or a rate limit,
+ * which the core logs but does not meter. They are recognised by the JSON those refusals carry rather
  * than by status, because a QA project can return a 503 or 429 on request
  * (x-stubbase-status, or simulated flakiness) — and that traffic is counted.
  * tests/playground.test.ts holds this against a real core's responses.
@@ -69,6 +69,7 @@ export function countsAsUsage(result: { status: number; body: string }): boolean
     const body = JSON.parse(result.body) as Record<string, unknown> | null
     if (result.status === 503 && typeof body?.projectStatus === 'string') return false
     if (result.status === 429 && body?.error === 'monthly request quota exceeded') return false
+    if (result.status === 429 && body?.error === 'rate limit exceeded') return false
   } catch {
     // Not the platform's JSON: a simulated status, which the project did serve.
   }

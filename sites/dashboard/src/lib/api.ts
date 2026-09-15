@@ -123,7 +123,14 @@ export interface ApiUser {
   name: string | null
   plan: string
   planName: string
+  /** The plan's allowance with any add-ons on top — what the core throttles against. */
   monthlyRequests: number
+  /**
+   * Requests per second every project of the account shares, and how many may
+   * arrive at once. Absent on a session stored before the fields existed.
+   */
+  requestsPerSecond?: number
+  burst?: number
   features: PlanFeature[]
   /**
    * False for an account made by Google or GitHub, which has no password to
@@ -214,12 +221,28 @@ export const logout = () =>
 
 export const me = () => request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, { headers: appHeaders() })
 
+/** An add-on the account holds: `quantity` packs, adding `monthlyRequests` between them. */
+export interface AccountAddon {
+  id: string
+  name: string
+  quantity: number
+  monthlyRequests: number
+}
+
 /** What the settings page's Account card shows: read-only, and fetched fresh rather than stored. */
 export interface AccountSummary {
   email: string
   plan: string
   planName: string
+  /** The plan's allowance plus every add-on: what the core holds the account to. */
   monthlyRequests: number
+  /** The plan's part of `monthlyRequests`; `addons` are the rest. */
+  planMonthlyRequests: number
+  addons: AccountAddon[]
+  /** Requests per second, shared by every project of the account. */
+  requestsPerSecond: number
+  /** How many requests may arrive at once before that rate applies. */
+  burst: number
   /** This month's requests across every project, deleted ones included — what the allowance is measured on. */
   requestsUsed: number
   /** YYYY-MM-DD, UTC: the first day of next month, when the count starts again. */
@@ -475,7 +498,7 @@ export interface UsageResponse {
   tenantId: string
   month: { requests: number; bytes: number }
   daily: UsageDay[]
-  /** The plan's monthly request allowance — what the core throttles against. */
+  /** The account's monthly request allowance, add-ons included — what the core throttles against. */
   limit: number
   /**
    * This month's requests across every project the account has been charged

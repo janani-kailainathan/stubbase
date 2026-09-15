@@ -20,7 +20,7 @@ export function usePlanName(): string {
   return useAuthStore((s) => s.user?.planName ?? 'Free')
 }
 
-/** The plan's monthly request allowance — what the core throttles against. */
+/** The account's monthly request allowance, add-ons included — what the core throttles against. */
 export function useMonthlyRequests(): number | undefined {
   return useAuthStore((s) => s.user?.monthlyRequests)
 }

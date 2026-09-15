@@ -31,7 +31,8 @@ function Stat({ label, hint, children, wide }: { label: string; hint?: string; c
 
 /**
  * The account at a glance, kept compact: who it is and on which plan, how much
- * of the monthly allowance is used, and the theme. Everything but the theme is
+ * of the monthly allowance is used, the rate limit and add-ons it runs under,
+ * and the theme. Everything but the theme is
  * read-only here — shown first because it is what someone opening their profile
  * usually wants — and the theme sits in the footer as the card's one control.
  *
@@ -50,6 +51,9 @@ export function AccountCard() {
   const used = account?.requestsUsed
   const share = used !== undefined && limit > 0 ? Math.min(1, used / limit) : 0
   const meter = share >= 1 ? 'bg-danger-fill' : share >= 0.8 ? 'bg-warning-fill' : 'bg-primary'
+  const rps = account?.requestsPerSecond ?? user.requestsPerSecond
+  const burst = account?.burst ?? user.burst
+  const fromAddons = account ? account.monthlyRequests - account.planMonthlyRequests : 0
 
   return (
     <Card
@@ -104,7 +108,15 @@ export function AccountCard() {
       </div>
 
       <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-        <Stat wide label="Requests this month" hint="Counted across all your projects, deleted ones included">
+        <Stat
+          wide
+          label="Requests this month"
+          hint={
+            account && fromAddons > 0
+              ? `Counted across all your projects, deleted ones included. Your plan's ${account.planMonthlyRequests.toLocaleString()} plus ${fromAddons.toLocaleString()} from add-ons.`
+              : 'Counted across all your projects, deleted ones included'
+          }
+        >
           <span className="flex items-center gap-3">
             <span className="whitespace-nowrap">
               {used === undefined ? '—' : used.toLocaleString()}{' '}
@@ -124,6 +136,27 @@ export function AccountCard() {
         </Stat>
         <Stat label="Resets on">{account ? shortDate(account.resetsOn) : '—'}</Stat>
         <Stat label="Projects">{projects ? projects.length.toLocaleString() : '—'}</Stat>
+        <Stat
+          label="Rate limit"
+          hint="Requests per second, shared by all your projects. The burst is how many may arrive at once."
+        >
+          {rps === undefined || burst === undefined ? (
+            '—'
+          ) : (
+            <span className="whitespace-nowrap">
+              {rps.toLocaleString()}/s <span className="font-normal text-subtle">· burst {burst.toLocaleString()}</span>
+            </span>
+          )}
+        </Stat>
+        <Stat wide label="Add-ons" hint="Request packs on top of your plan's monthly allowance">
+          {!account ? (
+            '—'
+          ) : account.addons.length === 0 ? (
+            <span className="font-normal text-subtle">None</span>
+          ) : (
+            account.addons.map((a) => (a.quantity > 1 ? `${a.name} × ${a.quantity}` : a.name)).join(', ')
+          )}
+        </Stat>
       </dl>
     </Card>
   )

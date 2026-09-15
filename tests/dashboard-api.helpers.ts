@@ -64,6 +64,21 @@ export function setPlanOn(service: Service, email: string, plan: string) {
   }
 }
 
+/** Give an account `quantity` packs of an add-on — a direct write for setPlanOn's reason. */
+export function setAddonOn(service: Service, email: string, addon: string, quantity: number) {
+  const db = new Database(join(service.dir, "app.sqlite"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000;");
+    db.query(
+      `INSERT INTO account_addons (user_id, addon, quantity)
+       VALUES ((SELECT id FROM users WHERE email = ?), ?, ?)
+       ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity`,
+    ).run(email, addon, quantity);
+  } finally {
+    db.close();
+  }
+}
+
 let seq = 0;
 
 /**
