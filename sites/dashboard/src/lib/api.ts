@@ -300,6 +300,18 @@ export const renameProject = (tenantId: string, name: string) =>
     body: JSON.stringify({ name }),
   })
 
+/**
+ * A new project holding a copy of this one's resources, as its editor shows
+ * them, and — with `copyEnv` — its .env and roles. Starts stopped like any new
+ * project; accounts, sessions and developer keys are never copied.
+ */
+export const duplicateProject = (tenantId: string, name: string, copyEnv: boolean) =>
+  request<CreatedProject>(`${APP_API_URL}/projects/${tenantId}/duplicate`, {
+    method: 'POST',
+    headers: appHeaders(true),
+    body: JSON.stringify({ name, copyEnv }),
+  })
+
 export const deleteProject = (tenantId: string) =>
   request<{ ok: boolean; tenantId: string }>(`${APP_API_URL}/projects/${tenantId}`, {
     method: 'DELETE',

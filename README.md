@@ -42,6 +42,7 @@ GET    /projects                           (auth) list own projects
 POST   /projects                           (auth) { name, resources? } → provision tenant
 PATCH  /projects/<tenantId>                (auth) { name } rename
 DELETE /projects/<tenantId>                (auth) deprovision tenant + remove row
+POST   /projects/<tenantId>/duplicate      (auth) { name, copyEnv? } → new project from this one
 PUT    /projects/<tenantId>/files/<res>    (auth) body = JSON array → create/replace file
 DELETE /projects/<tenantId>/files/<res>    (auth) delete file
 GET    /projects/<tenantId>/live-logs      (auth) SSE proxy of the request log

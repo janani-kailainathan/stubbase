@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createProject,
   deleteProject,
+  duplicateProject,
   listProjects,
   renameProject,
   type ProjectRow,
@@ -178,6 +179,15 @@ export function useRenameProject() {
   return useMutation({
     mutationFn: ({ tenantId, name }: { tenantId: string; name: string }) =>
       renameProject(tenantId, name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+  })
+}
+
+export function useDuplicateProject() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, name, copyEnv }: { tenantId: string; name: string; copyEnv: boolean }) =>
+      duplicateProject(tenantId, name, copyEnv),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
   })
 }

@@ -30,6 +30,7 @@
  *   POST   /projects                            (auth) { name, resources?: { [name]: any[] } }
  *   PATCH  /projects/<tenantId>                 (auth) { name } rename
  *   DELETE /projects/<tenantId>                 (auth) deprovision tenant + remove row
+ *   POST   /projects/<tenantId>/duplicate       (auth) { name, copyEnv? } → a new project from this one
  *   PUT    /projects/<tenantId>/files/<res>     (auth) body = JSON array → create/replace file
  *   DELETE /projects/<tenantId>/files/<res>     (auth) delete file
  *   GET    /projects/<tenantId>/live-logs       (auth) SSE proxy of the core's request log
@@ -1825,7 +1826,34 @@ async function createProject(req: Request, user: User): Promise<Response> {
   }
 
   const tenantId = newTenantId(name);
+  // The .env editor's text: every setting, commented out (see envTemplate).
+  return provisionProject(user, tenantId, name, Object.entries(resources), {
+    config: { __raw: envTemplate(tenantId) },
+  });
+}
 
+/**
+ * Thrown by a resource source that cannot supply a file. provisionProject rolls
+ * back and answers 502 with its message; anything else thrown is a bug, and is
+ * left to the server's error handler.
+ */
+class ProvisionError extends Error {}
+
+/**
+ * Brings a tenant into being on the core and records it. Shared by create and
+ * duplicate, so a project is born one way whatever made it: stopped, then its
+ * resources, then its settings, then the row.
+ *
+ * Resources may arrive as an async iterable, which is how a duplicate reads its
+ * source one resource at a time instead of holding the whole project in memory.
+ */
+async function provisionProject(
+  user: User,
+  tenantId: string,
+  name: string,
+  resources: Iterable<[string, unknown]> | AsyncIterable<[string, unknown]>,
+  settings: { config: Record<string, unknown>; rbac?: unknown },
+): Promise<Response> {
   // New projects start stopped: nothing is public until the owner has looked at
   // the data and pressed Deploy. Written before anything else, so there is no
   // moment in which seeded records are served — and it is what gives the tenant
@@ -1834,21 +1862,37 @@ async function createProject(req: Request, user: User): Promise<Response> {
   if (!stopped.ok) return err(502, `core engine refused the initial status (status ${stopped.status})`);
 
   const provisioned: string[] = [];
-  for (const [rName, data] of Object.entries(resources)) {
-    const res = await coreAdmin("POST", tenantId, rName, data);
-    if (!res.ok) {
-      // roll back partial provisioning so we don't leave orphan files
-      for (const done of provisioned) await coreAdmin("DELETE", tenantId, done);
-      return err(502, `core engine refused to provision '${rName}' (status ${res.status})`);
+  // Roll back partial provisioning so we don't leave orphan files.
+  const rollback = async () => {
+    for (const done of [...provisioned, "config", "rbac"]) await coreAdmin("DELETE", tenantId, done);
+  };
+
+  try {
+    for await (const [rName, data] of resources) {
+      const res = await coreAdmin("POST", tenantId, rName, data);
+      if (!res.ok) {
+        await rollback();
+        return err(502, `core engine refused to provision '${rName}' (status ${res.status})`);
+      }
+      provisioned.push(rName);
     }
-    provisioned.push(rName);
+  } catch (e) {
+    if (!(e instanceof ProvisionError)) throw e;
+    await rollback();
+    return err(502, e.message);
   }
 
-  // The .env editor's text: every setting, commented out (see envTemplate).
-  const cfg = await coreAdmin("POST", tenantId, "config", { __raw: envTemplate(tenantId) });
+  const cfg = await coreAdmin("POST", tenantId, "config", settings.config);
   if (!cfg.ok) {
-    for (const done of provisioned) await coreAdmin("DELETE", tenantId, done);
+    await rollback();
     return err(502, `core engine refused the initial settings (status ${cfg.status})`);
+  }
+  if (settings.rbac !== undefined) {
+    const rules = await coreAdmin("POST", tenantId, "rbac", settings.rbac);
+    if (!rules.ok) {
+      await rollback();
+      return err(502, `core engine refused the roles file (status ${rules.status})`);
+    }
   }
 
   db.query(
@@ -1864,6 +1908,79 @@ async function createProject(req: Request, user: User): Promise<Response> {
     },
     201,
   );
+}
+
+/**
+ * A copied .env, pointed at its new project. Anything in it under the source's
+ * own API base belongs to the source — the OAuth callback URLs the template
+ * tells you to register, above all — so it moves to the copy's base, in the
+ * text and the compiled keys alike: the SPA compiles one from the other, and
+ * the two must never disagree. The trailing slash keeps `blog-1a2b3c4d` from
+ * matching inside a longer id.
+ */
+function retargetEnv(config: Record<string, unknown>, fromId: string, toId: string) {
+  const from = `${PUBLIC_API_BASE}/${fromId}/`;
+  const to = `${PUBLIC_API_BASE}/${toId}/`;
+  return Object.fromEntries(
+    Object.entries(config).map(([k, v]) => [k, typeof v === "string" ? v.split(from).join(to) : v]),
+  );
+}
+
+/**
+ * POST /projects/<id>/duplicate — { name, copyEnv? } → a new project, created
+ * the way any project is (see provisionProject), holding a copy of this one.
+ *
+ * What is copied is what the source's *editor* shows (readEdited): a staged
+ * edit rather than the live file behind it. The copy is written as live files
+ * and starts clean — it has never been deployed, so there is nothing for it to
+ * be behind — and stopped, so none of it is served until its own Deploy.
+ *
+ * The .env only when asked, since it carries credentials and webhook URLs a
+ * copy may not want pointed at the same places; rbac.json travels with it,
+ * because it is saved and deployed alongside those settings and means nothing
+ * under a template that switches roles off.
+ *
+ * Never copied, whatever is asked: the system/ files a feature owns (accounts,
+ * sessions, pending sign-ups, reset codes) — they are the source API's users,
+ * bound to its tenant id, and nothing but their feature may write them — and
+ * developer keys, which are credentials for one tenant id alone.
+ */
+async function duplicateProject(req: Request, user: User, sourceId: string): Promise<Response> {
+  const source = ownedProject(sourceId, user.id);
+  if (!source) return err(404, "project not found");
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const name = typeof (body as any)?.name === "string" ? (body as any).name.trim() : "";
+  if (!name) return err(400, "'name' is required");
+  const copyEnv = (body as any)?.copyEnv ?? false;
+  if (typeof copyEnv !== "boolean") return err(400, "'copyEnv' must be true or false");
+
+  const tenantId = newTenantId(name);
+  let config: Record<string, unknown> = { __raw: envTemplate(tenantId) };
+  let rbac: unknown;
+  if (copyEnv) {
+    const cfg = await readEdited(source, "config");
+    if (cfg.ok && cfg.data && typeof cfg.data === "object" && !Array.isArray(cfg.data))
+      config = retargetEnv(cfg.data as Record<string, unknown>, sourceId, tenantId);
+    else if (cfg.status !== 404)
+      return err(502, `core engine refused to read the .env (status ${cfg.status})`);
+    const rules = await readEdited(source, "rbac");
+    if (rules.ok) rbac = rules.data;
+    else if (rules.status !== 404)
+      return err(502, `core engine refused to read rbac.json (status ${rules.status})`);
+  }
+
+  async function* copies(): AsyncGenerator<[string, unknown]> {
+    for (const rName of JSON.parse(source!.resources) as string[]) {
+      const res = await readEdited(source!, rName);
+      if (res.status === 404) continue; // listed, but there is no file to copy
+      if (!res.ok || !Array.isArray(res.data))
+        throw new ProvisionError(`core engine refused to read '${rName}' (status ${res.status})`);
+      yield [rName, res.data];
+    }
+  }
+
+  return provisionProject(user, tenantId, name, copies(), { config, rbac });
 }
 
 async function renameProject(req: Request, user: User, tenantId: string): Promise<Response> {
@@ -1955,6 +2072,23 @@ function invalidResourceName(resource: string): Response | null {
   return null;
 }
 
+/**
+ * The copies of a file to try, in order, for "what is being edited": the draft
+ * first while an edit is staged, the live file first otherwise. getFile explains
+ * why both are always tried; duplicateProject shares the order, so a copy starts
+ * as exactly what the source's editor shows.
+ */
+function editedOrder(row: ProjectRow, name: string): [string, string] {
+  return row.dirty === 1 ? [`${DRAFT_PREFIX}${name}`, name] : [name, `${DRAFT_PREFIX}${name}`];
+}
+
+/** The edited copy of a file (see editedOrder), as the core answered for it. */
+async function readEdited(row: ProjectRow, name: string) {
+  const [first, second] = editedOrder(row, name);
+  const res = await coreAdmin("GET", row.tenant_id, first);
+  return res.status === 404 ? coreAdmin("GET", row.tenant_id, second) : res;
+}
+
 async function getFile(
   user: User,
   tenantId: string,
@@ -1987,11 +2121,7 @@ async function getFile(
   // deploy that actually retires them. There is no fallback in this mode, for
   // the same reason: a file that exists only as a draft is not live, and 404
   // is the honest answer rather than the draft standing in for one.
-  const order = liveOnly
-    ? [resource]
-    : row.dirty === 1
-      ? [`${DRAFT_PREFIX}${resource}`, resource]
-      : [resource, `${DRAFT_PREFIX}${resource}`];
+  const order = liveOnly ? [resource] : editedOrder(row, resource);
   let res = await coreAdmin("GET", tenantId, order[0]);
   if (order[1] !== undefined && res.status === 404)
     res = await coreAdmin("GET", tenantId, order[1]);
@@ -3308,6 +3438,7 @@ async function route(req: Request): Promise<Response> {
 
     if (segments.length === 3 && req.method === "POST") {
       if (segments[2] === "deploy") return deployProject(user, segments[1]);
+      if (segments[2] === "duplicate") return duplicateProject(req, user, segments[1]);
       if (segments[2] === "status") return setProjectStatus(req, user, segments[1]);
     }
 

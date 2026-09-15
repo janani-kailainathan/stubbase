@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
   ChevronRight,
+  Copy,
   Loader2,
   LogOut,
   Pencil,
@@ -31,6 +32,7 @@ import {
   useCurrentProject,
   useCurrentProjectId,
   useDeleteProject,
+  useDuplicateProject,
   useOpenProject,
   useProjects,
   projectPath,
@@ -148,6 +150,125 @@ export function DeleteProjectDialog({
             </button>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Copies a project into a new one. A dialog rather than a single click because
+ * there is a choice in it: the .env holds credentials and webhook URLs, so
+ * bringing it along is opt-in, and the dialog says what never comes with it.
+ * The copy opens once it exists — stopped, like any new project.
+ */
+function DuplicateProjectDialog({
+  project,
+  onOpenChange,
+}: {
+  project: Project
+  onOpenChange: (open: boolean) => void
+}) {
+  const duplicate = useDuplicateProject()
+  const openProject = useOpenProject()
+  const [name, setName] = useState(`${project.name} copy`)
+  const [copyEnv, setCopyEnv] = useState(false)
+  const resourceCount = project.resources.length
+
+  const submit = () => {
+    const trimmed = name.trim()
+    if (duplicate.isPending || !trimmed) return
+    duplicate.mutate(
+      { tenantId: project.tenantId, name: trimmed, copyEnv },
+      {
+        onSuccess: (created) => {
+          onOpenChange(false)
+          openProject(created.tenantId)
+          toast.success(`Duplicated ${project.name}`)
+        },
+        onError: (e) => toast.error(`Could not duplicate ${project.name}: ${e.message}`),
+      },
+    )
+  }
+
+  return (
+    // Closing mid-copy would unmount the callbacks that open the new project.
+    <Dialog open onOpenChange={(open) => !duplicate.isPending && onOpenChange(open)}>
+      <DialogContent className="w-96 border-border bg-card p-4" showCloseButton={false}>
+        <DialogTitle className="text-sm font-semibold text-foreground">
+          Duplicate {project.name}
+        </DialogTitle>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+          className="flex flex-col gap-3"
+        >
+          <label className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] font-semibold tracking-wide text-faint uppercase">
+              New project name
+            </span>
+            <input
+              type="text"
+              autoFocus
+              value={name}
+              disabled={duplicate.isPending}
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-heading placeholder-faint focus:border-primary focus:outline-none disabled:opacity-60"
+            />
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={copyEnv}
+              disabled={duplicate.isPending}
+              onChange={(e) => setCopyEnv(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="font-mono text-xs text-heading">Copy the .env too</span>
+              <span className="font-mono text-[11px] leading-relaxed text-subtle">
+                Its settings, keys and webhook URLs, with rbac.json. Unticked, the copy starts
+                from a fresh .env with everything switched off.
+              </span>
+            </span>
+          </label>
+
+          <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+            Copies{' '}
+            <span className="text-emphasis">
+              {resourceCount} resource file{resourceCount === 1 ? '' : 's'}
+            </span>{' '}
+            as they are in the editor. The copy starts stopped, and never gets this project&rsquo;s
+            accounts, sessions or developer keys.
+          </p>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="rounded px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-heading disabled:opacity-60"
+              disabled={duplicate.isPending}
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={duplicate.isPending || !name.trim()}
+              className="flex cursor-pointer items-center gap-1.5 rounded bg-primary px-3 py-1.5 font-mono text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+            >
+              {duplicate.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+              {duplicate.isPending ? 'Duplicating…' : 'Duplicate'}
+            </button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   )
@@ -612,6 +733,7 @@ export function TopBar() {
   // Which project the confirm dialog is about — any row in the list, not just
   // the one currently open.
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
+  const [duplicateTarget, setDuplicateTarget] = useState<Project | null>(null)
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-background px-5">
@@ -675,6 +797,22 @@ export function TopBar() {
                 {p.tenantId === current?.tenantId && (
                   <Check className="h-3 w-3 shrink-0 text-primary-accent" />
                 )}
+                <button
+                  title={`Duplicate ${p.name}`}
+                  aria-label={`Duplicate ${p.name}`}
+                  /* Same pointer handling as Delete beside it. */
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    setMenuOpen(false)
+                    setDuplicateTarget(p)
+                  }}
+                  className="shrink-0 cursor-pointer text-faintest transition-colors hover:text-heading"
+                >
+                  <Copy className="h-3 w-3" />
+                </button>
                 <button
                   title={`Delete ${p.name}`}
                   aria-label={`Delete ${p.name}`}
@@ -742,6 +880,13 @@ export function TopBar() {
           resourceCount={deleteTarget.resources.length}
           open
           onOpenChange={(open) => !open && setDeleteTarget(null)}
+        />
+      )}
+      {duplicateTarget && (
+        <DuplicateProjectDialog
+          key={duplicateTarget.tenantId}
+          project={duplicateTarget}
+          onOpenChange={(open) => !open && setDuplicateTarget(null)}
         />
       )}
 

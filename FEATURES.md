@@ -690,6 +690,26 @@ account and signs you out on every device. It cannot be undone.
 - Your name, email address and password are removed. The address is free again
   straight away: signing up with it creates a brand-new account.
 
+### 2.6 Duplicate a project
+
+Want a copy of a project to experiment on, or a staging copy of one that is
+live? Open the project menu (the project name, top left) and choose the copy
+icon beside the project. Name the copy, choose whether its `.env` comes too, and
+choose **Duplicate** — the new project opens straight away.
+
+- Your resources are copied as they are in the editor, including changes you
+  have saved but not deployed yet.
+- The copy starts stopped, like any new project. Nothing in it is public until
+  you choose **Deploy**.
+- Tick **Copy the .env too** to bring its settings across — keys, webhook URLs
+  and your roles and permissions included. The Google and GitHub callback URLs
+  it tells you to register now name the copy, so add those to your OAuth apps
+  before anyone signs in to it. Left unticked, the copy starts from a fresh
+  `.env` with everything switched off.
+- The accounts that signed up to your API, their sessions, and your developer
+  API keys are never copied: the copy starts with no users, and an MCP client
+  needs a new key for it.
+
 ---
 
 ## 3. Env settings — the central reference

@@ -90,6 +90,10 @@ export const RELEASES: Release[] = [
         kind: 'added',
         text: 'Sign in to the dashboard with Google or GitHub, alongside email and password.',
       },
+      {
+        kind: 'added',
+        text: 'Duplicate a project from the project menu: its resources as they are in the editor, and its .env and roles if you choose. The copy starts stopped, with none of the original’s accounts or developer keys.',
+      },
     ],
   },
 ];

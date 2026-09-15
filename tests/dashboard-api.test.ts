@@ -144,6 +144,11 @@ describe("project ownership scoping", () => {
     { method: "POST", path: `/projects/${tenantId}/deploy` },
     {
       method: "POST",
+      path: `/projects/${tenantId}/duplicate`,
+      body: JSON.stringify({ name: "stolen", copyEnv: true }),
+    },
+    {
+      method: "POST",
       path: `/projects/${tenantId}/status`,
       body: JSON.stringify({ status: "stopped" }),
     },
@@ -532,6 +537,152 @@ describe("project provisioning", () => {
     });
     expect(res.status).toBe(409);
   }, 20_000);
+});
+
+// ── Duplicating ───────────────────────────────────────────────────
+
+describe("duplicating a project", () => {
+  let owner: Account;
+
+  beforeAll(async () => {
+    owner = await signup();
+  }, 20_000);
+
+  const RULES = { defaultRole: "customer", roles: { customer: { posts: ["read"] }, admin: "*" } };
+
+  const duplicate = (tenantId: string, body: unknown) =>
+    fetch(`${app.base}/projects/${tenantId}/duplicate`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify(body),
+    });
+  const put = (tenantId: string, name: string, body: unknown) =>
+    fetch(`${app.base}/projects/${tenantId}/files/${name}`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify(body),
+    });
+  const read = (tenantId: string, name: string, live = false) =>
+    fetch(`${app.base}/projects/${tenantId}/files/${name}${live ? "?source=live" : ""}`, {
+      headers: as(owner.token),
+    });
+
+  test("copies the resources as the editor shows them, into a project that starts stopped and clean", async () => {
+    const source = await createProject(owner.token, "Original", {
+      posts: [{ id: "1", title: "live" }],
+      comments: [{ id: "c1" }],
+    });
+    await activate(owner.token, source.tenantId);
+    // A staged edit: the editor shows it, the running API does not serve it yet.
+    expect((await put(source.tenantId, "posts", [{ id: "1", title: "staged" }])).status).toBe(200);
+
+    const res = await duplicate(source.tenantId, { name: "Original copy" });
+    expect(res.status).toBe(201);
+    const copy = await res.json();
+    expect(copy.tenantId).toStartWith("original-copy-");
+    expect(copy.resources.sort()).toEqual(["comments", "posts"]);
+
+    // The edit, written as the copy's live file — nothing is left staged.
+    expect(await coreFile(copy.tenantId, "posts").json()).toEqual([{ id: "1", title: "staged" }]);
+    expect(await coreFile(copy.tenantId, "draft_posts").exists()).toBe(false);
+    expect(await coreFile(copy.tenantId, "comments").json()).toEqual([{ id: "c1" }]);
+    const list = await fetch(`${app.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(list.find((p: any) => p.tenant_id === copy.tenantId)).toMatchObject({
+      name: "Original copy",
+      dirty: false,
+    });
+
+    // Stopped, though the project it came from is running.
+    expect(await Bun.file(systemFilePath(core, copy.tenantId, "status")).json()).toEqual({ status: "stopped" });
+    expect((await fetch(`${core.base}/${copy.tenantId}/posts`)).status).toBe(503);
+
+    // …and the source is untouched: still serving, its edit still staged.
+    expect(await coreFile(source.tenantId, "posts").json()).toEqual([{ id: "1", title: "live" }]);
+    expect(await coreFile(source.tenantId, "draft_posts").json()).toEqual([{ id: "1", title: "staged" }]);
+    expect((await fetch(`${core.base}/${source.tenantId}/posts`)).status).toBe(200);
+  }, 30_000);
+
+  test("without copyEnv the copy starts from a fresh .env and no roles", async () => {
+    const source = await createProject(owner.token, "Configured", { posts: [] });
+    const settings = { AUTH_ENABLED: "true", RBAC_ENABLED: "true", RESEND_API_KEY: "re_secret" };
+    expect((await put(source.tenantId, "config", settings)).status).toBe(200);
+    expect((await put(source.tenantId, "rbac", RULES)).status).toBe(200);
+
+    for (const body of [{ name: "Fresh" }, { name: "Fresh", copyEnv: false }]) {
+      const res = await duplicate(source.tenantId, body);
+      expect(res.status).toBe(201);
+      const copy = await res.json();
+      const { __raw: raw, ...keys } = await (await read(copy.tenantId, "config")).json();
+      expect(keys).toEqual({});
+      expect(raw).toContain(`/${copy.tenantId}/auth/google/callback`);
+      expect(raw).not.toContain("re_secret");
+      expect((await read(copy.tenantId, "rbac")).status).toBe(404);
+    }
+  }, 30_000);
+
+  test("with copyEnv the .env and rbac.json come along, pointed at the copy", async () => {
+    const source = await createProject(owner.token, "Settled", { posts: [] });
+    const template = (await (await read(source.tenantId, "config")).json()).__raw as string;
+    expect(template).toContain(`/${source.tenantId}/auth/google/callback`);
+    // Staged, not deployed: the copy takes the edit, as it does for resources.
+    const settings = {
+      __raw: `${template}\nAUTH_ENABLED=true\nRBAC_ENABLED=true\nRESEND_API_KEY=re_secret`,
+      AUTH_ENABLED: "true",
+      RBAC_ENABLED: "true",
+      RESEND_API_KEY: "re_secret",
+    };
+    expect((await put(source.tenantId, "config", settings)).status).toBe(200);
+    expect((await put(source.tenantId, "rbac", RULES)).status).toBe(200);
+
+    const res = await duplicate(source.tenantId, { name: "Settled copy", copyEnv: true });
+    expect(res.status).toBe(201);
+    const copy = await res.json();
+
+    const config = await (await read(copy.tenantId, "config", true)).json();
+    expect(config).toMatchObject({ AUTH_ENABLED: "true", RBAC_ENABLED: "true", RESEND_API_KEY: "re_secret" });
+    // The callback URLs to register are the copy's own, never the source's.
+    expect(config.__raw).toContain(`/${copy.tenantId}/auth/google/callback`);
+    expect(config.__raw).toContain(`/${copy.tenantId}/auth/github/callback`);
+    expect(config.__raw).not.toContain(source.tenantId);
+    expect(await (await read(copy.tenantId, "rbac", true)).json()).toEqual(RULES);
+  }, 30_000);
+
+  test("accounts, sessions and developer keys never come along", async () => {
+    const source = await createProject(owner.token, "Populated", { posts: [] });
+    expect((await put(source.tenantId, "config", { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" })).status).toBe(200);
+    await activate(owner.token, source.tenantId);
+    await fetch(`${app.base}/projects/${source.tenantId}/deploy`, { method: "POST", headers: as(owner.token) });
+    const signed = await fetch(`${core.base}/${source.tenantId}/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "reader@test.co", password: "password123" }),
+    });
+    expect(signed.status).toBe(201);
+    const key = await fetch(`${app.base}/projects/${source.tenantId}/keys`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ name: "agent" }),
+    });
+    expect(key.ok).toBe(true);
+    // The source really has them, so their absence below means something.
+    for (const file of ["users", "sessions"])
+      expect(await Bun.file(systemFilePath(core, source.tenantId, file)).exists()).toBe(true);
+
+    const copy = await (await duplicate(source.tenantId, { name: "Populated copy", copyEnv: true })).json();
+    for (const file of ["users", "sessions"])
+      expect({ file, exists: await Bun.file(systemFilePath(core, copy.tenantId, file)).exists() }).toEqual({ file, exists: false });
+    const keys = await fetch(`${app.base}/projects/${copy.tenantId}/keys`, { headers: as(owner.token) });
+    expect(await keys.json()).toEqual([]);
+  }, 30_000);
+
+  test("a duplicate needs a name, and copyEnv must be a boolean", async () => {
+    const source = await createProject(owner.token, "Strict");
+    expect((await duplicate(source.tenantId, {})).status).toBe(400);
+    expect((await duplicate(source.tenantId, { name: "  " })).status).toBe(400);
+    expect((await duplicate(source.tenantId, { name: "Strict copy", copyEnv: "yes" })).status).toBe(400);
+    const list = await fetch(`${app.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(list.some((p: any) => p.name === "Strict copy")).toBe(false);
+  }, 15_000);
 });
 
 // ── Files proxy & the draft model ──────────────────────────────────
