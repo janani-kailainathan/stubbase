@@ -20,7 +20,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
-import { startApp, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
+import { ADMIN_SECRET, startApp, startCore, stopServices, waitFor, type Service } from "./helpers.ts";
 import {
   ALLOWED_ORIGIN,
   PASSWORD,
@@ -29,6 +29,8 @@ import {
   loggedResetCode,
   loggedSignupCode,
   readDbOf,
+  setAddonOn,
+  setPlanOn,
   sha256hex,
   signupOn,
   type Account,
@@ -889,6 +891,104 @@ describe("delete account", () => {
     const results = await Promise.all([remove(account.token, PASSWORD), remove(account.token, PASSWORD)]);
     expect(results.map((r) => r.status).filter((s) => s === 200)).toHaveLength(1);
   }, 20_000);
+
+  // ── Coming back ──
+  //
+  // The reason the row is kept: an address that signs up again lands on its
+  // original id, so the month's requests are still charged to it and deleting
+  // the account is not a way to start the allowance over.
+
+  /** Report usage for a tenant the way the core's flush does. */
+  const reportUsage = async (tenantId: string, requests: number) => {
+    const res = await fetch(`${app.base}/_internal/usage`, {
+      method: "POST",
+      headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
+      body: JSON.stringify({
+        rows: [{ tenantId, date: new Date().toISOString().slice(0, 10), requests, bytes: requests }],
+      }),
+    });
+    expect(res.status).toBe(200);
+  };
+  const requestsUsed = async (token: string) =>
+    (
+      (await (await fetch(`${app.base}/auth/account`, { headers: as(token) })).json()) as {
+        account: { requestsUsed: number };
+      }
+    ).account.requestsUsed;
+
+  test("signing up again with the address comes back on the same id, and the month's usage with it", async () => {
+    const account = await signup();
+    const created = await fetch(`${app.base}/projects`, {
+      method: "POST",
+      headers: jsonHeaders(account.token),
+      body: JSON.stringify({ name: "Spent Some" }),
+    });
+    expect(created.status).toBe(201);
+    const { tenantId } = await created.json();
+    await reportUsage(tenantId, 137);
+    expect(await requestsUsed(account.token)).toBe(137);
+
+    expect((await fetch(`${app.base}/projects/${tenantId}`, { method: "DELETE", headers: as(account.token) })).status).toBe(200);
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+
+    const back = await signupOn(app, account.email);
+    expect(back.id).toBe(account.id);
+    // The whole point: the allowance continues where it left off. The project
+    // that spent it is gone, which is exactly the case api_usage.user_id exists
+    // for — the count cannot be rebuilt by joining through projects.
+    expect(await requestsUsed(back.token)).toBe(137);
+  }, 30_000);
+
+  test("nothing but the id and the usage comes back: not the plan, the add-ons or the name", async () => {
+    const account = await signup();
+    await fetch(`${app.base}/auth/me`, {
+      method: "PATCH",
+      headers: jsonHeaders(account.token),
+      body: JSON.stringify({ name: "Old Name" }),
+    });
+    setPlanOn(app, account.email, "pro_ai");
+    setAddonOn(app, account.email, "requests_100k", 3);
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+
+    const back = await signupOn(app, account.email);
+    expect(back.id).toBe(account.id);
+    const me = (await (await fetch(`${app.base}/auth/me`, { headers: as(back.token) })).json()) as {
+      user: { planName: string; name: string | null; monthlyRequests: number };
+    };
+    expect(me.user.planName).toBe("Free");
+    expect(me.user.name).toBeNull();
+    expect(me.user.monthlyRequests).toBe(5_000); // Free, with no add-ons on top
+    expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM account_addons WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
+  }, 30_000);
+
+  test("the deleted row keeps no readable trace of the address", async () => {
+    const account = await signup();
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+    const row = readDb((db) =>
+      db.query("SELECT * FROM users WHERE id = ?").get(account.id),
+    ) as Record<string, unknown>;
+    for (const value of Object.values(row))
+      if (typeof value === "string") expect(value).not.toContain(account.email);
+  }, 20_000);
+
+  test("a second account for the address, once revived, is refused as normal", async () => {
+    const account = await signup();
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+    const back = await signupOn(app, account.email);
+    expect(back.id).toBe(account.id);
+
+    // The lineage is spent: the address is live again, so this is an ordinary
+    // duplicate, refused where any duplicate is, and revives nothing a second time.
+    const again = await fetch(`${app.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email: account.email, password: PASSWORD }),
+    });
+    expect(again.status).toBe(409);
+    expect(
+      readDb((db) => db.query("SELECT deleted_at, deleted_email_hash FROM users WHERE id = ?").get(account.id)),
+    ).toEqual({ deleted_at: null, deleted_email_hash: null });
+  }, 30_000);
 });
 
 // ── OAuth sign-in ──────────────────────────────────────────────────
@@ -1219,6 +1319,94 @@ describe("OAuth sign-in", () => {
     expect((await res.json()).error).toContain("set one");
     expect((await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).status).toBe(200);
   }, 20_000);
+
+  // The other caller of createOrReviveUser. A deleted address that comes back
+  // through Google or GitHub has to land on its own row exactly as one coming
+  // back through a password sign-up does, or the allowance resets for anyone
+  // who signs in with a provider.
+
+  /** Sign in with a provider and read back whose account it was. */
+  const signedInAs = async (which: "google" | "github", email: string) => {
+    const token = new URLSearchParams(fragment(await signIn(which, email))).get("token")!;
+    const body = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token) })).json();
+    return { token, id: body.user.id as number, user: body.user as Record<string, unknown> };
+  };
+
+  test("OAuth brings a deleted address back to its own account, not a new one", async () => {
+    // Deleting needs a password, so the account starts as a password sign-up —
+    // which is also the case that matters: the address is verified either way,
+    // and the link-by-email join must see the dormant row.
+    const email = `oauth-revive-${Date.now()}@test.co`;
+    const original = await signupOn(oauthApp, email);
+    const deleted = await fetch(`${oauthApp.base}/auth/delete-account`, {
+      method: "POST",
+      headers: jsonHeaders(original.token),
+      body: JSON.stringify({ password: PASSWORD }),
+    });
+    expect(deleted.status).toBe(200);
+
+    const back = await signedInAs("google", email);
+    expect(back.id).toBe(original.id);
+    // Revived, not duplicated: one row for the address, and it is that one.
+    expect(readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email))).toEqual([
+      { id: original.id },
+    ]);
+    // The credential is the one that just proved the mailbox, so the deleted
+    // account's password must not be waiting on the revived row.
+    expect(back.user.hasPassword).toBe(false);
+    const oldPassword = await fetch(`${oauthApp.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    expect(oldPassword.status).toBe(401);
+  }, 30_000);
+
+  test("a lineage never forks: delete and come back twice, always the same account", async () => {
+    const email = `oauth-relapse-${Date.now()}@test.co`;
+    const original = await signupOn(oauthApp, email);
+    const remove = async (token: string) =>
+      (
+        await fetch(`${oauthApp.base}/auth/delete-account`, {
+          method: "POST",
+          headers: jsonHeaders(token),
+          body: JSON.stringify({ password: PASSWORD }),
+        })
+      ).status;
+    expect(await remove(original.token)).toBe(200);
+
+    // Back by OAuth, which leaves no password — so the second deletion needs
+    // one set first, by the emailed reset code, the way the settings page does it.
+    const first = await signedInAs("github", email);
+    expect(first.id).toBe(original.id);
+    await fetch(`${oauthApp.base}/auth/forgot-password`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email }),
+    });
+    const reset = await fetch(`${oauthApp.base}/auth/reset-password`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, code: await loggedResetCode(oauthApp, email), password: PASSWORD }),
+    });
+    expect(reset.status).toBe(200);
+
+    const token = (await (await fetch(`${oauthApp.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    })).json()).token as string;
+    expect(await remove(token)).toBe(200);
+
+    const second = await signedInAs("google", email);
+    expect(second.id).toBe(original.id);
+    // One dormant row was set and reused each time, never a second one.
+    expect(
+      readOauthDb((db) =>
+        db.query("SELECT COUNT(*) AS n FROM users WHERE deleted_email_hash IS NOT NULL AND id = ?").get(original.id),
+      ),
+    ).toEqual({ n: 0 });
+  }, 30_000);
 
   test("an OAuth session token is stored hashed, like every other session", async () => {
     const email = `hashed-${Date.now()}@test.co`;

@@ -225,6 +225,20 @@ if (!userCols.includes("oauth_provider"))
   db.exec("ALTER TABLE users ADD COLUMN oauth_provider TEXT");
 // Set on an account its owner deleted, whose row stays behind emptied (see deleteAccount).
 if (!userCols.includes("deleted_at")) db.exec("ALTER TABLE users ADD COLUMN deleted_at TEXT");
+// An HMAC of the address a deleted account was reached at, and the only trace
+// of it left on the row: `email` is overwritten so the address is free to sign
+// up again, and this is what recognises it when it does, so the returning
+// account comes back on its original id and keeps the month's usage (see
+// createOrReviveUser). A hash rather than the address itself — someone who
+// asked to be deleted should not still be readable in the table.
+if (!userCols.includes("deleted_email_hash"))
+  db.exec("ALTER TABLE users ADD COLUMN deleted_email_hash TEXT");
+// One dormant row per address: reviving clears the hash and deleting sets it
+// again on the same row, so a lineage never forks and a returning account can
+// never find two ids to come back on. Partial, since live rows all hold NULL.
+db.exec(
+  "CREATE UNIQUE INDEX IF NOT EXISTS users_deleted_email_hash ON users(deleted_email_hash) WHERE deleted_email_hash IS NOT NULL",
+);
 // What the settings page shows a session as. A session from before these columns
 // gets its id now; it has no device to show, and no last use until its next request.
 const sessionCols = (db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).map(
@@ -434,6 +448,77 @@ interface User {
 }
 
 const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+
+// ── Coming back to a deleted account ──────────────────────────────
+//
+// A deleted account keeps its row and its id (deleteAccount), and every
+// api_usage row it was ever charged for names that id — so an address that
+// signs up again is put back on its own row rather than given a new one, and
+// the month's usage carries over instead of resetting. Delete-and-resignup is
+// therefore not a way to buy a second monthly allowance.
+//
+// The row remembers the address only as this HMAC. It is keyed off
+// ADMIN_SECRET like the reset codes, so a copy of the database alone cannot be
+// asked whether some address once had an account; the cost is that rotating
+// ADMIN_SECRET orphans every dormant lineage, and those accounts would come
+// back fresh. That rotation already invalidates every tenant's JWT signing key,
+// so it is not a thing done lightly.
+const EMAIL_LINEAGE_KEY = createHash("sha256").update(`account-email:${ADMIN_SECRET}`).digest();
+
+/**
+ * The key a deleted account is found by if its owner comes back. The address is
+ * normalised exactly as every sign-in path normalises it, so the lookup matches
+ * the same string a sign-up would have stored.
+ */
+const emailLineageHash = (email: string) =>
+  createHmac("sha256", EMAIL_LINEAGE_KEY).update(email.trim().toLowerCase()).digest("base64url");
+
+/**
+ * Make the account, or bring back the one this address already had.
+ *
+ * The only things that survive a deletion are the id and the usage history
+ * hanging off it. Everything a sign-up would decide is decided again here: the
+ * plan drops back to free (the add-ons went with the account), created_at is
+ * the day *this* account started, and the credential is whichever one just
+ * proved the mailbox.
+ *
+ * The read and the write are one synchronous turn, with no await between them,
+ * for the reason addResources is: Bun.serve interleaves requests at every await.
+ * `deleted_at IS NOT NULL` on the update is the same belt and braces as the
+ * UNIQUE(email) it stands in for on this path — unreachable while this is the
+ * only process writing, and the thing that keeps a second one from handing one
+ * dormant row to two sign-ups.
+ *
+ * Throws when the address is already taken — both callers already handle that,
+ * since UNIQUE(email) threw here before.
+ */
+function createOrReviveUser(
+  email: string,
+  name: string | null,
+  credential: { passwordHash?: string | null; oauthProvider?: string | null },
+): void {
+  const passwordHash = credential.passwordHash ?? null;
+  const oauthProvider = credential.oauthProvider ?? null;
+  const dormant = db
+    .query("SELECT id FROM users WHERE deleted_email_hash = ?")
+    .get(emailLineageHash(email)) as { id: number } | null;
+  if (!dormant) {
+    db.query(
+      "INSERT INTO users (email, name, password_hash, oauth_provider) VALUES (?, ?, ?, ?)",
+    ).run(email, name, passwordHash, oauthProvider);
+    return;
+  }
+  const { changes } = db
+    .query(
+      `UPDATE users
+          SET email = ?, name = ?, password_hash = ?, oauth_provider = ?,
+              plan = 'free', created_at = datetime('now'),
+              deleted_at = NULL, deleted_email_hash = NULL
+        WHERE id = ? AND deleted_at IS NOT NULL`,
+    )
+    .run(email, name, passwordHash, oauthProvider, dormant.id);
+  if (changes === 0) throw new Error("email already registered");
+}
 
 // Verified against when the email doesn't exist, so login latency doesn't
 // reveal which emails are registered.
@@ -728,11 +813,7 @@ async function verifySignup(req: Request): Promise<Response> {
   // has answered, so a sign-up someone else started for it must never complete.
   db.query("DELETE FROM signup_verifications WHERE email = ?").run(row.email);
   try {
-    db.query("INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)").run(
-      row.email,
-      row.name,
-      row.password_hash,
-    );
+    createOrReviveUser(row.email, row.name, { passwordHash: row.password_hash });
   } catch {
     // An OAuth sign-in created the account while this code was in flight.
     return err(409, "email already registered");
@@ -1115,8 +1196,19 @@ function endOtherSessions(req: Request, user: User): Response {
 // row keeps its id, plan and deleted_at. `id INTEGER PRIMARY KEY` gives the next
 // insert the highest id once that row is gone, so deleting the newest account
 // would hand its id — and every row still keyed by it, this month's api_usage
-// included — to whoever signs up next. The address is free again at once, and
-// signing up with it makes a new account with a new id.
+// included — to whoever signs up next.
+//
+// The freed `email` is a sentinel rather than NULL because the column is NOT
+// NULL and UNIQUE; `deleted:<id>` can never collide with a real address, since
+// every route that looks an account up by email requires EMAIL_RE first, so no
+// lookup can reach a dormant row.
+//
+// The address is free again at once, but the row remembers it as an HMAC in
+// deleted_email_hash, so signing up with it again lands back on this same id
+// and this month's usage carries over rather than resetting (createOrReviveUser).
+// Nothing else comes back: the plan returns to free and the add-ons are deleted
+// here. Accounts deleted before that column existed have no hash and come back
+// as new ones — a one-off, since their address was already overwritten.
 //
 // The checks run again after the hash yields, in one transaction with the
 // writes, so a password change or a new project landing during the verify stops it.
@@ -1152,9 +1244,10 @@ async function deleteAccount(req: Request, user: User): Promise<Response> {
     db.query("DELETE FROM account_addons WHERE user_id = ?").run(user.id);
     db.query(
       `UPDATE users
-       SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL, deleted_at = datetime('now')
+       SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL,
+           deleted_at = datetime('now'), deleted_email_hash = ?
        WHERE id = ?`,
-    ).run(`deleted:${user.id}`, user.id);
+    ).run(`deleted:${user.id}`, emailLineageHash(user.email), user.id);
     return "deleted";
   })();
 
@@ -1379,14 +1472,11 @@ function signInWithIdentity(req: Request, identity: OauthIdentity, provider: Oau
   let user = find();
   if (!user) {
     try {
-      db.query("INSERT INTO users (email, name, oauth_provider) VALUES (?, ?, ?)").run(
-        email,
-        identity.name,
-        provider,
-      );
+      createOrReviveUser(email, identity.name, { oauthProvider: provider });
     } catch {
-      // Two callbacks for a brand-new address can race; UNIQUE(email) settles
-      // it and the loser just reads the row the winner inserted.
+      // Two callbacks for one address can race; UNIQUE(email), or a revive that
+      // found the row already taken back, settles it and the loser just reads
+      // the row the winner left behind.
     }
     user = find();
   }

@@ -695,7 +695,12 @@ account and signs you out on every device. It cannot be undone.
   delete your account. Signed up with Google or GitHub? Set a password first in the
   **Password** card above it.
 - Your name, email address and password are removed. The address is free again
-  straight away: signing up with it creates a brand-new account.
+  straight away, and signing up with it starts a clean account: no projects, no
+  name, and back on the Free plan whatever you were on before.
+- One thing carries over. If you sign up again with the same address in the same
+  calendar month, the requests you had already used that month still count
+  against your allowance — deleting and re-registering is not a way to reset it.
+  The allowance resets on the 1st, as it does for everyone.
 
 ### 2.6 Duplicate a project
 

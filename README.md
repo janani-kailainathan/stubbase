@@ -34,7 +34,8 @@ GET    /auth/account                       (auth) → { account: { email, plan, 
 GET    /auth/sessions                      (auth) → { sessions: [{ id, userAgent, createdAt, lastUsedAt, expiresAt, current }] }
 DELETE /auth/sessions/<id>                 (auth) sign one device out
 DELETE /auth/sessions/others               (auth) sign out every device but this one → { ended }
-POST   /auth/delete-account                (auth) { password } → account removed, every session ended; 409 while it owns projects
+POST   /auth/delete-account                (auth) { password } → account emptied, every session ended; 409 while it owns projects
+                                           (the address may sign up again; it returns to the same id, keeping the month's usage)
 GET    /auth/providers                     → { google, github } — which buttons the SPA shows
 GET    /auth/google | /auth/github         start OAuth sign-in (302 to the provider)
 GET    /auth/<provider>/callback           finish it → 302 to the SPA with #token=…
