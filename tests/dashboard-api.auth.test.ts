@@ -1001,9 +1001,159 @@ describe("delete account", () => {
  * verification rule, and the session that comes back in the fragment. What is
  * stubbed is Google/GitHub themselves — nothing else is faked.
  */
+// ── Disposable email domains ───────────────────────────────────────
+
+/**
+ * Throwaway addresses refused at sign-up, from the vendored
+ * blocked-email-domains.txt. Black-box: the domains used here are real
+ * entries in that file, so a refresh that dropped mailinator would show up.
+ */
+describe("disposable email domains", () => {
+  let strict: Service;
+  let relaxed: Service;
+  let off: Service;
+
+  beforeAll(async () => {
+    strict = await startApp(ROOT, "disposable-strict", {
+      CORE_API_URL: core.base,
+      // A domain the vendored file does not list, blocked by configuration alone.
+      DASHBOARD_EMAIL_DOMAIN_BLOCKLIST: "corp-throwaway.test, @spaced.test",
+    });
+    relaxed = await startApp(ROOT, "disposable-relaxed", {
+      CORE_API_URL: core.base,
+      // The escape hatch: the same domain the file blocks, let through.
+      DASHBOARD_EMAIL_DOMAIN_ALLOWLIST: "mailinator.com",
+      DASHBOARD_EMAIL_DOMAIN_BLOCKLIST: "mailinator.com",
+    });
+    off = await startApp(ROOT, "disposable-off", {
+      CORE_API_URL: core.base,
+      DASHBOARD_BLOCK_DISPOSABLE_EMAIL: "false",
+      DASHBOARD_EMAIL_DOMAIN_BLOCKLIST: "corp-throwaway.test",
+    });
+    running.push(strict, relaxed, off);
+  }, 30_000);
+
+  const start = (on: Service, email: string) =>
+    fetch(`${on.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+
+  test("a throwaway address is refused, and nothing is written or emailed", async () => {
+    for (const email of ["someone@mailinator.com", "someone@yopmail.com", "someone@guerrillamail.com"]) {
+      const res = await start(strict, email);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("permanent address");
+      expect(
+        readDbOf(strict, (db) => db.query("SELECT id FROM signup_verifications WHERE email = ?").all(email)),
+      ).toHaveLength(0);
+      // The hourly send budget must not be spent by a refusal either.
+      expect(
+        readDbOf(strict, (db) => db.query("SELECT email FROM signup_email_sends WHERE email = ?").all(email)),
+      ).toHaveLength(0);
+    }
+  }, 30_000);
+
+  test("a subdomain of a listed domain is refused too", async () => {
+    const res = await start(strict, "someone@inbox.mailinator.com");
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("permanent address");
+  }, 20_000);
+
+  test("an ordinary address still signs up, whatever its case or spacing", async () => {
+    const account = await signupOn(strict, `Fine-${Date.now()}@Example-Corp.test`.toLowerCase());
+    expect(account.id).toBeNumber();
+    const res = await start(strict, `  Mixed-${Date.now()}@Example-Corp.test  `);
+    expect(res.status).toBe(202);
+  }, 30_000);
+
+  test("DASHBOARD_EMAIL_DOMAIN_BLOCKLIST blocks a domain the file never listed", async () => {
+    for (const email of ["someone@corp-throwaway.test", "someone@spaced.test", "someone@sub.corp-throwaway.test"]) {
+      const res = await start(strict, email);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("permanent address");
+    }
+    // …and only on the service configured for it.
+    expect((await start(off, `fine-${Date.now()}@corp-throwaway.test`)).status).toBe(202);
+  }, 30_000);
+
+  test("DASHBOARD_EMAIL_DOMAIN_ALLOWLIST wins over both lists", async () => {
+    // mailinator.com is in the vendored file *and* in this service's extra
+    // block-list, and the allow-list still lets it through: the hatch has to
+    // work no matter why a domain was blocked.
+    expect((await start(relaxed, `let-me-in-${Date.now()}@mailinator.com`)).status).toBe(202);
+    // …and it reaches subdomains the way blocking one does, or unblocking a
+    // provider would let its customers in only at the bare domain.
+    expect((await start(relaxed, `sub-${Date.now()}@inbox.mailinator.com`)).status).toBe(202);
+    // A different throwaway domain is still refused, so the hatch is not a switch.
+    expect((await start(relaxed, "someone@yopmail.com")).status).toBe(400);
+  }, 30_000);
+
+  test("DASHBOARD_BLOCK_DISPOSABLE_EMAIL=false turns the whole thing off", async () => {
+    expect((await start(off, `throwaway-${Date.now()}@mailinator.com`)).status).toBe(202);
+    // Nothing was loaded, so the table stays empty rather than being consulted.
+    expect(readDbOf(off, (db) => db.query("SELECT COUNT(*) AS n FROM blocked_email_domains").get())).toEqual({ n: 0 });
+  }, 20_000);
+
+  test("the list is loaded once and reused: a second boot on the same database does not reload", async () => {
+    const rows = () =>
+      (readDbOf(strict, (db) => db.query("SELECT COUNT(*) AS n FROM blocked_email_domains").get()) as { n: number }).n;
+    expect(rows()).toBeGreaterThan(50_000);
+    const fingerprint = readDbOf(strict, (db) =>
+      db.query("SELECT value FROM app_meta WHERE key = 'blocked_email_domains'").get(),
+    ) as { value: string };
+    expect(fingerprint.value).toMatch(/^[0-9a-f]{64}$/);
+
+    const again = await startApp(ROOT, "disposable-again", {
+      CORE_API_URL: core.base,
+      DB_PATH: join(strict.dir, "app.sqlite"),
+    });
+    running.push(again);
+    expect(again.output.join("")).not.toContain("disposable email domains");
+    expect((await start(again, "someone@mailinator.com")).status).toBe(400);
+  }, 30_000);
+
+  test("a refreshed list is picked up on the next boot, with no migration to write", async () => {
+    // A database of its own: this rewrites the loaded state, and the other
+    // services here are answering sign-ups from the same table.
+    const first = await startApp(ROOT, `disposable-reload-${Date.now()}`, { CORE_API_URL: core.base });
+    running.push(first);
+    const dbPath = join(first.dir, "app.sqlite");
+    expect((await start(first, "someone@mailinator.com")).status).toBe(400);
+
+    // What vendoring a new file looks like from the database's side: the rows
+    // are whatever the last one held, and the fingerprint no longer matches.
+    const handle = new Database(dbPath);
+    handle.exec("PRAGMA busy_timeout = 5000;");
+    handle.query("DELETE FROM blocked_email_domains").run();
+    handle.query("UPDATE app_meta SET value = 'a-previous-list' WHERE key = 'blocked_email_domains'").run();
+    handle.close();
+
+    const rebooted = await startApp(ROOT, `disposable-reloaded-${Date.now()}`, {
+      CORE_API_URL: core.base,
+      DB_PATH: dbPath,
+    });
+    running.push(rebooted);
+    expect(rebooted.output.join("")).toContain("disposable email domains");
+    expect((await start(rebooted, "someone@mailinator.com")).status).toBe(400);
+    // Read through `first`, which is the service whose directory holds the
+    // database both of them are using.
+    const { n } = readDbOf(first, (db) =>
+      db.query("SELECT COUNT(*) AS n FROM blocked_email_domains").get(),
+    ) as { n: number };
+    expect(n).toBeGreaterThan(50_000);
+    // The fingerprint was replaced, not appended to, so the next boot is quiet again.
+    expect(
+      readDbOf(first, (db) => db.query("SELECT COUNT(*) AS n FROM app_meta").get()),
+    ).toEqual({ n: 1 });
+  }, 30_000);
+});
+
 describe("OAuth sign-in", () => {
   let provider: ReturnType<typeof Bun.serve> | undefined;
   let oauthApp: Service;
+  let providerBase = "";
   const SPA = "http://localhost:5199";
 
   /** What the stub provider will claim about the person signing in. */
@@ -1061,11 +1211,15 @@ describe("OAuth sign-in", () => {
         return new Response("not found", { status: 404 });
       },
     });
-    const base = `http://127.0.0.1:${provider.port}`;
+    providerBase = `http://127.0.0.1:${provider.port}`;
+    const base = providerBase;
 
     oauthApp = await startApp(ROOT, "oauth-app", {
       CORE_API_URL: core.base,
       DASHBOARD_URL: SPA,
+      // A domain the vendored file does not list, so the disposable-email
+      // tests below can block one without depending on the file's contents.
+      DASHBOARD_EMAIL_DOMAIN_BLOCKLIST: "legacy-throwaway.test",
       DASHBOARD_GOOGLE_CLIENT_ID: "google-client-id",
       DASHBOARD_GOOGLE_SECRET: "google-secret",
       DASHBOARD_GITHUB_CLIENT_ID: "github-client-id",
@@ -1408,6 +1562,49 @@ describe("OAuth sign-in", () => {
     ).toEqual({ n: 0 });
   }, 30_000);
 
+  // ── Disposable addresses ──
+  //
+  // GitHub will verify a throwaway address quite happily, so the provider leg
+  // is the hole the sign-up check alone leaves open. The refusal is on account
+  // creation only: someone who already has an account keeps signing in.
+
+  test("a throwaway address cannot open an account through a provider", async () => {
+    for (const which of ["google", "github"] as const) {
+      const email = `oauth-throwaway-${which}-${Date.now()}@mailinator.com`;
+      const res = await signIn(which, email);
+      expect(fragment(res)).toBe("error=disposable_email");
+      // Bounced to the login page, where the SPA reads the reason.
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+      expect(readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email))).toHaveLength(0);
+    }
+  }, 30_000);
+
+  test("an account that already exists signs in whatever its domain", async () => {
+    // The account has to be made while the domain is allowed, which is what a
+    // customer signed up before their provider was added to the list looks
+    // like. A second service on the same database is how that is arranged.
+    const email = `grandfathered-${Date.now()}@legacy-throwaway.test`;
+    const openApp = await startApp(ROOT, `oauth-open-${Date.now()}`, {
+      CORE_API_URL: core.base,
+      DB_PATH: join(oauthApp.dir, "app.sqlite"),
+      DASHBOARD_BLOCK_DISPOSABLE_EMAIL: "false",
+    });
+    running.push(openApp);
+    const existing = await signupOn(openApp, email);
+
+    // oauthApp blocks that domain, and must still let the account in.
+    const res = await signIn("google", email);
+    const token = new URLSearchParams(fragment(res)).get("token");
+    expect(token).toBeString();
+    const me = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(token!) })).json();
+    expect(me.user.id).toBe(existing.id);
+
+    // A *new* account on that same domain is still refused, so the exemption
+    // is the existing row and not the domain.
+    const fresh = await signIn("github", `newcomer-${Date.now()}@legacy-throwaway.test`);
+    expect(fragment(fresh)).toBe("error=disposable_email");
+  }, 30_000);
+
   test("an OAuth session token is stored hashed, like every other session", async () => {
     const email = `hashed-${Date.now()}@test.co`;
     const res = await signIn("google", email);
@@ -1617,6 +1814,35 @@ describe("OAuth sign-in", () => {
         readOauthDb((db) => db.query("SELECT id FROM users WHERE email = ?").all(email)),
       ).toHaveLength(1);
     });
+
+    test("a throwaway address cannot open an account through One Tap either", async () => {
+      // The third door into signInWithIdentity, and the one easiest to forget:
+      // it skips the redirect flow entirely. The refusal has to come from the
+      // shared helper, or One Tap quietly becomes the way around the list.
+      const email = `onetap-throwaway-${Date.now()}@mailinator.com`;
+      const res = await oneTap(await idToken({ email }));
+      expect(res.status).toBe(302);
+      expect(fragment(res)).toBe("error=disposable_email");
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+      noAccountFor(email);
+    });
+
+    test("One Tap lets an existing account in whatever its domain", async () => {
+      const email = `onetap-grandfathered-${Date.now()}@legacy-throwaway.test`;
+      const openApp = await startApp(ROOT, `onetap-open-${Date.now()}`, {
+        CORE_API_URL: core.base,
+        DB_PATH: join(oauthApp.dir, "app.sqlite"),
+        DASHBOARD_BLOCK_DISPOSABLE_EMAIL: "false",
+      });
+      running.push(openApp);
+      const existing = await signupOn(openApp, email);
+
+      const res = await oneTap(await idToken({ email }));
+      const session = new URLSearchParams(fragment(res)).get("token");
+      expect(session).toBeString();
+      const me = await (await fetch(`${oauthApp.base}/auth/me`, { headers: as(session!) })).json();
+      expect(me.user.id).toBe(existing.id);
+    }, 30_000);
 
     test("the endpoint is absent when Google sign-in is not configured", async () => {
       const res = await oneTap(await idToken(), {}, app);

@@ -46,6 +46,7 @@
  */
 import { Database } from "bun:sqlite";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { join } from "node:path";
 import {
   AIError,
   CO_PILOT_TOOLS,
@@ -114,6 +115,25 @@ if (!ADMIN_SECRET) {
 const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LEN = 8;
+
+// Throwaway mail providers, refused at sign-up. Off with
+// DASHBOARD_BLOCK_DISPOSABLE_EMAIL=false, which is what a deployment that
+// would rather take the sign-ups sets.
+const BLOCK_DISPOSABLE_EMAIL =
+  (process.env.DASHBOARD_BLOCK_DISPOSABLE_EMAIL ?? "true").trim().toLowerCase() !== "false";
+const domainList = (raw: string | undefined) =>
+  new Set(
+    (raw ?? "")
+      .split(",")
+      .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+      .filter(Boolean),
+  );
+// The escape hatches, both immediate: a 75,000-domain community list will
+// eventually sweep in somebody real, and waiting for a new list file to be
+// vendored and deployed is no answer to a customer who cannot sign up. The
+// allow-list wins over everything, including the extra block-list.
+const EMAIL_DOMAIN_ALLOWLIST = domainList(process.env.DASHBOARD_EMAIL_DOMAIN_ALLOWLIST);
+const EMAIL_DOMAIN_BLOCKLIST = domainList(process.env.DASHBOARD_EMAIL_DOMAIN_BLOCKLIST);
 
 // OWASP argon2id baseline; memoryCost is KiB (19 MiB transient per hash),
 // sized so a couple of concurrent logins stay comfortable on the 1GB box.
@@ -211,6 +231,21 @@ db.exec(`
     quantity   INTEGER NOT NULL DEFAULT 1,   -- packs of this kind held
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, addon)
+  );
+  -- Throwaway mail providers, refused at sign-up. Loaded from the vendored
+  -- blocked-email-domains.txt (see loadBlockedEmailDomains), which is why it
+  -- lives in SQLite rather than a Set: 75,000 domains cost about 9 MB held in
+  -- the process and about 2 MB as a table the page cache dips into, and this
+  -- box has a gigabyte. WITHOUT ROWID — the domain is the whole row.
+  CREATE TABLE IF NOT EXISTS blocked_email_domains (
+    domain TEXT PRIMARY KEY
+  ) WITHOUT ROWID;
+  -- Small key/value scratch for things that describe the database itself
+  -- rather than an account: currently the fingerprint of the domain list
+  -- that was loaded, so a boot can tell whether the file has changed.
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 `);
 // Migrate pre-auth databases (users table without the new columns).
@@ -448,6 +483,95 @@ interface User {
 }
 
 const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+
+// ── Disposable email domains ──────────────────────────────────────
+//
+// A throwaway address is a free account with nobody behind it, and every one
+// of them carries a monthly request allowance. The list is vendored
+// (blocked-email-domains.txt beside this file) rather than fetched: sign-up
+// must not depend on somebody else's uptime, and a list that changes without
+// a commit is a list nobody reviewed.
+//
+// It lives in SQLite rather than a Set because of the box. Measured on the
+// 75,000-domain list: about 18 MB held as a Set of strings, about 9 MB as one
+// string with an offset index, about 2 MB as this table, where the cost is
+// page cache that is bounded and shared with every other query. A lookup is a
+// few microseconds against a sign-up that already spends ~100 ms in argon2.
+//
+// Reloaded only when the file changes. The fingerprint of the exact bytes
+// that were loaded is kept in app_meta, so an unchanged file costs one hash
+// at boot and no writes, and a refreshed file is picked up with no migration
+// to remember to write.
+const BLOCKED_DOMAINS_FILE = join(import.meta.dir, "blocked-email-domains.txt");
+
+async function loadBlockedEmailDomains(): Promise<void> {
+  if (!BLOCK_DISPOSABLE_EMAIL) return;
+  const file = Bun.file(BLOCKED_DOMAINS_FILE);
+  if (!(await file.exists())) {
+    // Not fatal: the allow/block-list env knobs still work, and refusing to
+    // boot over a missing data file would take the dashboard down for
+    // everyone to stop a sign-up abuse it is only meant to discourage.
+    console.error(`[app] ${BLOCKED_DOMAINS_FILE} is missing; disposable-email blocking is inactive`);
+    return;
+  }
+  const text = await file.text();
+  const fingerprint = sha256hex(text);
+  const loaded = db.query("SELECT value FROM app_meta WHERE key = 'blocked_email_domains'").get() as
+    | { value: string }
+    | null;
+  if (loaded?.value === fingerprint) return;
+
+  const insert = db.prepare("INSERT OR IGNORE INTO blocked_email_domains (domain) VALUES (?)");
+  // Scanned in place rather than split into an array: 75,000 short-lived
+  // strings is the allocation this design exists to avoid.
+  db.transaction(() => {
+    db.query("DELETE FROM blocked_email_domains").run();
+    let i = 0;
+    while (i < text.length) {
+      let nl = text.indexOf("\n", i);
+      if (nl < 0) nl = text.length;
+      const domain = text.slice(i, nl).trim().toLowerCase();
+      if (domain && !domain.startsWith("#")) insert.run(domain);
+      i = nl + 1;
+    }
+    db.query(
+      "INSERT INTO app_meta (key, value) VALUES ('blocked_email_domains', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    ).run(fingerprint);
+  })();
+  const { n } = db.query("SELECT COUNT(*) AS n FROM blocked_email_domains").get() as { n: number };
+  console.log(`[app] loaded ${n} disposable email domains`);
+}
+
+const blockedDomainQuery = db.prepare("SELECT 1 FROM blocked_email_domains WHERE domain = ?");
+
+/**
+ * Whether this address is a throwaway one.
+ *
+ * The domain and every parent of it down to two labels are checked, so
+ * listing mailinator.com also covers anything.mailinator.com. It stops at two
+ * because one label is a TLD: a list that ever contained a bare "com" would
+ * otherwise refuse the internet. The vendored file holds no bare TLD and no
+ * public suffix, and a refresh should be diffed for both.
+ *
+ * Takes an address already normalised the way every sign-in path normalises
+ * one, and expects it to have passed EMAIL_RE.
+ */
+function disposableEmail(email: string): boolean {
+  if (!BLOCK_DISPOSABLE_EMAIL) return false;
+  const domain = email.slice(email.lastIndexOf("@") + 1);
+  if (!domain) return false;
+  const labels = domain.split(".");
+  for (let i = 0; i + 1 < labels.length; i++) {
+    const candidate = labels.slice(i).join(".");
+    if (EMAIL_DOMAIN_ALLOWLIST.has(candidate)) return false;
+    if (EMAIL_DOMAIN_BLOCKLIST.has(candidate)) return true;
+    if (blockedDomainQuery.get(candidate) !== null) return true;
+  }
+  return false;
+}
+
+const DISPOSABLE_EMAIL_ERROR =
+  "that email provider is not accepted: please sign up with a permanent address";
 
 // ── Coming back to a deleted account ──────────────────────────────
 //
@@ -730,6 +854,7 @@ async function signup(req: Request): Promise<Response> {
   const name = typeof (body as any)?.name === "string" ? (body as any).name.trim() || null : null;
 
   if (!EMAIL_RE.test(email)) return err(400, "valid 'email' is required");
+  if (disposableEmail(email)) return err(400, DISPOSABLE_EMAIL_ERROR);
   if (password.length < MIN_PASSWORD_LEN)
     return err(400, `'password' must be at least ${MIN_PASSWORD_LEN} characters`);
   // Fails closed: an account nobody verified is exactly what this exists to stop.
@@ -1471,6 +1596,11 @@ function signInWithIdentity(req: Request, identity: OauthIdentity, provider: Oau
     db.query("SELECT id, email, name, plan FROM users WHERE email = ?").get(email) as User | null;
   let user = find();
   if (!user) {
+    // Only on the way in. Someone who already has an account signs in
+    // whatever their domain: the list is for stopping new throwaway accounts,
+    // not for locking out a customer whose provider was added to it later —
+    // and a returning deleted account is a sign-up, so it is checked here too.
+    if (disposableEmail(email)) return oauthFailed("disposable_email");
     try {
       createOrReviveUser(email, identity.name, { oauthProvider: provider });
     } catch {
@@ -3722,6 +3852,9 @@ async function route(req: Request): Promise<Response> {
 
   return err(404, "not found");
 }
+
+// Before the first request, so no sign-up can race an empty table.
+await loadBlockedEmailDomains();
 
 const server = Bun.serve({
   port: PORT,

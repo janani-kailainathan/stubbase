@@ -3,48 +3,25 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
-import { AuthLayout, AuthLogo } from './auth-shared'
+import { AuthLayout, AuthLogo, consumeFragment, reportOAuthError } from './auth-shared'
 
 /**
- * Landing point for the OAuth redirect: the Dashboard API bounces the browser
- * here with `#token=…` (or `#error=…` on the login page) once the provider has
- * confirmed the identity.
- *
- * The fragment is read once, at module scope, and stripped from the URL
- * immediately — a session token must not survive in history, the back button
- * or a bookmark. Memoising it here rather than in a ref or effect is what
- * makes that safe under StrictMode's double-invoked effects: the second pass
- * sees the same captured value instead of an already-cleared hash.
+ * Landing point for a successful OAuth redirect: the Dashboard API bounces the
+ * browser here with `#token=…` once the provider has confirmed the identity. A
+ * refused sign-in goes to /login with `#error=…` instead, which Login reads
+ * with the same helpers — see consumeFragment in auth-shared.
  */
-let captured: URLSearchParams | null = null
-
-function consumeFragment(): URLSearchParams {
-  if (!captured) {
-    captured = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    window.history.replaceState(null, '', window.location.pathname + window.location.search)
-  }
-  return captured
-}
-
-const MESSAGES: Record<string, string> = {
-  access_denied: 'Sign-in was cancelled.',
-  invalid_state: 'That sign-in link expired. Please try again.',
-  provider_rejected: 'Your provider did not confirm a verified email address.',
-}
-
 export default function AuthCallback() {
   const adoptSession = useAuthStore((s) => s.adoptSession)
   const navigate = useNavigate()
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    const params = consumeFragment()
-    const token = params.get('token')
-    const error = params.get('error')
+    const token = consumeFragment().get('token')
 
     if (!token) {
       setFailed(true)
-      toast.error(MESSAGES[error ?? ''] ?? 'Sign-in failed. Please try again.')
+      reportOAuthError()
       navigate('/login', { replace: true })
       return
     }

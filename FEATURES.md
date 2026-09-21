@@ -630,6 +630,12 @@ code from your inbox.
   sign-up, so a code email you did not ask for is safe to ignore.
 - Signing up with **Google** or **GitHub** needs no code: they have already
   verified your address.
+- Throwaway addresses are not accepted. Sign-ups from disposable mail providers
+  (mailinator, guerrillamail, 10minutemail and tens of thousands of others) are
+  refused, through Google and GitHub as well as by password. Use a permanent
+  address you can still read when you need a password reset. If a real provider
+  of yours is refused by mistake, get in touch — it can be unblocked the same
+  day. Already have an account? You keep signing in, whatever your address.
 
 ### 2.2 Password reset
 

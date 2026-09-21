@@ -9,6 +9,7 @@ import {
   PasswordInput,
   authInputClass,
   authLabelClass,
+  useOAuthError,
 } from './auth-shared'
 
 export default function Login() {
@@ -18,6 +19,8 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
+  // A refused OAuth sign-in lands back here with its reason in the fragment.
+  useOAuthError()
 
   if (user) return <Navigate to="/" replace />
 

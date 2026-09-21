@@ -134,7 +134,7 @@
         owner: stubbase
         group: stubbase
         mode: "0644"
-      loop: [server-app.ts, package.json]
+      loop: [server-app.ts, package.json, blocked-email-domains.txt]
       notify: Restart stubbase-app
 
     # The AI provider module is a directory, not a single file — trailing slash

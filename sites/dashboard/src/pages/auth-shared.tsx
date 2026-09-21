@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { Eye, EyeOff } from 'lucide-react'
 import * as api from '@/lib/api'
@@ -9,6 +10,61 @@ export const authInputClass =
   'rounded-md border border-border bg-code-bg px-4 py-2.5 text-sm text-foreground placeholder-subtle focus:border-primary focus:outline-none'
 
 export const authLabelClass = 'text-xs font-semibold tracking-wide text-subtle uppercase'
+
+/**
+ * The OAuth redirect's fragment, read once per page load and stripped from the
+ * URL immediately — a session token must not survive in history, the back
+ * button or a bookmark. Memoised at module scope rather than in a ref or an
+ * effect so StrictMode's second pass sees the same value instead of an
+ * already-cleared hash.
+ *
+ * It lives here because two pages read it: AuthCallback takes the token, and
+ * Login takes the error, since the Dashboard API bounces a failed sign-in
+ * straight to /login.
+ */
+let captured: URLSearchParams | null = null
+
+export function consumeFragment(): URLSearchParams {
+  if (!captured) {
+    captured = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+  return captured
+}
+
+export const OAUTH_MESSAGES: Record<string, string> = {
+  access_denied: 'Sign-in was cancelled.',
+  invalid_state: 'That sign-in link expired. Please try again.',
+  provider_rejected: 'Your provider did not confirm a verified email address.',
+  disposable_email: 'That email provider is not accepted. Please use a permanent address.',
+}
+
+export const oauthMessage = (code: string | null) =>
+  OAUTH_MESSAGES[code ?? ''] ?? 'Sign-in failed. Please try again.'
+
+/**
+ * Show why an OAuth sign-in was refused. The API redirects to /login with the
+ * reason in the fragment, so without this the browser simply arrives back at
+ * the form with nothing said — which is how a refused sign-in reads as a
+ * button that does nothing.
+ *
+ * Announced once per page load, tracked beside the captured fragment. The
+ * reason survives being read: AuthCallback reports the failure and then
+ * navigates to /login, which mounts this and would say the same thing a
+ * second time, and StrictMode runs the effect twice again on top of that.
+ */
+let reported = false
+
+export function reportOAuthError() {
+  if (reported) return
+  const error = consumeFragment().get('error')
+  reported = true
+  if (error) toast.error(oauthMessage(error))
+}
+
+export function useOAuthError() {
+  useEffect(reportOAuthError, [])
+}
 
 /**
  * The password field on both auth pages, with a show/hide toggle.
