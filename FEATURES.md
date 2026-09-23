@@ -829,6 +829,12 @@ tells you plainly when you ask for something Stubbase does not do.
 
 - **Design tables.** Describe your data and it drafts the tables with realistic
   sample records.
+- **Know your tables' shape.** It sees every table's fields, how many records
+  carry each one and what types they hold — never the records themselves — so
+  it extends a table consistently with what is already there.
+- **Mark fields required.** Tell it a field is required, or no longer is, and
+  it records that. Required fields are not enforced yet: a request that leaves
+  one out still succeeds.
 - **Start from a starter.** In an empty project, if one of the starter APIs
   fits what you describe — a blog, a storefront, a helpdesk and more — it
   offers that first.

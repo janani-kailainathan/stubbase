@@ -4,7 +4,9 @@ import {
   Activity,
   CircleStop,
   Info,
+  ListChecks,
   LayoutTemplate,
+  Shapes,
   Play,
   Rocket,
   Settings2,
@@ -138,6 +140,33 @@ function Diagnostics({ result }: { result: Record<string, unknown> }) {
         </p>
       ))}
       <Warnings warnings={result.warnings} />
+    </ToolCard>
+  )
+}
+
+/** The Co-Pilot read the shape of the tables — which ones, never their records. */
+function DataModelRead({ result }: { result: Record<string, unknown> }) {
+  const tables = Object.keys((result.tables as object) ?? {})
+  const staged = Object.keys((result.staged as object) ?? {})
+  return (
+    <ToolCard icon={Shapes} title="Read the data model">
+      <p className="font-mono text-[10px] text-subtle">
+        {tables.length > 0 ? tables.join(' · ') : 'No tables yet'}
+        {staged.length > 0 ? ` · staged: ${staged.join(' · ')}` : ''}
+      </p>
+    </ToolCard>
+  )
+}
+
+/** Fields the Co-Pilot declared required. Recorded, not enforced — and the card says so. */
+function RequiredFields({ result }: { result: Record<string, unknown> }) {
+  const required = list(result.required).filter((f): f is string => typeof f === 'string')
+  return (
+    <ToolCard icon={ListChecks} title={`Required fields in ${str(result.table) ?? 'table'}`}>
+      <p className="font-mono text-[10px] text-subtle">
+        {required.length > 0 ? required.join(' · ') : 'None required'}
+      </p>
+      <p className="font-mono text-[10px] text-faint">Recorded, not enforced yet.</p>
     </ToolCard>
   )
 }
@@ -467,6 +496,10 @@ function ToolResult({
       return <StatusChanged result={result} />
     case 'get_diagnostics':
       return <Diagnostics result={result} />
+    case 'get_data_model':
+      return <DataModelRead result={result} />
+    case 'set_required_fields':
+      return <RequiredFields result={result} />
     default:
       return <ToolCard icon={Wrench} title={name} />
   }

@@ -108,6 +108,8 @@ GET    /<tenant>/_admin/files/<resource>   read file (drafts included)
 POST   /<tenant>/_admin/files/<resource>   create/overwrite file (body = seed array)
 DELETE /<tenant>/_admin/files/<resource>   delete file
 GET    /<tenant>/_admin/system[/<file>]    list / read a feature's files (read-only, credentials stripped)
+GET    /<tenant>/_admin/models             every data file's model: fields, counts, types, required
+POST   /<tenant>/_admin/models/<resource>  { required: { <field>: true|false } } — declared, not enforced
 GET|POST /<tenant>/_admin/status           read / set whether the public plane is serving (applies immediately)
 POST   /<tenant>/_admin/users/<id>/role    set an account's role (must exist in the rules)
 POST   /<tenant>/_admin/flush              drop the RAM cache

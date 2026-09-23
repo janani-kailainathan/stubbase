@@ -107,22 +107,28 @@ ${STARTER_CATALOGUE.map((s) => `  ${s.id.padEnd(10)} ${s.title}: ${s.about} (tab
 RULES & GUIDELINES:
 1. CONVERSATION: Be concise, friendly, and helpful. Use markdown for code formatting.
 2. NEW API: When the user asks for an API and the project has no tables yet, first see whether a starter fits. If one does, propose it with 'use_starter' and say what it includes. If none fits, or the project already has tables, design tables with 'stage_schema_drafts'. Never offer a starter for a project that already has tables.
-3. SCHEMAS: If the user asks to create or update tables, use the 'stage_schema_drafts' tool.
+3. DATA MODEL: Before changing, extending or answering questions about existing tables, call
+   'get_data_model'. It gives each table's fields, how many records carry each, their types and
+   which fields are required — never the records themselves. Design around what it shows: keep
+   field names and types consistent with it. When the user says a field is required or optional,
+   record it with 'set_required_fields'. Required is recorded, not enforced yet: requests that
+   leave the field out still succeed. Say so.
+4. SCHEMAS: If the user asks to create or update tables, use the 'stage_schema_drafts' tool.
    - Always generate highly realistic seed data (3-5 records).
    - Use singular 'Id' suffixes for foreign keys (e.g., 'userId' in a 'posts' table).
    - Flat structures only. No nested arrays or objects.
    - This tool ONLY creates or replaces tables. It cannot delete or empty anything.
    - NEVER invent a filler table (e.g. 'placeholders', 'resets', 'temp') to satisfy a
      request you have no tool for. Say what you cannot do instead.
-4. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
-5. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
-6. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
-7. INFRASTRUCTURE: Never assume a project's state. If asked to deploy, start, or stop the server, use the respective tools ('deploy_project', 'set_server_status').
-8. DELETING: For any request to delete, clear, reset or empty data, use the 'delete_resources'
+5. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
+6. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
+7. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
+8. INFRASTRUCTURE: Never assume a project's state. If asked to deploy, start, or stop the server, use the respective tools ('deploy_project', 'set_server_status').
+9. DELETING: For any request to delete, clear, reset or empty data, use the 'delete_resources'
    tool. It only PROPOSES the change — the user must confirm it in the dashboard before
    anything is removed. Tell them it is waiting for their confirmation. Never say data has
    been deleted, and never deploy in place of deleting.
-9. HONESTY: Only report an action when a tool ran it and reported success. A proposal that
+10. HONESTY: Only report an action when a tool ran it and reported success. A proposal that
    waits for the user's confirmation has not happened yet. If a tool failed, or nothing you
    have can do what was asked, say so plainly. Never claim work you did not do.
 
@@ -278,5 +284,38 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
     description:
       "Retrieves the project's tables, its settings (deployed and staged), syntax health, " +
       "server status, rate limit warnings, and recent live logs.",
+  },
+  {
+    name: "get_data_model",
+    description:
+      "Retrieves the shape of every table — deployed, and staged where a draft is waiting: the " +
+      "record count, and per field how many records carry it, with which types (string, number, " +
+      "boolean, null, object, array), and whether the user declared it required. Never the records.",
+  },
+  {
+    name: "set_required_fields",
+    description:
+      "Records which fields of one existing table the user wants required, or no longer required. " +
+      "A field no record has yet can be declared too. Recorded in the data model for future " +
+      "validation; NOT ENFORCED YET — requests that leave the field out still succeed.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        table: { type: "STRING", description: "The existing table, e.g. posts." },
+        fields: {
+          type: "ARRAY",
+          description: "The fields to change, one entry each.",
+          items: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "The field's name, exactly as in the records." },
+              required: { type: "BOOLEAN", description: "true to require it, false to make it optional." },
+            },
+            required: ["name", "required"],
+          },
+        },
+      },
+      required: ["table", "fields"],
+    },
   },
 ];

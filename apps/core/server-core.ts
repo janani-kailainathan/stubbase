@@ -15,6 +15,8 @@
  *   GET              /<tenant>/openapi.json
  *   POST             /<tenant>/_notify/email | sms                  (JWT-protected proxy)
  *   GET|POST|DELETE  /<tenant>/_admin/files/<resource>   (Bearer ADMIN_SECRET)
+ *   GET              /<tenant>/_admin/models             (Bearer ADMIN_SECRET, data models)
+ *   POST             /<tenant>/_admin/models/<resource>  (Bearer ADMIN_SECRET, set required)
  *   GET              /<tenant>/_admin/system[/<file>]    (Bearer ADMIN_SECRET, read-only)
  *   GET|POST         /<tenant>/_admin/status             (Bearer ADMIN_SECRET)
  *   POST             /<tenant>/_admin/users/<id>/role    (Bearer ADMIN_SECRET)
@@ -29,11 +31,13 @@
  * in-memory SQLite projection of the JSON files (see "In-memory SQLite
  * projection" below). The JSON arrays remain the store; SQL only reads.
  *
- * On disk a tenant is two folders (see "Tenant layout"):
+ * On disk a tenant is three folders (see "Tenant layout"):
  *   data/    <resource>.json, and any draft_<resource>.json staged over it
  *   system/  config.json (+ draft_config.json), status.json, and the files a
  *            feature owns — auth's users.json and reset-password.json. Never a
  *            CRUD resource.
+ *   models/  one <name>.json per data/ file: the shape of its records, for the
+ *            AI Co-Pilot (see "Data models"). Never loaded, never served.
  *
  * Per-tenant behavior is configured by an optional system/config.json (flat
  * object of env-style keys, compiled from the dashboard's simulated .env
@@ -53,6 +57,7 @@ import { Database } from "bun:sqlite"; // built into Bun — not an npm dependen
 import { err, json, logNotes, serializedBody } from "./lib/http.ts";
 import { NAME_RE } from "./lib/names.ts";
 import { newTimestamps } from "./lib/timestamps.ts";
+import { observe, parseModel, setRequired, withDeclared, type DataModel, type ObservedModel } from "./lib/models.ts";
 import {
   LOG_RESET_CODES,
   SYSTEM_FILE_NAMES,
@@ -270,7 +275,9 @@ function loadRbac(tenantId: string, raw: unknown): RbacRules {
 
 // ── Tenant layout ─────────────────────────────────────────────────
 // data/ holds what the public plane serves: one <resource>.json per resource,
-// plus any draft_<resource>.json staged over it. system/ holds everything that
+// plus any draft_<resource>.json staged over it. models/ holds one model per
+// data/ file, for the AI Co-Pilot (see "Data models"), and is never loaded.
+// system/ holds everything that
 // is not a resource: the tenant's settings (config.json and its draft), whether
 // it is serving (status.json), and the files a feature owns (auth's users.json
 // and reset-password.json). The split
@@ -283,6 +290,8 @@ const dataDir = (t: string) => join(tenantDir(t), "data");
 const systemDir = (t: string) => join(tenantDir(t), "system");
 const resourceFile = (t: string, r: string) => join(dataDir(t), `${r}.json`);
 const systemFile = (t: string, name: string) => join(systemDir(t), `${name}.json`);
+const modelsDir = (t: string) => join(tenantDir(t), "models");
+const modelFile = (t: string, name: string) => join(modelsDir(t), `${name}.json`);
 
 /**
  * Where `_admin/files/<name>` reads and writes. That plane addresses files by
@@ -758,10 +767,15 @@ async function tenantExists(tenantId: string): Promise<boolean> {
 // Write-through, serialized per tenant so concurrent mutations can't interleave a file
 function persist(state: TenantState, tenantId: string, resource: string) {
   dropSqlMount(tenantId); // the SQL projection is now stale — rebuilt on next query
-  const snapshot = JSON.stringify(state.db[resource] ?? [], null, 2);
+  const records = state.db[resource] ?? [];
+  const snapshot = JSON.stringify(records, null, 2);
+  // Observed from the same records as the snapshot, now, before a later write
+  // can change the array under the chain — and written after the data lands.
+  const observed = observe(resource, records);
   state.writeChain = state.writeChain.then(() =>
-    Bun.write(resourceFile(tenantId, resource), snapshot).catch((e) =>
-      console.error(`[core] persist failed ${tenantId}/${resource}: ${e}`),
+    Bun.write(resourceFile(tenantId, resource), snapshot).then(
+      () => writeModel(tenantId, resource, observed),
+      (e) => console.error(`[core] persist failed ${tenantId}/${resource}: ${e}`),
     ),
   );
   return state.writeChain;
@@ -787,6 +801,93 @@ function persistSystem(state: TenantState, tenantId: string, name: SystemFileNam
   );
   return state.writeChain;
 }
+
+// ── Data models ───────────────────────────────────────────────────
+// models/<name>.json describes data/<name>.json: its record count, and per
+// top-level field how many records carry it, with which types, and whether the
+// user declared it required (lib/models.ts). It is how the AI Co-Pilot learns a
+// table's shape without being sent its records. Three rules keep it right:
+//
+//   - Rebuilt whole from the table on every write, never patched. persist()
+//     does it for the public plane; the admin file routes and deploy do it for
+//     whole-file writes. Deletes, dashboard saves, starters and the Co-Pilot's
+//     staging are therefore all reflected, and a field no record has drops out.
+//   - Each model records the size and mtime of the data file it was built from,
+//     and a read rebuilds any model that is missing or no longer matches — which
+//     covers projects from before models existed and a crash between the two
+//     writes, with no migration.
+//   - `required` is declared, not observed, and survives every rebuild. A draft
+//     model starts from the live model's declarations, deploy carries the
+//     draft's across, and setting it writes both.
+//
+// Like system/, the folder is never loaded into state.db, so a model can never
+// be served, expanded, described in openapi.json or queried; and no
+// _admin/files name resolves to it, so only the core writes it.
+
+/** data/ files that get a model: resources and their drafts, never settings or reserved names. */
+const hasModel = (name: string) =>
+  NAME_RE.test(name) && !isSettingsFile(name) && !isPrivateFile(name.replace(/^draft_/, ""));
+
+const modelResource = (name: string) => name.replace(/^draft_/, "");
+
+async function readModelFile(tenantId: string, name: string): Promise<DataModel | null> {
+  return parseModel(await Bun.file(modelFile(tenantId, name)).json().catch(() => null));
+}
+
+/**
+ * Writes the model of data/<name>.json from records already counted, keeping
+ * the declarations of `declaredFrom` — by default the model it replaces, or for
+ * a new draft the live resource's. Never throws: a model that failed to write
+ * is rebuilt on the next read, and must not fail the data write it follows.
+ */
+async function writeModel(
+  tenantId: string,
+  name: string,
+  observed: ObservedModel,
+  declaredFrom?: DataModel | null,
+) {
+  try {
+    const source = await stat(resourceFile(tenantId, name));
+    const previous =
+      declaredFrom !== undefined
+        ? declaredFrom
+        : ((await readModelFile(tenantId, name)) ??
+          (name.startsWith("draft_") ? await readModelFile(tenantId, modelResource(name)) : null));
+    const model = withDeclared(observed, previous, { bytes: source.size, modifiedAt: source.mtimeMs });
+    await mkdir(modelsDir(tenantId), { recursive: true });
+    await Bun.write(modelFile(tenantId, name), JSON.stringify(model, null, 2));
+  } catch (e) {
+    console.error(`[core] model write failed ${tenantId}/models/${name}: ${e}`);
+  }
+}
+
+/** The model of data/<name>.json, rebuilt from disk first when it is missing or stale; null when there is no such file. */
+async function freshModel(tenantId: string, name: string): Promise<DataModel | null> {
+  const source = await stat(resourceFile(tenantId, name)).catch(() => null);
+  if (!source) return null;
+  const existing = await readModelFile(tenantId, name);
+  if (existing && existing.source.bytes === source.size && existing.source.modifiedAt === source.mtimeMs)
+    return existing;
+  const records = await Bun.file(resourceFile(tenantId, name)).json().catch(() => null);
+  if (!Array.isArray(records)) return null; // not a record file: no model to describe it
+  await writeModel(tenantId, name, observe(modelResource(name), records));
+  return readModelFile(tenantId, name);
+}
+
+/**
+ * Runs `fn` on the tenant's write chain when it is loaded, so a model read or
+ * a declaration never interleaves with a persist of the same table.
+ */
+function onWriteChain<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+  const state = activeTenants.get(tenantId);
+  if (!state) return fn();
+  const run = state.writeChain.then(fn);
+  state.writeChain = run.catch(() => undefined);
+  return run;
+}
+
+/** A model as the admin plane hands it out: the fingerprint is the core's own business. */
+const viewModel = ({ source: _source, ...model }: DataModel) => model;
 
 // ── Features ──────────────────────────────────────────────────────
 // Each feature is built once, from a host carrying what only the core can do.
@@ -1828,6 +1929,15 @@ async function handleAdmin(
         // alone, or the staged edit is gone with nothing live to show for it.
         await rm(draftPath, { force: true });
         promoted.push(target);
+        // The draft's model goes with it: the live model is rebuilt from the
+        // promoted records, carrying the draft's declarations.
+        if (folder === "data" && hasModel(target)) {
+          const records = await Bun.file(join(dir, `${target}.json`)).json().catch(() => null);
+          const draftModel = await readModelFile(tenantId, `draft_${target}`);
+          if (Array.isArray(records))
+            await writeModel(tenantId, target, observe(target, records), draftModel ?? (await readModelFile(tenantId, target)));
+          await rm(modelFile(tenantId, `draft_${target}`), { force: true });
+        }
       }
     }
     evict(tenantId); // CRITICAL: flush cache so the promoted files go live now
@@ -1887,6 +1997,66 @@ async function handleAdmin(
     return json(viewSystemFile(name, rows));
   }
 
+  // GET  /<tenant>/_admin/models             — every data file's model, rebuilt where stale
+  // POST /<tenant>/_admin/models/<resource>  — { required: { <field>: true|false } }
+  // Read by the AI Co-Pilot through the Dashboard API; nothing else writes a
+  // model, and there is no route to write one whole.
+  if (segments[0] === "models" && segments.length <= 2) {
+    if (!(await isDirectory(tenantDir(tenantId)))) return err(404, "tenant not found");
+    if (segments.length === 1) {
+      if (req.method !== "GET") return err(405, "method not allowed");
+      return onWriteChain(tenantId, async () => {
+        const names = (await readdir(dataDir(tenantId)).catch(() => [] as string[]))
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => f.slice(0, -5))
+          .filter(hasModel)
+          .sort();
+        const models: Record<string, ReturnType<typeof viewModel>> = {};
+        for (const name of names) {
+          const model = await freshModel(tenantId, name);
+          if (model) models[name] = viewModel(model);
+        }
+        // A model whose data file is gone describes nothing.
+        for (const f of await readdir(modelsDir(tenantId)).catch(() => [] as string[]))
+          if (f.endsWith(".json") && !names.includes(f.slice(0, -5)))
+            await rm(join(modelsDir(tenantId), f), { force: true });
+        return json({ tenant: tenantId, models });
+      });
+    }
+
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const resource = segments[1];
+    if (!hasModel(resource) || resource.startsWith("draft_")) return err(400, "invalid resource name");
+    const body = await readJsonBody(req);
+    if (body instanceof Response) return body;
+    const raw = (body as { required?: unknown } | null)?.required;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      return err(400, "'required' must be an object of field names to true or false");
+    const entries = Object.entries(raw);
+    if (entries.length === 0 || entries.length > 200)
+      return err(400, "'required' must name between 1 and 200 fields");
+    const changes = new Map<string, boolean>();
+    for (const [field, value] of entries) {
+      if (field.length === 0 || field.length > 128) return err(400, "field names must be 1-128 characters");
+      if (typeof value !== "boolean") return err(400, `'required.${field}' must be true or false`);
+      changes.set(field, value);
+    }
+    return onWriteChain(tenantId, async () => {
+      // A declaration belongs to the resource, so it is written to the live
+      // model and to a staged draft's alike — nothing about it waits for a deploy.
+      const updated: Record<string, ReturnType<typeof viewModel>> = {};
+      for (const name of [resource, `draft_${resource}`]) {
+        const model = await freshModel(tenantId, name);
+        if (!model) continue;
+        const next = setRequired(model, changes);
+        await Bun.write(modelFile(tenantId, name), JSON.stringify(next, null, 2));
+        updated[name] = viewModel(next);
+      }
+      if (Object.keys(updated).length === 0) return err(404, "resource not found");
+      return json({ ok: true, tenant: tenantId, models: updated });
+    });
+  }
+
   if (segments[0] !== "files" || !segments[1] || segments.length > 2)
     return err(404, "unknown admin route");
   const resource = segments[1];
@@ -1926,6 +2096,9 @@ async function handleAdmin(
     }
     await mkdir(dirname(file), { recursive: true });
     await Bun.write(file, JSON.stringify(initial, null, 2));
+    // A whole-file write is a whole new table: rebuild its model from it.
+    if (Array.isArray(initial) && hasModel(resource))
+      await writeModel(tenantId, resource, observe(modelResource(resource), initial));
     evict(tenantId); // CRITICAL: flush cache; next request lazy-loads fresh disk state
     const records = Array.isArray(initial) ? initial.length : Object.keys(initial).length;
     return json({ ok: true, tenant: tenantId, resource, records }, 201);
@@ -1934,6 +2107,7 @@ async function handleAdmin(
   if (req.method === "DELETE") {
     if (!(await Bun.file(file).exists())) return err(404, "resource file not found");
     await rm(file);
+    if (hasModel(resource)) await rm(modelFile(tenantId, resource), { force: true });
     evict(tenantId); // CRITICAL: flush cache
     return json({ ok: true, tenant: tenantId, resource, deleted: true });
   }

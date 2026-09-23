@@ -1491,8 +1491,10 @@ describe("tenant layout", () => {
     expect((await write("layout", "config", { QA_MODE: "true" })).status).toBe(201);
     expect((await write("layout", "draft_config", { QA_MODE: "false" })).status).toBe(201);
 
-    expect((await readdir(join(core.dir, "layout"))).sort()).toEqual(["data", "system"]);
+    expect((await readdir(join(core.dir, "layout"))).sort()).toEqual(["data", "models", "system"]);
     expect((await readdir(join(core.dir, "layout", "data"))).sort()).toEqual(["draft_posts.json", "posts.json"]);
+    // A model per data file, and none for settings.
+    expect((await readdir(join(core.dir, "layout", "models"))).sort()).toEqual(["draft_posts.json", "posts.json"]);
     expect((await readdir(join(core.dir, "layout", "system"))).sort()).toEqual(["config.json", "draft_config.json"]);
   });
 
@@ -1526,6 +1528,178 @@ describe("tenant layout", () => {
     const res = await fetch(`${core.base}/rootfiles/posts`);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "resource not found" });
+  });
+});
+
+/**
+ * models/<name>.json describes data/<name>.json for the AI Co-Pilot: per field,
+ * how many records carry it, with which types, and whether it is declared
+ * required. Observed facts are rebuilt from the whole table on every write;
+ * `required` is declared and survives every rebuild.
+ */
+describe("data models", () => {
+  const admin = (tenant: string, path: string, init: RequestInit = {}) =>
+    fetch(`${core.base}/${tenant}/_admin/${path}`, {
+      ...init,
+      headers: { ...adminAuth, "content-type": "application/json", ...(init.headers ?? {}) },
+    });
+  const writeFile = (tenant: string, name: string, body: unknown) =>
+    admin(tenant, `files/${name}`, { method: "POST", body: JSON.stringify(body) });
+  const models = async (tenant: string) => {
+    const res = await admin(tenant, "models");
+    expect(res.status).toBe(200);
+    return (await res.json()).models;
+  };
+  const declare = (tenant: string, resource: string, required: unknown) =>
+    admin(tenant, `models/${resource}`, { method: "POST", body: JSON.stringify({ required }) });
+  const send = (tenant: string, method: string, path: string, body?: unknown) =>
+    fetch(`${core.base}/${tenant}/${path}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const modelFiles = async (tenant: string) =>
+    (await readdir(join(core.dir, tenant, "models")).catch(() => [] as string[])).sort();
+
+  test("every public write rebuilds the table's model: new fields appear, types are counted, gone fields drop out", async () => {
+    await writeFile("shapes", "posts", []);
+
+    await send("shapes", "POST", "posts", { id: "1", title: "Hello", views: 3 });
+    // Written with the data, not only when someone reads it: the file on disk
+    // already has the new field before any read could rebuild it.
+    const onDisk = await Bun.file(join(core.dir, "shapes", "models", "posts.json")).json();
+    expect(onDisk.fields.views).toEqual({ types: { number: 1 }, count: 1, required: false });
+    await send("shapes", "POST", "posts", { id: "2", title: null, tags: ["a"], meta: { nested: { deep: 1 } } });
+    let posts = (await models("shapes")).posts;
+    expect(posts.records).toBe(2);
+    expect(posts.fields.id).toEqual({ types: { string: 2 }, count: 2, required: false });
+    expect(posts.fields.title).toEqual({ types: { string: 1, null: 1 }, count: 2, required: false });
+    expect(posts.fields.views).toEqual({ types: { number: 1 }, count: 1, required: false });
+    // Top level only: however deep a value goes, it is one object or array.
+    expect(posts.fields.tags).toEqual({ types: { array: 1 }, count: 1, required: false });
+    expect(posts.fields.meta).toEqual({ types: { object: 1 }, count: 1, required: false });
+    expect(posts.fields.createdAt.count).toBe(2); // server-stamped fields are fields too
+
+    // A PUT replaces the record, so what it no longer carries leaves the count.
+    await send("shapes", "PUT", "posts/2", { title: "Two" });
+    posts = (await models("shapes")).posts;
+    expect(posts.fields.title.types).toEqual({ string: 2 });
+    expect(posts.fields.tags).toBeUndefined();
+    expect(posts.fields.meta).toBeUndefined();
+
+    // And a delete takes the last record with `views` — and `views` with it.
+    await send("shapes", "DELETE", "posts/1");
+    posts = (await models("shapes")).posts;
+    expect(posts.records).toBe(1);
+    expect(posts.fields.views).toBeUndefined();
+  });
+
+  test("whole-file writes rebuild it too: a dashboard save, a draft, a deploy and a delete", async () => {
+    await writeFile("whole", "posts", [{ id: "1", a: 1 }]);
+    expect(Object.keys((await models("whole")).posts.fields)).toEqual(["id", "a"]);
+
+    // A draft gets a model of its own, and the live one is untouched.
+    await writeFile("whole", "draft_posts", [{ id: "1", b: "x" }]);
+    let all = await models("whole");
+    expect(Object.keys(all.draft_posts.fields)).toEqual(["id", "b"]);
+    expect(all.draft_posts.resource).toBe("posts");
+    expect(Object.keys(all.posts.fields)).toEqual(["id", "a"]);
+
+    // Deploy promotes the draft's model with it.
+    await admin("whole", "deploy", { method: "POST" });
+    all = await models("whole");
+    expect(Object.keys(all)).toEqual(["posts"]);
+    expect(Object.keys(all.posts.fields)).toEqual(["id", "b"]);
+    expect(await modelFiles("whole")).toEqual(["posts.json"]);
+
+    // Removing the resource removes its model.
+    await admin("whole", "files/posts", { method: "DELETE" });
+    expect(await modelFiles("whole")).toEqual([]);
+    expect(await models("whole")).toEqual({});
+  });
+
+  test("a project with no models gets them on first read, and a model its file has outgrown is rebuilt", async () => {
+    // Written straight to disk, as every project from before models was.
+    await seed(core, "legacy", { posts: [{ id: "1", title: "old" }], config: { QA_MODE: "true" } });
+    expect(await modelFiles("legacy")).toEqual([]);
+    expect(Object.keys((await models("legacy")).posts.fields)).toEqual(["id", "title"]);
+    expect(await modelFiles("legacy")).toEqual(["posts.json"]); // and none for config
+
+    // Changed behind the core's back — a crash between the two writes looks the same.
+    await Bun.sleep(20);
+    await Bun.write(join(core.dir, "legacy", "data", "posts.json"), JSON.stringify([{ id: "1", body: "new" }]));
+    expect(Object.keys((await models("legacy")).posts.fields)).toEqual(["id", "body"]);
+  });
+
+  test("required is declared: it survives rebuilds, a draft starts from it, deploy keeps it", async () => {
+    await writeFile("declared", "posts", [{ id: "1", title: "x" }]);
+
+    // It can name a field no record has yet.
+    const set = await declare("declared", "posts", { title: true, slug: true });
+    expect(set.status).toBe(200);
+    let posts = (await models("declared")).posts;
+    expect(posts.fields.title).toEqual({ types: { string: 1 }, count: 1, required: true });
+    expect(posts.fields.slug).toEqual({ types: {}, count: 0, required: true });
+
+    // A public write rebuilds what was observed and keeps what was declared.
+    await send("declared", "POST", "posts", { id: "2", title: "y" });
+    posts = (await models("declared")).posts;
+    expect(posts.records).toBe(2);
+    expect(posts.fields.title.required).toBe(true);
+    expect(posts.fields.slug.required).toBe(true);
+
+    // A new draft starts from the live declarations, and a declaration reaches both.
+    await writeFile("declared", "draft_posts", [{ id: "1", title: "z" }]);
+    expect((await models("declared")).draft_posts.fields.slug.required).toBe(true);
+    await declare("declared", "posts", { title: false });
+    let all = await models("declared");
+    expect(all.posts.fields.title.required).toBe(false);
+    expect(all.draft_posts.fields.title.required).toBe(false);
+
+    // Deploy carries them across, and clearing one no record holds removes it.
+    await admin("declared", "deploy", { method: "POST" });
+    all = await models("declared");
+    expect(all.posts.fields.slug).toEqual({ types: {}, count: 0, required: true });
+    await declare("declared", "posts", { slug: false });
+    expect((await models("declared")).posts.fields.slug).toBeUndefined();
+  });
+
+  test("a declaration is checked: a real resource, by its own name, with true or false per field", async () => {
+    await writeFile("checked", "posts", [{ id: "1" }]);
+    expect((await declare("checked", "ghosts", { title: true })).status).toBe(404);
+    expect((await declare("checked", "draft_posts", { title: true })).status).toBe(400);
+    expect((await declare("checked", "config", { title: true })).status).toBe(400);
+    expect((await declare("checked", "posts", ["title"])).status).toBe(400);
+    expect((await declare("checked", "posts", {})).status).toBe(400);
+    expect((await declare("checked", "posts", { title: "yes" })).status).toBe(400);
+    expect((await admin("checked", "models/posts", { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" })).status).toBe(401);
+    expect((await admin("nobody", "models")).status).toBe(404);
+  });
+
+  test("a model is never served: a resource named models is just a resource", async () => {
+    await writeFile("apart", "posts", [{ id: "1", secret: "s" }]);
+    await models("apart");
+    // Nothing under models/ answers on the public plane…
+    expect((await send("apart", "GET", "models")).status).toBe(404);
+    // …and a project's own `models` resource is served as usual, with a model of its own.
+    await writeFile("apart", "models", [{ id: "m1", name: "Model T" }]);
+    expect(await (await send("apart", "GET", "models")).json()).toEqual([{ id: "m1", name: "Model T" }]);
+    expect(Object.keys((await models("apart")).models.fields)).toEqual(["id", "name"]);
+    // And the files plane reads data/, never models/.
+    expect(await (await admin("apart", "files/posts")).json()).toEqual([{ id: "1", secret: "s" }]);
+  });
+
+  test("a field named __proto__ is a field, not a prototype", async () => {
+    await writeFile("proto", "things", [JSON.parse('{"id":"1","__proto__":{"polluted":true}}')]);
+    const fields = (await models("proto")).things.fields;
+    expect(Object.keys(fields)).toEqual(["id", "__proto__"]);
+    // Declaring it keeps it a field too, through the declaration and the rebuild after it.
+    expect((await declare("proto", "things", { ["__proto__"]: true, ["constructor"]: true })).status).toBe(200);
+    await writeFile("proto", "things", [{ id: "2" }]);
+    const declared = (await models("proto")).things.fields;
+    expect(Object.keys(declared).sort()).toEqual(["__proto__", "constructor", "id"]);
+    expect(declared.__proto__).toEqual({ types: {}, count: 0, required: true });
+    expect(({} as any).polluted).toBeUndefined();
   });
 });
 

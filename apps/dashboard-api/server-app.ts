@@ -1989,6 +1989,28 @@ async function coreAdminAction(
 }
 
 /** The core's read-only system plane: the list of feature files, or one of them. */
+/**
+ * The core's data models (models/ — see "Data models" there): per table, the
+ * fields its records carry, their types and which are declared required. GET
+ * reads them all; POST declares `required` on one resource's fields.
+ */
+async function coreAdminModels(
+  tenantId: string,
+  declare?: { resource: string; required: Record<string, boolean> },
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const res = await fetch(
+    `${CORE_API_URL}/${tenantId}/_admin/models${declare ? `/${encodeURIComponent(declare.resource)}` : ""}`,
+    declare
+      ? {
+          method: "POST",
+          headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+          body: JSON.stringify({ required: declare.required }),
+        }
+      : { headers: { authorization: `Bearer ${ADMIN_SECRET}` } },
+  );
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
+}
+
 async function coreAdminSystem(
   tenantId: string,
   name?: string,
@@ -2397,7 +2419,12 @@ async function provisionProject(
   tenantId: string,
   name: string,
   resources: Iterable<[string, unknown]> | AsyncIterable<[string, unknown]>,
-  settings: { config: Record<string, unknown>; rbac?: unknown },
+  settings: {
+    config: Record<string, unknown>;
+    rbac?: unknown;
+    /** Per resource, the fields declared required in its data model. */
+    declared?: Record<string, Record<string, boolean>>;
+  },
 ): Promise<Response> {
   // New projects start stopped: nothing is public until the owner has looked at
   // the data and pressed Deploy. Written before anything else, so there is no
@@ -2437,6 +2464,14 @@ async function provisionProject(
     if (!rules.ok) {
       await rollback();
       return err(502, `core engine refused the roles file (status ${rules.status})`);
+    }
+  }
+  for (const [resource, required] of Object.entries(settings.declared ?? {})) {
+    if (!provisioned.includes(resource)) continue;
+    const res = await coreAdminModels(tenantId, { resource, required });
+    if (!res.ok) {
+      await rollback();
+      return err(502, `core engine refused the data model of '${resource}' (status ${res.status})`);
     }
   }
 
@@ -2515,6 +2550,20 @@ async function duplicateProject(req: Request, user: User, sourceId: string): Pro
       return err(502, `core engine refused to read rbac.json (status ${rules.status})`);
   }
 
+  // Which fields the user declared required is their intent, not something the
+  // copy can rebuild from its records — so it comes along, from the model of
+  // what the editor shows (the draft's, while one is staged).
+  const declared: Record<string, Record<string, boolean>> = {};
+  const models = await coreAdminModels(sourceId);
+  if (models.ok) {
+    const all = ((models.data as any)?.models ?? {}) as Record<string, { fields?: Record<string, { required?: boolean }> }>;
+    for (const rName of JSON.parse(source.resources) as string[]) {
+      const model = all[`draft_${rName}`] ?? all[rName];
+      const required = Object.entries(model?.fields ?? {}).filter(([, f]) => f?.required === true);
+      if (required.length > 0) declared[rName] = Object.fromEntries(required.map(([field]) => [field, true]));
+    }
+  } else return err(502, `core engine refused to read the data models (status ${models.status})`);
+
   async function* copies(): AsyncGenerator<[string, unknown]> {
     for (const rName of JSON.parse(source!.resources) as string[]) {
       const res = await readEdited(source!, rName);
@@ -2525,7 +2574,7 @@ async function duplicateProject(req: Request, user: User, sourceId: string): Pro
     }
   }
 
-  return provisionProject(user, tenantId, name, copies(), { config, rbac });
+  return provisionProject(user, tenantId, name, copies(), { config, rbac, declared });
 }
 
 async function renameProject(req: Request, user: User, tenantId: string): Promise<Response> {
@@ -3304,6 +3353,74 @@ async function readSettings(tenantId: string, name: string) {
   return res.ok ? visibleSettings(res.data) : null;
 }
 
+// ── Data model ─────────────────────────────────────────────────────
+// The shape of the project's tables, from the core's models/ folder: what the
+// Co-Pilot designs against instead of being sent the records. Field names are
+// the only user data in it, and a model never carries a value.
+
+const REQUIRED_NOTE =
+  "Required is recorded in the data model, not enforced yet: requests that leave the field out still succeed.";
+
+/** get_data_model — every table's model, deployed and staged, never a record. */
+async function toolGetDataModel(tenantId: string): Promise<ToolOutcome> {
+  const res = await coreAdminModels(tenantId);
+  if (!res.ok) return { result: { error: `could not read the data model (status ${res.status})` } };
+  const all = ((res.data as any)?.models ?? {}) as Record<string, Record<string, unknown>>;
+  const tables: Record<string, unknown> = {};
+  const staged: Record<string, unknown> = {};
+  for (const [name, { resource: _resource, ...model }] of Object.entries(all))
+    if (name.startsWith(DRAFT_PREFIX)) staged[name.slice(DRAFT_PREFIX.length)] = model;
+    else tables[name] = model;
+  return {
+    result: {
+      tables,
+      ...(Object.keys(staged).length > 0 ? { staged } : {}),
+      note:
+        "Per field: `count` is how many records carry it and `types` how many hold each type. " +
+        "`staged` is what a waiting draft will make the table once deployed. " +
+        REQUIRED_NOTE,
+    },
+  };
+}
+
+const AI_MAX_REQUIRED_FIELDS = 50;
+
+/** set_required_fields — declares fields required or optional; recorded, not enforced. */
+async function toolSetRequiredFields(args: Record<string, unknown>, tenantId: string): Promise<ToolOutcome> {
+  const table = typeof args.table === "string" ? args.table.trim() : "";
+  if (!NAME_RE.test(table) || table.startsWith(DRAFT_PREFIX))
+    return { result: { error: "name one existing table, e.g. 'posts'" } };
+  const raw = Array.isArray(args.fields) ? args.fields.slice(0, AI_MAX_REQUIRED_FIELDS) : [];
+  const required: Record<string, boolean> = {};
+  for (const entry of raw) {
+    const name = (entry as any)?.name;
+    const value = (entry as any)?.required;
+    if (typeof name !== "string" || !name.trim() || name.length > 128 || typeof value !== "boolean") continue;
+    Object.defineProperty(required, name.trim(), { value, enumerable: true, writable: true, configurable: true });
+  }
+  if (Object.keys(required).length === 0)
+    return { result: { error: "name each field and whether it is required (true or false)" } };
+
+  const res = await coreAdminModels(tenantId, { resource: table, required });
+  if (res.status === 404) {
+    const models = await coreAdminModels(tenantId);
+    const tables = Object.keys(((models.data as any)?.models ?? {}) as object).filter(
+      (n) => !n.startsWith(DRAFT_PREFIX),
+    );
+    return { result: { error: `there is no table '${table}' in this project`, tables } };
+  }
+  if (!res.ok)
+    return { result: { error: String((res.data as any)?.error ?? `the data model refused it (status ${res.status})`) } };
+  const fields = ((res.data as any)?.models?.[table]?.fields ?? {}) as Record<string, { required?: boolean }>;
+  return {
+    result: {
+      table,
+      required: Object.keys(fields).filter((f) => fields[f]?.required === true),
+      note: REQUIRED_NOTE,
+    },
+  };
+}
+
 /** get_diagnostics — tables, settings, syntax health, server status and recent traffic. */
 async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOutcome> {
   const project = ownedProject(tenantId, user.id)!;
@@ -3385,6 +3502,10 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
         return toolUseStarter(call.args, user, tenantId);
       case "get_diagnostics":
         return await toolGetDiagnostics(user, tenantId);
+      case "get_data_model":
+        return await toolGetDataModel(tenantId);
+      case "set_required_fields":
+        return await toolSetRequiredFields(call.args, tenantId);
       default:
         return { result: { error: `unknown tool '${call.name}'` } };
     }

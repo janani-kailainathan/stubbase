@@ -577,6 +577,30 @@ describe("duplicating a project", () => {
       headers: as(owner.token),
     });
 
+  test("brings the fields declared required along, from the model of what the editor shows", async () => {
+    const { tenantId } = await createProject(owner.token, "Declared", { posts: [{ id: "1", title: "x" }], tags: [] });
+    const declare = (resource: string, required: Record<string, boolean>) =>
+      fetch(`${core.base}/${tenantId}/_admin/models/${resource}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+        body: JSON.stringify({ required }),
+      });
+    expect((await declare("posts", { title: true, slug: true })).status).toBe(200);
+
+    const res = await duplicate(tenantId, { name: "Declared copy" });
+    expect(res.status).toBe(201);
+    const copy = (await res.json()).tenantId;
+    const models = (
+      await fetch(`${core.base}/${copy}/_admin/models`, { headers: { authorization: `Bearer ${ADMIN_SECRET}` } }).then((r) =>
+        r.json(),
+      )
+    ).models;
+    expect(models.posts.fields.title).toMatchObject({ count: 1, required: true });
+    // Declared on no record at all, and still the user's intent.
+    expect(models.posts.fields.slug).toEqual({ types: {}, count: 0, required: true });
+    expect(Object.values(models.tags.fields)).toEqual([]);
+  }, 30_000);
+
   test("copies the resources as the editor shows them, into a project that starts stopped and clean", async () => {
     const source = await createProject(owner.token, "Original", {
       posts: [{ id: "1", title: "live" }],
@@ -2354,6 +2378,8 @@ describe("AI Co-Pilot agent loop", () => {
       "change_settings",
       "use_starter",
       "get_diagnostics",
+      "get_data_model",
+      "set_required_fields",
     ]);
 
     // The second call carries the model's turn plus our tool result. There is
@@ -2668,6 +2694,64 @@ describe("AI Co-Pilot agent loop", () => {
     const sent = JSON.stringify(seen);
     expect(sent).not.toContain("re_live_secret");
     expect(sent).not.toContain("abc123");
+  }, 30_000);
+
+  test("the data model gives the Co-Pilot every table's shape, staged ones too, and never a record", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(
+      owner.token,
+      "Shapes",
+      { posts: [{ id: "1", title: "a-secret-title", views: 3 }, { id: "2", title: null }] },
+      aiApp,
+    );
+    await fetch(`${aiApp.base}/projects/${tenantId}/files/posts`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify([{ id: "1", title: "draft", slug: "draft" }]),
+    });
+
+    const result = await toolResult(owner.token, tenantId, "get_data_model", {});
+    expect(result.tables.posts).toEqual({
+      records: 2,
+      fields: {
+        id: { types: { string: 2 }, count: 2, required: false },
+        title: { types: { string: 1, null: 1 }, count: 2, required: false },
+        views: { types: { number: 1 }, count: 1, required: false },
+      },
+    });
+    expect(Object.keys(result.staged.posts.fields)).toEqual(["id", "title", "slug"]);
+    expect(result.note).toContain("not enforced");
+    // Field names travel; values never do.
+    expect(JSON.stringify(seen)).not.toContain("a-secret-title");
+  }, 30_000);
+
+  test("fields can be declared required, and a table that does not exist is named as such", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Required", { posts: [{ id: "1", title: "x" }] }, aiApp);
+
+    const result = await toolResult(owner.token, tenantId, "set_required_fields", {
+      table: "posts",
+      fields: [
+        { name: "title", required: true },
+        { name: "slug", required: true },
+        { name: "", required: true }, // ignored
+        { name: "views", required: "yes" }, // ignored
+      ],
+    });
+    expect(result).toMatchObject({ table: "posts", required: ["title", "slug"] });
+    expect(result.note).toContain("not enforced");
+    // Recorded in the core's model, where every later read finds it.
+    const after = await toolResult(owner.token, tenantId, "get_data_model", {});
+    expect(after.tables.posts.fields.slug).toEqual({ types: {}, count: 0, required: true });
+
+    const missing = await toolResult(owner.token, tenantId, "set_required_fields", {
+      table: "ghosts",
+      fields: [{ name: "title", required: true }],
+    });
+    expect(missing.error).toContain("no table 'ghosts'");
+    expect(missing.tables).toEqual(["posts"]);
+    const nothing = await toolResult(owner.token, tenantId, "set_required_fields", { table: "posts", fields: [] });
+    expect(nothing.error).toBeString();
   }, 30_000);
 
   // ── Charging ──
