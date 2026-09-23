@@ -29,7 +29,7 @@ import {
   loggedResetCode,
   loggedSignupCode,
   readDbOf,
-  setAddonOn,
+  grantPackOn,
   setPlanOn,
   sha256hex,
   signupOn,
@@ -947,7 +947,7 @@ describe("delete account", () => {
       body: JSON.stringify({ name: "Old Name" }),
     });
     setPlanOn(app, account.email, "pro");
-    setAddonOn(app, account.email, "requests_100k", 3);
+    grantPackOn(app, account.email, "requests_250k");
     expect((await remove(account.token, PASSWORD)).status).toBe(200);
 
     const back = await signupOn(app, account.email);
@@ -957,8 +957,8 @@ describe("delete account", () => {
     };
     expect(me.user.planName).toBe("Free");
     expect(me.user.name).toBeNull();
-    expect(me.user.monthlyRequests).toBe(10_000); // Free, with no add-ons on top
-    expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM account_addons WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
+    expect(me.user.monthlyRequests).toBe(10_000); // Free, with no packs on top
+    expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM request_packs WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
   }, 30_000);
 
   test("the deleted row keeps no readable trace of the address", async () => {

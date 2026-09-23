@@ -738,7 +738,7 @@ other device is signed out.
 The first card in **Settings** shows what your account is: the email address
 you sign in with, your plan, when you joined, how many of your monthly requests
 you have used and when that count starts again, how many projects you have, your
-rate limit and any add-ons. It is also where you switch the dashboard between
+rate limit and any request packs. It is also where you switch the dashboard between
 light and dark — the choice carries over to the Stubbase website.
 
 - Requests are counted across all your projects together — projects you have
@@ -749,9 +749,13 @@ light and dark — the choice carries over to the Stubbase website.
   a burst of more at once. A request over it gets `429 Too Many Requests` with a
   `Retry-After` header saying how many seconds to wait, and it does not count
   toward your monthly requests.
-- Add-ons are request packs on top of your plan. Any plan can have them, and you
-  can hold more than one. They raise your monthly requests; your rate limit stays
-  your plan's. They are not on sale yet.
+- Request packs are extra requests for Pro, bought once. Your plan's monthly
+  requests are used first; after that, your API keeps going on the pack, and
+  whatever is left carries into next month until the pack expires, 12 months
+  after you got it. You can hold more than one, and the one expiring soonest is
+  used first. Your rate limit stays your plan's. On Free a pack is not used — a
+  pack you bought on Pro waits until you are back on Pro. They are not on sale
+  yet.
 
 ### 2.5 Delete your account
 

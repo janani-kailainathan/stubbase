@@ -38,7 +38,7 @@ import {
   as,
   jsonHeaders,
   readDbOf,
-  setAddonOn,
+  grantPackOn,
   setPlanOn,
   sha256hex,
   signupOn,
@@ -54,7 +54,8 @@ const running: Service[] = [];
 // where it needs one, which is why the shared helpers all take a Service.
 const readDb = <T,>(fn: (db: Database) => T): T => readDbOf(app, fn);
 const setPlan = (email: string, plan: string) => setPlanOn(app, email, plan);
-const setAddon = (email: string, addon: string, quantity = 1) => setAddonOn(app, email, addon, quantity);
+const grantPack = (email: string, addon: string, opts?: Parameters<typeof grantPackOn>[3]) =>
+  grantPackOn(app, email, addon, opts);
 const signup = (on: Service = app) => signupOn(on);
 
 /** Signs up an account that is entitled to everything. */
@@ -1556,12 +1557,12 @@ describe("plans and entitlements", () => {
   }, 30_000);
 
   /** Report usage the way the core does; returns the quotas it is answered with, by tenant. */
-  async function reportUsage(rows: { tenantId: string; requests: number }[], on: Service = app) {
+  async function reportUsage(rows: { tenantId: string; requests: number; date?: string }[], on: Service = app) {
     const date = new Date().toISOString().slice(0, 10);
     const res = await fetch(`${on.base}/_internal/usage`, {
       method: "POST",
       headers: { ...jsonHeaders(), authorization: `Bearer ${ADMIN_SECRET}` },
-      body: JSON.stringify({ rows: rows.map((r) => ({ ...r, date, bytes: r.requests })) }),
+      body: JSON.stringify({ rows: rows.map((r) => ({ date, ...r, bytes: r.requests })) }),
     });
     expect(res.status).toBe(200);
     const { quotas } = (await res.json()) as {
@@ -1818,58 +1819,259 @@ describe("plans and entitlements", () => {
     expect(user).toMatchObject({ requestsPerSecond: 50, burst: 150 });
   }, 30_000);
 
-  test("add-ons raise the monthly allowance on any plan, stack, and leave the rate alone", async () => {
-    const owner = await signup(); // Free: 10,000
+  const account = async (token: string) =>
+    (await fetch(`${app.base}/auth/account`, { headers: as(token) }).then((r) => r.json())).account;
+  /** A date in last month, UTC — a flush can carry one across midnight on the 1st. */
+  const lastMonth = () => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString().slice(0, 10);
+  };
+
+  test("request packs add their requests on Pro, stack, and leave the rate alone", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
     const { tenantId } = await createProject(owner.token, "Packed", { posts: [] });
-    setAddon(owner.email, "requests_100k", 2);
-    setAddon(owner.email, "requests_1m");
-    const total = 10_000 + 2 * 100_000 + 1_000_000;
+    grantPack(owner.email, "requests_250k");
+    grantPack(owner.email, "requests_1m");
+    const total = 250_000 + 250_000 + 1_000_000;
 
     // The core is held to the sum…
     const quotas = await reportUsage([{ tenantId, requests: 3 }]);
-    expect(quotas.get(tenantId)).toMatchObject({ limit: total, used: 3, rps: 5, burst: 20 });
+    expect(quotas.get(tenantId)).toMatchObject({ limit: total, used: 3, rps: 50, burst: 150 });
 
     // …and everywhere the allowance is shown, it is the same number.
     const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
-    expect(user).toMatchObject({ plan: "free", monthlyRequests: total, requestsPerSecond: 5 });
+    expect(user).toMatchObject({ plan: "pro", monthlyRequests: total, requestsPerSecond: 50 });
     const usage = await fetch(`${app.base}/projects/${tenantId}/usage`, { headers: as(owner.token) }).then((r) =>
       r.json(),
     );
     expect(usage.limit).toBe(total);
-    const { account } = await fetch(`${app.base}/auth/account`, { headers: as(owner.token) }).then((r) =>
-      r.json(),
-    );
-    expect(account).toMatchObject({
+    const summary = await account(owner.token);
+    expect(summary).toMatchObject({
       monthlyRequests: total,
-      planMonthlyRequests: 10_000,
-      requestsPerSecond: 5,
-      burst: 20,
+      planMonthlyRequests: 250_000,
+      packRequests: 1_250_000,
+      requestsPerSecond: 50,
+      burst: 150,
     });
-    expect(account.addons).toEqual([
-      { id: "requests_100k", name: "+100,000 requests", quantity: 2, monthlyRequests: 200_000 },
-      { id: "requests_1m", name: "+1,000,000 requests", quantity: 1, monthlyRequests: 1_000_000 },
+    const nextYear = String(new Date().getUTCFullYear() + 1);
+    expect(summary.requestPacks).toEqual([
+      { name: "+250,000 requests", requests: 250_000, remaining: 250_000, expiresOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+      { name: "+1,000,000 requests", requests: 1_000_000, remaining: 1_000_000, expiresOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+    ]);
+    // Valid for twelve months from the grant.
+    for (const pack of summary.requestPacks) expect(pack.expiresOn.slice(0, 4)).toBe(nextYear);
+  }, 30_000);
+
+  test("a pack is drawn only past the plan's allowance, and what is left carries into the next month", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Pool", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+    const month = lastMonth();
+
+    // Inside last month's 250,000: the pack is not touched.
+    await reportUsage([{ tenantId, requests: 240_000, date: month }]);
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(250_000);
+
+    // 20,000 more crosses the allowance by 10,000, and only that is drawn.
+    await reportUsage([{ tenantId, requests: 20_000, date: month }]);
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(240_000);
+
+    // A new month starts the plan's allowance again; the pack keeps what is left.
+    const quotas = await reportUsage([{ tenantId, requests: 1 }]);
+    expect(quotas.get(tenantId)).toMatchObject({ used: 1, limit: 250_000 + 240_000 });
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(240_000);
+  }, 30_000);
+
+  test("packs are drawn soonest-lapsing first, and the quote counts what they paid for", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "TwoPools", { posts: [] });
+    grantPack(owner.email, "requests_1m");
+    grantPack(owner.email, "requests_250k", { grantedAt: "-11 months" });
+
+    // 300,000 past the allowance: the older pack's 250,000 first, then 50,000 of the newer.
+    const quotas = await reportUsage([{ tenantId, requests: 550_000 }]);
+    const summary = await account(owner.token);
+    expect(summary.requestPacks).toEqual([
+      expect.objectContaining({ name: "+1,000,000 requests", remaining: 950_000 }),
+    ]);
+    // Everything used this month, plus what the newer pack still holds.
+    expect(quotas.get(tenantId)).toMatchObject({ used: 550_000, limit: 550_000 + 950_000 });
+    expect(summary.monthlyRequests).toBe(1_500_000);
+  }, 30_000);
+
+  test("a spent pack stops the API the way a spent allowance does", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Spent", { posts: [] });
+    grantPack(owner.email, "requests_250k", { used: 249_990 });
+
+    // 20 past the allowance, and the pack held only 10 of them.
+    const quotas = await reportUsage([{ tenantId, requests: 250_020 }]);
+    const quote = quotas.get(tenantId)!;
+    expect(quote.used).toBe(250_020);
+    expect(quote.used).toBeGreaterThanOrEqual(quote.limit);
+    expect((await account(owner.token)).requestPacks).toEqual([]);
+  }, 30_000);
+
+  test("on Free a pack is neither counted nor drawn, and is still there on Pro", async () => {
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "FreePack", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+
+    // Past Free's 10,000: stopped, and the pack pays for none of it.
+    let quote = (await reportUsage([{ tenantId, requests: 10_005 }])).get(tenantId)!;
+    expect(quote).toMatchObject({ used: 10_005, limit: 10_005 });
+    let summary = await account(owner.token);
+    expect(summary).toMatchObject({ monthlyRequests: 10_005, packRequests: 0 });
+    expect(summary.requestPacks).toEqual([expect.objectContaining({ remaining: 250_000 })]);
+
+    // On Pro the same pack counts in full: the Free overage was never charged to it.
+    setPlan(owner.email, "pro");
+    quote = (await reportUsage([{ tenantId, requests: 1 }])).get(tenantId)!;
+    expect(quote).toMatchObject({ used: 10_006, limit: 250_000 + 250_000 });
+    summary = await account(owner.token);
+    expect(summary.packRequests).toBe(250_000);
+  }, 30_000);
+
+  test("a pack that has lapsed, is used up or is not sold adds nothing", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "NotPacked", { posts: [] });
+    grantPack(owner.email, "requests_250k", { grantedAt: "-13 months" }); // lapsed
+    grantPack(owner.email, "requests_1m", { used: 1_000_000 }); // used up
+    grantPack(owner.email, "requests_100k"); // retired
+    grantPack(owner.email, "requests_unlimited"); // mistyped, or never real
+    grantPack(owner.email, "constructor"); // a name every JavaScript object answers to
+
+    const quotas = await reportUsage([{ tenantId, requests: 1 }]);
+    expect(quotas.get(tenantId)?.limit).toBe(250_000);
+    expect(await account(owner.token)).toMatchObject({ monthlyRequests: 250_000, packRequests: 0, requestPacks: [] });
+  }, 30_000);
+
+  test("every project of an account draws on the one pool", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const a = await createProject(owner.token, "PoolA", { posts: [] });
+    const b = await createProject(owner.token, "PoolB", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+
+    // 300,000 between them is 50,000 past the one allowance, whichever project sent it.
+    const quotas = await reportUsage([
+      { tenantId: a.tenantId, requests: 200_000 },
+      { tenantId: b.tenantId, requests: 100_000 },
+    ]);
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(200_000);
+    // Both projects are held to the same number, so they stop together.
+    for (const { tenantId } of [a, b])
+      expect(quotas.get(tenantId)).toMatchObject({ used: 300_000, limit: 300_000 + 200_000 });
+  }, 30_000);
+
+  test("a flush straddling the 1st charges each side to its own month", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Midnight", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+
+    // This month is close to its allowance but inside it.
+    await reportUsage([{ tenantId, requests: 245_000 }]);
+    // One batch: last month ran 10,000 past its own allowance, and this month stays inside.
+    // Measured against the wrong month, last month's row would drain the whole pack.
+    const quotas = await reportUsage([
+      { tenantId, requests: 260_000, date: lastMonth() },
+      { tenantId, requests: 3_000 },
+    ]);
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(240_000);
+    expect(quotas.get(tenantId)).toMatchObject({ used: 248_000, limit: 250_000 + 240_000 });
+  }, 30_000);
+
+  test("a pack granted after the allowance ran out pays only for what comes next", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "LateGrant", { posts: [] });
+
+    // Past the allowance with no pack: stopped.
+    let quote = (await reportUsage([{ tenantId, requests: 260_000 }])).get(tenantId)!;
+    expect(quote).toMatchObject({ used: 260_000, limit: 260_000 });
+
+    // The pack does not pay for the 10,000 already served; the API starts again at once.
+    grantPack(owner.email, "requests_250k");
+    quote = (await reportUsage([{ tenantId, requests: 1 }])).get(tenantId)!;
+    expect(quote).toMatchObject({ used: 260_001, limit: 260_001 + 249_999 });
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(249_999);
+  }, 30_000);
+
+  test("another account's traffic never draws your pack", async () => {
+    const owner = await signup();
+    const stranger = await signup();
+    setPlan(owner.email, "pro");
+    setPlan(stranger.email, "pro");
+    const mine = await createProject(owner.token, "MinePack", { posts: [] });
+    const theirs = await createProject(stranger.token, "TheirsNoPack", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+
+    const quotas = await reportUsage([
+      { tenantId: mine.tenantId, requests: 1 },
+      { tenantId: theirs.tenantId, requests: 300_000 },
+    ]);
+    expect((await account(owner.token)).requestPacks[0].remaining).toBe(250_000);
+    expect(quotas.get(theirs.tenantId)).toMatchObject({ used: 300_000, limit: 300_000 });
+    expect(quotas.get(mine.tenantId)).toMatchObject({ used: 1, limit: 500_000 });
+  }, 30_000);
+
+  test("a pack lapses twelve months after its grant, to the minute", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Lapse", { posts: [] });
+    grantPack(owner.email, "requests_250k", { grantedAt: ["-12 months", "+1 minutes"] }); // a minute to go
+    grantPack(owner.email, "requests_1m", { grantedAt: ["-12 months", "-1 minutes"] }); // a minute gone
+
+    const quotas = await reportUsage([{ tenantId, requests: 1 }]);
+    expect(quotas.get(tenantId)?.limit).toBe(250_000 + 250_000);
+    expect((await account(owner.token)).requestPacks).toEqual([
+      expect.objectContaining({ name: "+250,000 requests", remaining: 250_000 }),
     ]);
   }, 30_000);
 
-  test("an add-on that is not sold, or held fewer than once, adds nothing", async () => {
+  test("packs granted together are drawn in the order they were granted", async () => {
     const owner = await signup();
-    const { tenantId } = await createProject(owner.token, "NotPacked", { posts: [] });
-    setAddon(owner.email, "requests_unlimited", 5); // retired, mistyped, or never real
-    setAddon(owner.email, "constructor"); // a name every JavaScript object answers to
-    setAddon(owner.email, "requests_250k", 0);
-    setAddon(owner.email, "requests_1m", -3);
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "SameDay", { posts: [] });
+    grantPack(owner.email, "requests_1m");
+    grantPack(owner.email, "requests_250k");
 
-    const quotas = await reportUsage([{ tenantId, requests: 1 }]);
-    expect(quotas.get(tenantId)?.limit).toBe(10_000);
-    const { account } = await fetch(`${app.base}/auth/account`, { headers: as(owner.token) }).then((r) =>
-      r.json(),
-    );
-    expect(account).toMatchObject({ monthlyRequests: 10_000, addons: [] });
+    await reportUsage([{ tenantId, requests: 350_000 }]);
+    expect((await account(owner.token)).requestPacks).toEqual([
+      expect.objectContaining({ name: "+1,000,000 requests", remaining: 900_000 }),
+      expect.objectContaining({ name: "+250,000 requests", remaining: 250_000 }),
+    ]);
   }, 30_000);
 
-  test("deleting an account gives up its add-ons", async () => {
+  test("a downgrade leaves what is left in a pack for when the account is back on Pro", async () => {
     const owner = await signup();
-    setAddon(owner.email, "requests_250k");
+    setPlan(owner.email, "pro");
+    const { tenantId } = await createProject(owner.token, "Downgrade", { posts: [] });
+    grantPack(owner.email, "requests_250k");
+    await reportUsage([{ tenantId, requests: 260_000 }]); // draws 10,000
+
+    // On Free the rest is held back, and more traffic does not touch it.
+    setPlan(owner.email, "free");
+    const quote = (await reportUsage([{ tenantId, requests: 5_000 }])).get(tenantId)!;
+    expect(quote).toMatchObject({ used: 265_000, limit: 265_000 });
+    expect(await account(owner.token)).toMatchObject({
+      packRequests: 0,
+      requestPacks: [expect.objectContaining({ remaining: 240_000 })],
+    });
+
+    setPlan(owner.email, "pro");
+    expect((await account(owner.token)).packRequests).toBe(240_000);
+  }, 30_000);
+
+  test("deleting an account gives up its request packs", async () => {
+    const owner = await signup();
+    grantPack(owner.email, "requests_250k");
     const res = await fetch(`${app.base}/auth/delete-account`, {
       method: "POST",
       headers: jsonHeaders(owner.token),
@@ -1877,7 +2079,7 @@ describe("plans and entitlements", () => {
     });
     expect(res.status).toBe(200);
     const held = readDb((db) =>
-      db.query("SELECT COUNT(*) AS n FROM account_addons WHERE user_id = ?").get(owner.id),
+      db.query("SELECT COUNT(*) AS n FROM request_packs WHERE user_id = ?").get(owner.id),
     );
     expect(held).toEqual({ n: 0 });
   }, 30_000);

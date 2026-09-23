@@ -65,15 +65,25 @@ export function setPlanOn(service: Service, email: string, plan: string) {
 }
 
 /** Give an account `quantity` packs of an add-on — a direct write for setPlanOn's reason. */
-export function setAddonOn(service: Service, email: string, addon: string, quantity: number) {
+/**
+ * Grants a request pack by hand, as an operator would. `grantedAt` backdates
+ * it with SQLite datetime modifiers applied to now, in order (e.g. "-13 months",
+ * or ["-12 months", "+1 minutes"]), and `used` pre-spends it.
+ */
+export function grantPackOn(
+  service: Service,
+  email: string,
+  addon: string,
+  { grantedAt = [], used = 0 }: { grantedAt?: string | string[]; used?: number } = {},
+) {
+  const modifiers = typeof grantedAt === "string" ? [grantedAt] : grantedAt;
   const db = new Database(join(service.dir, "app.sqlite"));
   try {
     db.exec("PRAGMA busy_timeout = 5000;");
     db.query(
-      `INSERT INTO account_addons (user_id, addon, quantity)
-       VALUES ((SELECT id FROM users WHERE email = ?), ?, ?)
-       ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity`,
-    ).run(email, addon, quantity);
+      `INSERT INTO request_packs (user_id, addon, used, granted_at)
+       VALUES ((SELECT id FROM users WHERE email = ?), ?, ?, datetime('now'${", ?".repeat(modifiers.length)}))`,
+    ).run(email, addon, used, ...modifiers);
   } finally {
     db.close();
   }

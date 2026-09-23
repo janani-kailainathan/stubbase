@@ -9,6 +9,15 @@ import { Card } from './shared'
 const longDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 
+/** A pack's `expiresOn` is a UTC calendar date; formatted in UTC so it cannot slip a day. */
+const utcDate = (ymd: string) =>
+  new Date(`${ymd}T00:00:00Z`).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+
 /** `resetsOn` is a UTC calendar date; formatted in UTC so it cannot slip a day. */
 const shortDate = (ymd: string) =>
   new Date(`${ymd}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
@@ -31,7 +40,7 @@ function Stat({ label, hint, children, wide }: { label: string; hint?: string; c
 
 /**
  * The account at a glance, kept compact: who it is and on which plan, how much
- * of the monthly allowance is used, the rate limit and add-ons it runs under,
+ * of the monthly allowance is used, the rate limit and request packs it runs under,
  * and the theme. Everything but the theme is
  * read-only here — shown first because it is what someone opening their profile
  * usually wants — and the theme sits in the footer as the card's one control.
@@ -53,7 +62,7 @@ export function AccountCard() {
   const meter = share >= 1 ? 'bg-danger-fill' : share >= 0.8 ? 'bg-warning-fill' : 'bg-primary'
   const rps = account?.requestsPerSecond ?? user.requestsPerSecond
   const burst = account?.burst ?? user.burst
-  const fromAddons = account ? account.monthlyRequests - account.planMonthlyRequests : 0
+  const fromPacks = account?.packRequests ?? 0
 
   return (
     <Card
@@ -112,8 +121,8 @@ export function AccountCard() {
           wide
           label="Requests this month"
           hint={
-            account && fromAddons > 0
-              ? `Counted across all your projects, deleted ones included. Your plan's ${account.planMonthlyRequests.toLocaleString()} plus ${fromAddons.toLocaleString()} from add-ons.`
+            account && fromPacks > 0
+              ? `Counted across all your projects, deleted ones included. Your plan's ${account.planMonthlyRequests.toLocaleString()} plus ${fromPacks.toLocaleString()} left in request packs.`
               : 'Counted across all your projects, deleted ones included'
           }
         >
@@ -148,13 +157,30 @@ export function AccountCard() {
             </span>
           )}
         </Stat>
-        <Stat wide label="Add-ons" hint="Request packs on top of your plan's monthly allowance">
+        <Stat
+          wide
+          label="Request packs"
+          hint="Used once your plan's monthly requests run out. What is left carries over until the pack expires."
+        >
           {!account ? (
             '—'
-          ) : account.addons.length === 0 ? (
+          ) : account.requestPacks.length === 0 ? (
             <span className="font-normal text-subtle">None</span>
           ) : (
-            account.addons.map((a) => (a.quantity > 1 ? `${a.name} × ${a.quantity}` : a.name)).join(', ')
+            <span className="flex flex-col gap-1">
+              {account.requestPacks.map((p) => (
+                <span key={`${p.name}-${p.expiresOn}-${p.remaining}`} className="whitespace-nowrap">
+                  {p.remaining.toLocaleString()}{' '}
+                  <span className="font-normal text-subtle">
+                    of {p.requests.toLocaleString()} left · expires {utcDate(p.expiresOn)}
+                  </span>
+                </span>
+              ))}
+              {/* Held but idle: a pack bought on Pro, on an account that has since left it. */}
+              {account.packRequests === 0 && (
+                <span className="text-xs font-normal text-subtle">Request packs are used on Pro only.</span>
+              )}
+            </span>
           )}
         </Stat>
       </dl>

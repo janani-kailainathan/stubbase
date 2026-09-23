@@ -335,27 +335,30 @@ creates one account per plan — `free@` and `pro@stubbase.dev`, password
 An unknown or absent plan string reads as **Free**, never as unlimited.
 Enterprise is sold by conversation and has no plan id.
 
-### Add-ons
+### Request packs
 
-Request packs an account holds on top of its plan — any plan, Free included —
-defined by `ADDONS` in the same file. Each adds its requests to the monthly
-allowance, `quantity` times over; none changes the per-second limit. Like a plan,
-an add-on is set by hand until there is a payment gateway:
+One-time pools of requests for **Pro**, defined by `ADDONS` in the same file.
+Traffic comes out of the plan's monthly allowance first; only what goes past
+it draws a pack down, and what is left carries into the next month until the
+pack lapses 12 months after it was granted. Packs stack and the one lapsing
+soonest is drawn first. None changes the per-second limit. On Free a pack is
+neither counted nor drawn, so one bought on Pro waits out a downgrade. Like a
+plan, a pack is granted by hand until there is a payment gateway, one row per
+pack:
 
 ```sql
-INSERT INTO account_addons (user_id, addon, quantity)
-VALUES ((SELECT id FROM users WHERE email = 'someone@example.com'), 'requests_100k', 2)
-ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity;
+INSERT INTO request_packs (user_id, addon)
+VALUES ((SELECT id FROM users WHERE email = 'someone@example.com'), 'requests_250k');
 ```
 
-| Add-on id | Adds per month |
+| Pack id | Requests |
 |---|---|
-| `requests_100k` | 100,000 |
 | `requests_250k` | 250,000 |
 | `requests_1m` | 1,000,000 |
 
-An id missing from `ADDONS`, or a quantity below 1, adds nothing. Deleting the
-account removes its add-ons.
+An id missing from `ADDONS` adds nothing. The month's limit is the larger of
+what was used and the plan's allowance, plus what the packs still hold.
+Deleting the account removes its packs.
 
 **Plans differ by request limits.** Every project feature — auth and roles,
 webhooks, QA mode — is on every plan, so nothing a project's `.env` or

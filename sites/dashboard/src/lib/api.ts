@@ -123,7 +123,7 @@ export interface ApiUser {
   name: string | null
   plan: string
   planName: string
-  /** The plan's allowance with any add-ons on top — what the core throttles against. */
+  /** The plan's allowance with any request packs on top — what the core throttles against. */
   monthlyRequests: number
   /**
    * Requests per second every project of the account shares, and how many may
@@ -221,12 +221,15 @@ export const logout = () =>
 
 export const me = () => request<{ user: ApiUser }>(`${APP_API_URL}/auth/me`, { headers: appHeaders() })
 
-/** An add-on the account holds: `quantity` packs, adding `monthlyRequests` between them. */
-export interface AccountAddon {
-  id: string
+/** A request pack the account holds: a one-time pool, drawn down past the plan's monthly allowance. */
+export interface RequestPack {
   name: string
-  quantity: number
-  monthlyRequests: number
+  /** The pack's size. */
+  requests: number
+  /** What is left in it. */
+  remaining: number
+  /** YYYY-MM-DD, UTC: the first day it no longer counts. */
+  expiresOn: string
 }
 
 /** What the settings page's Account card shows: read-only, and fetched fresh rather than stored. */
@@ -234,11 +237,14 @@ export interface AccountSummary {
   email: string
   plan: string
   planName: string
-  /** The plan's allowance plus every add-on: what the core holds the account to. */
+  /** The plan's allowance plus what is left in request packs: what the core holds the account to. */
   monthlyRequests: number
-  /** The plan's part of `monthlyRequests`; `addons` are the rest. */
+  /** The plan's part of `monthlyRequests`. */
   planMonthlyRequests: number
-  addons: AccountAddon[]
+  /** What is left in the packs this plan draws on — 0 on Free, which does not. */
+  packRequests: number
+  /** Every pack still holding requests, on any plan. */
+  requestPacks: RequestPack[]
   /** Requests per second, shared by every project of the account. */
   requestsPerSecond: number
   /** How many requests may arrive at once before that rate applies. */

@@ -223,15 +223,20 @@ db.exec(`
     sent_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS password_reset_sends_email ON password_reset_sends(email);
-  -- Add-ons an account holds on top of its plan; see ADDONS. Written by hand
-  -- until there is a payment gateway, like users.plan.
-  CREATE TABLE IF NOT EXISTS account_addons (
+  -- Request packs an account has been granted, one row per pack; see ADDONS.
+  -- Written by hand until there is a payment gateway, like users.plan. A pack
+  -- is a pool: used grows as traffic past the plan's monthly allowance draws
+  -- it down, and it lapses PACK_VALID_MONTHS after granted_at.
+  CREATE TABLE IF NOT EXISTS request_packs (
+    id         INTEGER PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id),
     addon      TEXT NOT NULL,                -- an ADDONS id; anything else adds nothing
-    quantity   INTEGER NOT NULL DEFAULT 1,   -- packs of this kind held
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, addon)
+    used       INTEGER NOT NULL DEFAULT 0,   -- requests drawn from the pack so far
+    granted_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE INDEX IF NOT EXISTS request_packs_user ON request_packs(user_id, granted_at);
+  -- The monthly add-ons the packs replaced. Nothing was deployed on them.
+  DROP TABLE IF EXISTS account_addons;
   -- Throwaway mail providers, refused at sign-up. Loaded from the vendored
   -- blocked-email-domains.txt (see loadBlockedEmailDomains), which is why it
   -- lives in SQLite rather than a Set: 75,000 domains cost about 9 MB held in
@@ -330,8 +335,8 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 //
 // Plans differ in their request limits alone — how many a month, and how many a
 // second with a burst on top — both gated at REQUEST time in the core because
-// that is the only thing in the traffic path. Add-ons (ADDONS) raise the monthly
-// allowance on any plan; nothing raises the per-second limit, which is what
+// that is the only thing in the traffic path. Request packs (ADDONS) add a pool
+// of requests on Pro; nothing raises the per-second limit, which is what
 // keeps one account's peak from taking the box down for everyone. Every
 // project feature — auth and roles, webhooks, QA mode — is on every plan, so
 // nothing a project's .env or rbac.json can switch on is refused here. The one
@@ -353,6 +358,8 @@ interface Plan {
   requestsPerSecond: number;
   /** Requests that may arrive at once before the per-second rate applies. */
   burst: number;
+  /** Whether request packs are drawn on. A pack held on a plan without them sits idle. */
+  requestPacks: boolean;
   features: readonly Feature[];
 }
 
@@ -365,6 +372,7 @@ const PLANS: Record<PlanId, Plan> = {
     monthlyRequests: 10_000,
     requestsPerSecond: 5,
     burst: 20,
+    requestPacks: false,
     features: [],
   },
   pro: {
@@ -373,6 +381,7 @@ const PLANS: Record<PlanId, Plan> = {
     monthlyRequests: 250_000,
     requestsPerSecond: 50,
     burst: 150,
+    requestPacks: true,
     features: ["ai"],
   },
 };
@@ -396,77 +405,121 @@ const cheapestPlanWith = (feature: Feature): Plan =>
 
 // ── Add-ons ───────────────────────────────────────────────────────
 //
-// Request packs, held on top of a plan — any plan, Free included — and
-// stackable: `quantity` packs of one kind add `quantity` times its requests.
-// They raise the monthly allowance and nothing else. Monthly volume is cheap
-// for the box (a million requests averages 0.4 a second over a month); what it
-// cannot absorb is a peak, so the per-second limit stays the plan's.
+// Request packs: a pool of requests bought once, for Pro. Traffic comes out of
+// the plan's monthly allowance first, and only what goes past it draws a pack
+// down; what is left carries from month to month until the pack lapses,
+// PACK_VALID_MONTHS after it was granted. Packs stack, and the one that lapses
+// soonest is drawn first. They raise the number of requests and nothing else.
+// Monthly volume is cheap for the box (a million requests averages 0.4 a
+// second over a month); what it cannot absorb is a peak, so the per-second
+// limit stays the plan's.
 //
-// Like a plan, an add-on is a row set by hand until there is a payment gateway:
+// Pro only, on purpose: a Free account that needs more requests needs Pro, and
+// a cheap pack must not stand in for the subscription. A pack held on a plan
+// without `requestPacks` — bought on Pro, then downgraded — is neither counted
+// nor drawn on, and keeps lapsing on schedule.
 //
-//   INSERT INTO account_addons (user_id, addon, quantity)
-//   VALUES ((SELECT id FROM users WHERE email = ?), 'requests_100k', 2)
-//   ON CONFLICT (user_id, addon) DO UPDATE SET quantity = excluded.quantity;
+// Like a plan, a pack is a row set by hand until there is a payment gateway:
+//
+//   INSERT INTO request_packs (user_id, addon)
+//   VALUES ((SELECT id FROM users WHERE email = ?), 'requests_250k');
 //
 // The prices are the pricing page's (sites/landing/src/pages/pricing.astro);
 // this is the contract. An id missing from ADDONS adds nothing, so retiring a
 // pack is deleting its entry, never granting whatever the row says.
 
-type AddonId = "requests_100k" | "requests_250k" | "requests_1m";
+type AddonId = "requests_250k" | "requests_1m";
 
 interface Addon {
   id: AddonId;
   name: string;
-  monthlyRequests: number;
+  requests: number;
 }
 
 const ADDONS: Record<AddonId, Addon> = {
-  requests_100k: { id: "requests_100k", name: "+100,000 requests", monthlyRequests: 100_000 },
-  requests_250k: { id: "requests_250k", name: "+250,000 requests", monthlyRequests: 250_000 },
-  requests_1m: { id: "requests_1m", name: "+1,000,000 requests", monthlyRequests: 1_000_000 },
+  requests_250k: { id: "requests_250k", name: "+250,000 requests", requests: 250_000 },
+  requests_1m: { id: "requests_1m", name: "+1,000,000 requests", requests: 1_000_000 },
 };
 
-interface HeldAddon {
-  id: AddonId;
-  name: string;
-  quantity: number;
-  /** What this line adds to the month: the pack's requests times `quantity`. */
-  monthlyRequests: number;
-}
+const PACK_VALID_MONTHS = 12;
 
-/** The add-ons an account holds that are still sold, smallest pack first. */
-function addonsOf(userId: number): HeldAddon[] {
-  const rows = db
-    .query("SELECT addon, quantity FROM account_addons WHERE user_id = ?")
-    .all(userId) as { addon: string; quantity: number }[];
-  return rows
-    .flatMap(({ addon, quantity }) => {
-      if (!Object.hasOwn(ADDONS, addon)) return [];
-      const count = Math.floor(Number(quantity));
-      if (!(count >= 1)) return [];
-      const pack = ADDONS[addon as AddonId];
-      return [{ id: pack.id, name: pack.name, quantity: count, monthlyRequests: pack.monthlyRequests * count }];
-    })
-    .sort((a, b) => ADDONS[a.id].monthlyRequests - ADDONS[b.id].monthlyRequests);
+interface HeldPack {
+  id: number;
+  addon: AddonId;
+  name: string;
+  requests: number;
+  remaining: number;
+  /** YYYY-MM-DD, UTC: the first day the pack no longer counts. */
+  expiresOn: string;
 }
 
 /**
- * Everything an account may use: its plan's limits, with its add-ons' requests
- * on top. The one place the two are combined — quotaFor, /auth/me, /auth/account
- * and the usage view all read it, so the figure a person is shown is the one
- * their API is held to.
+ * The packs an account holds that still count for something: sold, not lapsed,
+ * not used up. Soonest-lapsing first, which is also the order they are drawn.
+ */
+function packsOf(userId: number): HeldPack[] {
+  const rows = db
+    .query(
+      `SELECT id, addon, used, date(granted_at, '+${PACK_VALID_MONTHS} months') AS expires_on
+       FROM request_packs
+       WHERE user_id = ? AND datetime(granted_at, '+${PACK_VALID_MONTHS} months') > datetime('now')
+       ORDER BY granted_at, id`,
+    )
+    .all(userId) as { id: number; addon: string; used: number; expires_on: string }[];
+  return rows.flatMap(({ id, addon, used, expires_on }) => {
+    if (!Object.hasOwn(ADDONS, addon)) return [];
+    const pack = ADDONS[addon as AddonId];
+    const remaining = pack.requests - Math.max(0, Math.floor(Number(used) || 0));
+    if (remaining <= 0) return [];
+    return [{ id, addon: pack.id, name: pack.name, requests: pack.requests, remaining, expiresOn: expires_on }];
+  });
+}
+
+/**
+ * Draws `requests` from an account's packs, soonest-lapsing first. Called from
+ * inside applyUsage's transaction, so a draw and the usage it pays for land
+ * together and two flushes cannot spend the same requests. Whatever the packs
+ * cannot cover is simply not recorded: the core has already been told to stop.
+ */
+function drawPacks(userId: number, requests: number) {
+  let owed = requests;
+  for (const pack of packsOf(userId)) {
+    if (owed <= 0) break;
+    const take = Math.min(owed, pack.remaining);
+    db.query("UPDATE request_packs SET used = used + ? WHERE id = ?").run(take, pack.id);
+    owed -= take;
+  }
+}
+
+/**
+ * Everything an account may use: its plan's limits, and the requests left in
+ * its packs where the plan draws on them. allowanceOf and limitOf are the one
+ * place the two are combined — quotaFor, /auth/me, /auth/account and the usage
+ * view all read them, so the figure a person is shown is the one their API is
+ * held to.
  */
 function allowanceOf(u: { id: number; plan: string }) {
   const plan = planOf(u);
-  const addons = addonsOf(u.id);
+  const packs = packsOf(u.id);
   return {
     plan,
-    addons,
-    monthlyRequests: plan.monthlyRequests + addons.reduce((n, a) => n + a.monthlyRequests, 0),
+    packs,
+    /** Requests left in packs this plan draws on; 0 on a plan without them. */
+    packRequests: plan.requestPacks ? packs.reduce((n, p) => n + p.remaining, 0) : 0,
     requestsPerSecond: plan.requestsPerSecond,
     burst: plan.burst,
   };
 }
+
+/**
+ * The month's limit, given what the account has used. Past the plan's
+ * allowance, `used` already includes what the packs paid for (and their
+ * `remaining` has dropped by as much), so the limit is the larger of the two
+ * plus what the packs still hold. With nothing left, the limit is `used` and
+ * the core stops.
+ */
+const limitOf = (allowance: ReturnType<typeof allowanceOf>, used: number) =>
+  Math.max(used, allowance.plan.monthlyRequests) + allowance.packRequests;
 
 // ── Auth ──────────────────────────────────────────────────────────
 
@@ -704,8 +757,9 @@ const publicUser = (u: User) => {
     name: u.name,
     plan: allowance.plan.id,
     planName: allowance.plan.name,
-    // The plan's allowance with any add-ons on top: what the core throttles on.
-    monthlyRequests: allowance.monthlyRequests,
+    // The plan's allowance with any request packs on top: what the core
+    // throttles on at the moment this was answered.
+    monthlyRequests: limitOf(allowance, accountMonthRequests(u.id)),
     requestsPerSecond: allowance.requestsPerSecond,
     burst: allowance.burst,
     features: allowance.plan.features,
@@ -1228,12 +1282,15 @@ async function updateAccount(req: Request, user: User): Promise<Response> {
  * /auth/me because the SPA persists that response, and a stored usage count
  * would be stale from the moment it was written.
  *
- * `monthlyRequests` is quotaFor's `limit` for the same reason, add-ons
- * included, and `planMonthlyRequests` and `addons` are its two parts, so the
- * page can say where the number comes from.
+ * `monthlyRequests` is quotaFor's `limit` for the same reason, request packs
+ * included. `planMonthlyRequests` and `packRequests` are its parts, so the page
+ * can say where the number comes from, and `requestPacks` lists every pack still
+ * holding requests — on Free too, where `packRequests` is 0 because the plan
+ * does not draw on them.
  */
 function accountSummary(user: User): Response {
   const allowance = allowanceOf(user);
+  const used = accountMonthRequests(user.id);
   const row = db
     .query(
       `SELECT created_at, date('now', 'start of month', '+1 month') AS resets_on
@@ -1245,12 +1302,18 @@ function accountSummary(user: User): Response {
       email: user.email,
       plan: allowance.plan.id,
       planName: allowance.plan.name,
-      monthlyRequests: allowance.monthlyRequests,
+      monthlyRequests: limitOf(allowance, used),
       planMonthlyRequests: allowance.plan.monthlyRequests,
-      addons: allowance.addons,
+      packRequests: allowance.packRequests,
+      requestPacks: allowance.packs.map(({ name, requests, remaining, expiresOn }) => ({
+        name,
+        requests,
+        remaining,
+        expiresOn,
+      })),
       requestsPerSecond: allowance.requestsPerSecond,
       burst: allowance.burst,
-      requestsUsed: accountMonthRequests(user.id),
+      requestsUsed: used,
       // UTC calendar months, as the allowance counts them.
       resetsOn: row.resets_on,
       memberSince: isoUtc(row.created_at),
@@ -1361,7 +1424,7 @@ async function deleteAccount(req: Request, user: User): Promise<Response> {
     if (projectCount() > 0) return "projects";
     db.query("DELETE FROM sessions WHERE user_id = ?").run(user.id);
     db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
-    db.query("DELETE FROM account_addons WHERE user_id = ?").run(user.id);
+    db.query("DELETE FROM request_packs WHERE user_id = ?").run(user.id);
     db.query(
       `UPDATE users
        SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL,
@@ -3170,10 +3233,44 @@ function accountMonthRequests(userId: number): number {
   return row.n;
 }
 
+/** An account's requests in the calendar month that holds `date`. */
+function accountRequestsInMonthOf(userId: number, date: string): number {
+  const row = db
+    .query(
+      `SELECT COALESCE(SUM(request_count), 0) AS n FROM api_usage
+       WHERE user_id = ? AND date >= date(?, 'start of month')
+         AND date < date(?, 'start of month', '+1 month')`,
+    )
+    .get(userId, date, date) as { n: number };
+  return row.n;
+}
+
+/**
+ * Records usage and draws request packs for whatever of it went past the plan's
+ * monthly allowance, in one transaction. The draw is the part of each row that
+ * crossed the allowance — measured against the month the row belongs to, so a
+ * flush straddling midnight on the 1st charges each side to its own month.
+ */
 const applyUsage = db.transaction(
   (rows: { tenantId: string; date: string; requests: number; bytes: number }[]) => {
-    for (const r of rows)
-      upsertUsage.run(r.tenantId, r.date, r.requests, r.bytes, usageAccount(r.tenantId));
+    for (const r of rows) {
+      const account = usageAccount(r.tenantId);
+      const owner =
+        account === null
+          ? null
+          : (db.query("SELECT id, plan FROM users WHERE id = ?").get(account) as {
+              id: number;
+              plan: string;
+            } | null);
+      const plan = owner ? planOf(owner) : null;
+      const before = plan?.requestPacks ? accountRequestsInMonthOf(account!, r.date) : 0;
+      upsertUsage.run(r.tenantId, r.date, r.requests, r.bytes, account);
+      if (plan?.requestPacks) {
+        const over = (n: number) => Math.max(0, n - plan.monthlyRequests);
+        const past = over(before + r.requests) - over(before);
+        if (past > 0) drawPacks(account!, past);
+      }
+    }
   },
 );
 
@@ -3265,10 +3362,11 @@ function quotaFor(tenantId: string): {
     .get(tenantId) as { id: number; plan: string } | null;
   if (owner) {
     const allowance = allowanceOf(owner);
+    const used = accountMonthRequests(owner.id);
     return {
       tenantId,
-      limit: allowance.monthlyRequests,
-      used: accountMonthRequests(owner.id),
+      limit: limitOf(allowance, used),
+      used,
       rps: allowance.requestsPerSecond,
       burst: allowance.burst,
       bucket: rateBucket(`account:${owner.id}`),
@@ -3320,7 +3418,7 @@ function projectUsage(user: User, tenantId: string): Response {
     tenantId,
     month,
     daily,
-    limit: allowanceOf(user).monthlyRequests,
+    limit: limitOf(allowanceOf(user), accountMonthRequests(user.id)),
     account: { requests: accountMonthRequests(user.id) },
   });
 }
