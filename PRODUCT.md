@@ -52,7 +52,7 @@ The home page combines them:
    authoritative.
 
 Explicitly *not* positioning: the engineering density (scale-to-zero
-multi-tenancy on a 1GB / $4-per-month VPS). That is a deployment fact and an
+multi-tenancy on a single small VPS). That is a deployment fact and an
 enabler of the free tier, not a claim to sell on.
 
 ## Operating Context
@@ -117,7 +117,7 @@ as shipped, and do not invent new claims in the same family:**
 
 Hard constraints that shape the product:
 
-- The whole platform is sized for a single 1GB VPS. Both frontends must build to
+- The whole platform is sized for a single small VPS (a 4GB Hetzner CX23). Both frontends must build to
   static files; neither may acquire a server-side runtime.
 - Zero npm dependencies on both backends.
 - The core admin secret must never reach a browser.

@@ -7,6 +7,6 @@
 5. Charge AI credits per Co-Pilot turn (1 credit = 1,000 tokens) (done)
 6. Free account cap: 1,000 active users, then "free sign-ups are full" (refused addresses noted in a local file) (done)
 7. Pricing page: new plans, add-ons and credit packs, remove feature gating (done)
-8. Move sizing from 1GB to the 4GB CX23
+8. Move sizing from 1GB to the 4GB CX23 (memory ceilings and wording done; measuring on the real box and raising the caps pending)
 
 Later: payment gateway, 80% warning email, grace period, auto-recharge

@@ -18,11 +18,16 @@ Environment=USAGE_SINK_URL=http://127.0.0.1:3001/_internal/usage
 Restart=always
 RestartSec=2
 
-# ── 1GB-VPS guardrails ──
+# ── Memory guardrails (sized for the 4GB CX23) ──
 # Hard ceiling so a runaway tenant load can never OOM the whole box;
 # the engine's own MAX_ACTIVE_TENANTS cap should trip long before this.
-MemoryMax=384M
-MemoryHigh=320M
+# The core gets the largest share because it holds every active project's
+# records in RAM. Of the 4GB: ~2G here, up to 768M for the Dashboard API,
+# and the rest for the OS, Caddy and the page cache SQLite and the tenant
+# files read through. Starting points, not measurements: raise
+# MAX_ACTIVE_TENANTS and this together, from a load test on the real box.
+MemoryMax=2G
+MemoryHigh=1600M
 
 # ── Sandboxing ──
 NoNewPrivileges=true

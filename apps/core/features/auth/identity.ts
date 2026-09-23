@@ -18,7 +18,7 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const MIN_PASSWORD_LEN = 8;
 export const PASSWORD_RULE = `password must be at least ${MIN_PASSWORD_LEN} characters`;
 // Same OWASP argon2id baseline as the dashboard API — 19 MiB transient per
-// hash keeps concurrent signups affordable on the 1GB box.
+// hash keeps concurrent signups affordable on the one shared box.
 export const ARGON = { algorithm: "argon2id", memoryCost: 19_456, timeCost: 2 } as const;
 // Verified against when a login email is unknown, so response time can't enumerate users.
 export const DUMMY_HASH = await Bun.password.hash("stubbase.invalid", ARGON);

@@ -124,7 +124,7 @@ async function exec(cmd: string[], cwd: string, hint: string): Promise<GoalResul
 
 /**
  * The backends must stay at zero npm dependencies (they run straight off Bun's
- * stdlib on a 1GB VPS). Nothing else enforces this — a stray `bun add` would
+ * stdlib on one small VPS). Nothing else enforces this — a stray `bun add` would
  * otherwise only surface as a missing module in production.
  */
 async function verifyZeroDeps(dir: string): Promise<GoalResult> {

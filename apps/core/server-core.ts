@@ -91,7 +91,7 @@ const IDLE_TTL_MS = Number(process.env.IDLE_TTL_MS ?? 5 * 60_000);
 const MAX_ACTIVE_TENANTS = Number(process.env.MAX_ACTIVE_TENANTS ?? 500);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 const HOOK_TIMEOUT_MS = Number(process.env.HOOK_TIMEOUT_MS ?? 5_000);
-// Ceiling on x-stubbase-delay: held-open requests cost memory on the 1GB box.
+// Ceiling on x-stubbase-delay: held-open requests cost memory on the one shared box.
 const MAX_CHAOS_DELAY_MS = Number(process.env.MAX_CHAOS_DELAY_MS ?? 10_000);
 // Usage metering: counts aggregate in RAM and flush to the Dashboard API,
 // which owns the SQLite file (this service's sandbox can't write it).
@@ -101,7 +101,7 @@ const USAGE_FLUSH_MS = Number(process.env.USAGE_FLUSH_MS ?? 60_000);
 // SQL projection + MCP. The projection is derived from the in-RAM arrays and
 // has its own idle life, independent of IDLE_TTL_MS: an MCP client may hold an
 // SSE stream open for hours while querying rarely, and a sleeping projection
-// must not keep costing RAM on the 1GB box.
+// must not keep costing RAM on the one shared box.
 const SQL_IDLE_MS = Number(process.env.SQL_IDLE_MS ?? 5 * 60_000);
 const SQL_MAX_ROWS = Number(process.env.SQL_MAX_ROWS ?? 500);
 const SQL_MAX_COLUMNS = Number(process.env.SQL_MAX_COLUMNS ?? 200);
@@ -519,7 +519,7 @@ if (usageEnabled) {
 
 // ── Live request log ──────────────────────────────────────────────
 // A capped ring of recent public-plane requests per tenant, held in RAM and
-// never written to disk (the 1GB box has no budget for request logging, and
+// never written to disk (the one shared box has no budget for request logging, and
 // journald is capped separately). Each entry carries the middleware lifecycle
 // so the dashboard can show *where* a request was rejected, not just that it
 // was. Like the usage counters, this lives OUTSIDE activeTenants on purpose:
@@ -725,7 +725,7 @@ function evict(tenantId: string) {
   // also what keeps the projection honest after deploy/flush/file writes.
   dropSqlMount(tenantId);
   // Keep the log ring only while someone is watching it; otherwise a sleeping
-  // tenant would hold 50 entries in RAM forever on a 1GB box.
+  // tenant would hold 50 entries in RAM forever.
   if (!logSubscribers.has(tenantId)) tenantLogs.delete(tenantId);
   void flushUsage(); // tenant went to sleep — ship its counters (coalesced)
 }
@@ -736,7 +736,7 @@ function touch(tenantId: string, state: TenantState) {
   state.timer = setTimeout(() => evict(tenantId), IDLE_TTL_MS);
 }
 
-// RAM guard for the 1GB box: past the cap, drop the least-recently-seen tenant early
+// RAM guard for the shared box: past the cap, drop the least-recently-seen tenant early
 function enforceCap(justLoaded: string) {
   if (activeTenants.size <= MAX_ACTIVE_TENANTS) return;
   let oldest: string | null = null;
@@ -1778,7 +1778,7 @@ async function handleRpc(tenantId: string, message: unknown): Promise<object | n
 // ── Transport ─────────────────────────────────────────────────────
 
 function openMcpStream(req: Request, tenantId: string): Response {
-  // RAM guard for the 1GB box, same spirit as MAX_ACTIVE_TENANTS: MCP streams
+  // RAM guard for the shared box, same spirit as MAX_ACTIVE_TENANTS: MCP streams
   // are held open indefinitely by design, so they need a ceiling.
   if (mcpSessions.size >= MCP_MAX_SESSIONS) return err(503, "too many MCP sessions");
 

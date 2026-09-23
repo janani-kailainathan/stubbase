@@ -140,7 +140,7 @@ const EMAIL_DOMAIN_ALLOWLIST = domainList(process.env.DASHBOARD_EMAIL_DOMAIN_ALL
 const EMAIL_DOMAIN_BLOCKLIST = domainList(process.env.DASHBOARD_EMAIL_DOMAIN_BLOCKLIST);
 
 // OWASP argon2id baseline; memoryCost is KiB (19 MiB transient per hash),
-// sized so a couple of concurrent logins stay comfortable on the 1GB box.
+// sized so concurrent logins stay comfortable within the service's memory ceiling.
 const ARGON = { algorithm: "argon2id", memoryCost: 19_456, timeCost: 2 } as const;
 
 // ── SQLite ────────────────────────────────────────────────────────
@@ -4466,7 +4466,7 @@ const MAX_KEY_NAME_LEN = 64;
  * real — argon2 salts every hash, so a key could not be found *by* its hash.
  * Every request would have to load the project's keys and argon2-verify them
  * one by one, at ~19 MiB and tens of milliseconds each. MCP is chatty (every
- * JSON-RPC message is a POST), so on the 1GB box that is a denial of service
+ * JSON-RPC message is a POST), so on one shared box that is a denial of service
  * wearing a security hat.
  *
  * This is the same reasoning already applied to session tokens above, which are

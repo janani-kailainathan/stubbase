@@ -18,7 +18,7 @@
  * Unlike the Dashboard API's copy of this, the core holds nothing in memory.
  * It binary-searches the sorted file by byte range — about seventeen 512-byte
  * reads, 0.4 ms, against a sign-up that already spends ~100 ms in argon2 — and
- * this process is the one caching tenant data on a 1GB box, so the ~9 MB the
+ * this process is the one caching tenant data on a single shared box, so the ~9 MB the
  * dashboard's table would have cost belongs to tenants instead. The file is a
  * committed snapshot; scripts/refresh-email-domains.ts rewrites both copies
  * and `--check` fails when they drift.

@@ -16,9 +16,12 @@ Environment=DB_PATH=/var/lib/stubbase/app.sqlite
 Restart=always
 RestartSec=2
 
-# ── 1GB-VPS guardrails ──
-MemoryMax=256M
-MemoryHigh=192M
+# ── Memory guardrails (sized for the 4GB CX23) ──
+# Headroom for concurrent sign-ups (each argon2 hash takes ~19 MiB), the
+# Co-Pilot's agent loop and the blocked-domains table; see the core unit
+# for how the 4GB is split.
+MemoryMax=768M
+MemoryHigh=640M
 
 # ── Sandboxing ──
 NoNewPrivileges=true

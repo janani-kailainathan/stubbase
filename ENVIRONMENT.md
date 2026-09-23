@@ -25,7 +25,7 @@ distinct layers — don't confuse them:
 | `MAX_ACTIVE_TENANTS` | `500` | RAM cap; past it, the least-recently-seen tenant is evicted early. |
 | `MAX_BODY_BYTES` | `1048576` (1 MiB) | Request-body size limit. |
 | `HOOK_TIMEOUT_MS` | `5000` | Timeout for tenant webhook fetches (before- and after-hooks). |
-| `MAX_CHAOS_DELAY_MS` | `10000` | Ceiling on the QA `x-stubbase-delay` header — held-open requests cost memory on the 1GB box. |
+| `MAX_CHAOS_DELAY_MS` | `10000` | Ceiling on the QA `x-stubbase-delay` header — held-open requests cost memory on the one shared box. |
 | `USAGE_SINK_URL` | *(unset = metering off)* | Where aggregated usage counters are POSTed, i.e. the Dashboard API's `/_internal/usage`. The core cannot write the SQLite file itself (sandbox), so that service is the only writer to `api_usage`. |
 | `USAGE_FLUSH_MS` | `60000` | How often counters flush. They also flush on tenant eviction and on SIGTERM/SIGINT; a failed flush retains its counters for the next attempt. |
 | `LOG_CAP` | `50` | Live request-log ring size per tenant (in RAM, never written to disk). Past it the oldest entry is dropped. |
@@ -34,7 +34,7 @@ distinct layers — don't confuse them:
 | `SQL_MAX_ROWS` | `500` | Row ceiling per `execute_sql_query` call. Rows are pulled lazily, so a runaway join stops early rather than materialising. The result reports `truncated: true`. |
 | `SQL_MAX_COLUMNS` | `200` | Column ceiling per mounted table, so one pathological record shape can't blow up the projection. |
 | `SQL_MAX_QUERY_CHARS` | `4000` | Longest SQL statement an MCP client may submit. |
-| `MCP_MAX_SESSIONS` | `50` | Concurrent MCP SSE streams across all tenants. They are held open indefinitely by design, so they need a ceiling on the 1GB box; past it, new streams get 503. |
+| `MCP_MAX_SESSIONS` | `50` | Concurrent MCP SSE streams across all tenants. They are held open indefinitely by design, so they need a ceiling on the shared box; past it, new streams get 503. |
 | `HOOK_ALLOW_PRIVATE` | unset (off) | `true` disables the webhook SSRF guard so hooks may target private addresses. **Local dev/tests only — never set in production.** |
 | `AUTH_RESET_LOG_CODES` | unset (off) | `true` also writes every tenant password reset code (and its link) to the core's process log, even for a project that emails them. Not needed to try reset without an email provider — a project with no `RESEND_API_KEY` already gets its codes in its own request log, where only its owner sees them. The core warns at boot while it is on. **Local dev/tests only — never set in production**: the log would hold working account-recovery codes for every project's users. |
 | `RESEND_API_URL` | `https://api.resend.com/emails` | Upstream for the `_notify/email` proxy and password reset emails. Override only to point at a mock. |

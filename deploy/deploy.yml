@@ -1,5 +1,5 @@
 ---
-# Deploy Stubbase to a fresh Ubuntu VPS (1GB RAM class).
+# Deploy Stubbase to a fresh Ubuntu VPS (a 4GB Hetzner CX23).
 #
 #   STUBBASE_ADMIN_SECRET='...' ansible-playbook -i inventory.ini deploy.yml
 #
@@ -201,8 +201,8 @@
         directory_mode: "0755"
 
     # ── 5. journald cap ───────────────────────────────────────────
-    # Both services log to the journal. On a 1GB VPS with a small disk an
-    # uncapped journal is a slow-motion outage, so hold it to 500M.
+    # Both services log to the journal. On a small VPS disk an uncapped
+    # journal is a slow-motion outage, so hold it to 500M.
     - name: Cap journald disk usage at 500M
       ansible.builtin.lineinfile:
         path: /etc/systemd/journald.conf

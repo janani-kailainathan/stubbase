@@ -1,6 +1,6 @@
 # Stubbase
 
-Hyper-dense, multi-tenant, scale-to-zero JSON-to-CRUD hosting, sized for a $4/month VPS (1GB RAM).
+Hyper-dense, multi-tenant, scale-to-zero JSON-to-CRUD hosting, sized for a single small VPS (a 4GB Hetzner CX23).
 
 Drop JSON files in, get a REST API out. A single Bun process serves every tenant: data lazy-loads from disk into RAM on the first request, mutations write through to disk immediately, and idle tenants are evicted from memory after 5 minutes. No containers per tenant, no cold-start processes — just a `Map` and the filesystem.
 
@@ -271,11 +271,11 @@ Production layout:
 
 No VPS yet, but want to see the real `deploy.yml` run — real `apt`-installed Caddy, native Bun, sandboxed systemd units, the actual folder layout — before it matters? Run it against a disposable local VM instead. This exercises everything except DNS/Let's Encrypt (a local VM has no public IP, so TLS is skipped by design — see below).
 
-**1. Install Multipass and create the VM** (sized to the same 1GB-RAM class as the real target, so memory behavior is representative):
+**1. Install Multipass and create the VM** (sized like the real target, a 4GB CX23, so memory behavior is representative):
 
 ```bash
 brew install --cask multipass
-multipass launch 22.04 --name stubbase-test --cpus 1 --memory 1G --disk 6G
+multipass launch 22.04 --name stubbase-test --cpus 2 --memory 4G --disk 10G
 ```
 
 On macOS, the first time you reach the VM's IP you may need to approve **System Settings → Privacy & Security → Local Network** for Terminal — without it, `ping`/`ssh` to the VM fail with `No route to host` even though the VM itself is running fine.
