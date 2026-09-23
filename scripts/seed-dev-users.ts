@@ -3,8 +3,8 @@
  * exercised locally — there is no payment gateway, so a plan is a column value
  * and these two rows are how you see both sides of it.
  *
- *   free@stubbase.dev   Free   10,000 requests/mo
- *   pro@stubbase.dev    Pro    250,000/mo, everything incl. the Co-Pilot
+ *   free@stubbase.dev   Free   10,000 requests/mo, 100 gift AI credits
+ *   pro@stubbase.dev    Pro    250,000/mo, 1,000 AI credits a month on top
  *
  * Both share the password below. Dev-only: this writes to the local
  * app.sqlite that scripts/dev.ts points the Dashboard API at, and nothing here
@@ -53,7 +53,19 @@ export async function seedDevUsers(): Promise<number> {
       plan          TEXT NOT NULL DEFAULT 'free',
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS ai_credits (
+      id         INTEGER PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      source     TEXT NOT NULL,
+      used       INTEGER NOT NULL DEFAULT 0,
+      granted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ai_credits_once ON ai_credits(user_id, source)
+      WHERE source = 'gift' OR source LIKE 'monthly:%';
   `);
+  // The sign-up gift a real account gets from createOrReviveUser. Once per
+  // account, so a run of this script never tops it back up.
+  const gift = db.query("INSERT OR IGNORE INTO ai_credits (user_id, source) VALUES (?, 'gift')");
 
   let created = 0;
   for (const user of DEV_USERS) {
@@ -64,12 +76,14 @@ export async function seedDevUsers(): Promise<number> {
       // Re-assert the plan only: the point of these two is which tier they
       // are on, and a run of this script should restore that.
       db.query("UPDATE users SET plan = ? WHERE id = ?").run(user.plan, existing.id);
+      gift.run(existing.id);
       continue;
     }
     const hash = await Bun.password.hash(DEV_PASSWORD, ARGON);
-    db.query(
-      "INSERT INTO users (email, name, password_hash, plan) VALUES (?, ?, ?, ?)",
-    ).run(user.email, user.name, hash, user.plan);
+    const { lastInsertRowid } = db
+      .query("INSERT INTO users (email, name, password_hash, plan) VALUES (?, ?, ?, ?)")
+      .run(user.email, user.name, hash, user.plan);
+    gift.run(lastInsertRowid);
     created += 1;
   }
   db.close();

@@ -33,6 +33,14 @@
     # "Stubbase <no-reply@notify.stubbase.dev>" (verify notify.stubbase.dev).
     dashboard_resend_api_key: "{{ lookup('env', 'STUBBASE_RESEND_API_KEY') }}"
     dashboard_email_from: "{{ lookup('env', 'STUBBASE_EMAIL_FROM') }}"
+    # The AI Co-Pilot runs on Vertex AI (Gemini 3.1 Flash-Lite). Optional: with
+    # no project, or no key file, the deploy succeeds and the Co-Pilot answers
+    # 503. The key file is a service-account JSON key on the machine running
+    # Ansible; it is copied to /etc/stubbase/vertex-sa.json, never into git.
+    # The account needs the "Vertex AI User" role on the project.
+    vertex_project_id: "{{ lookup('env', 'STUBBASE_VERTEX_PROJECT_ID') }}"
+    vertex_location: "{{ lookup('env', 'STUBBASE_VERTEX_LOCATION') | default('global', true) }}"
+    vertex_credentials_src: "{{ lookup('env', 'STUBBASE_VERTEX_CREDENTIALS_FILE') }}"
 
   pre_tasks:
     - name: Require an admin secret
@@ -146,6 +154,18 @@
         owner: stubbase
         group: stubbase
         mode: "0644"
+      notify: Restart stubbase-app
+
+    # Before the env file that names it: the app fails its boot on a
+    # VERTEX_CREDENTIALS_FILE it cannot read, so the key has to land first.
+    - name: Install the Vertex AI service-account key
+      ansible.builtin.copy:
+        src: "{{ vertex_credentials_src }}"
+        dest: /etc/stubbase/vertex-sa.json
+        owner: stubbase
+        group: stubbase
+        mode: "0600"
+      when: vertex_project_id | length > 0 and vertex_credentials_src | length > 0
       notify: Restart stubbase-app
 
     - name: Write shared environment file (holds ADMIN_SECRET and OAuth secrets)

@@ -58,6 +58,24 @@ export interface ToolDefinition {
   parameters?: Record<string, unknown>;
 }
 
+/**
+ * Tokens a call cost, as the provider reported them. `totalTokens` is what the
+ * Co-Pilot's credits are charged on: input, output and thinking together.
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export const NO_USAGE: TokenUsage = { promptTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+export const addUsage = (a: TokenUsage, b: TokenUsage): TokenUsage => ({
+  promptTokens: a.promptTokens + b.promptTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  totalTokens: a.totalTokens + b.totalTokens,
+});
+
 /** One model turn, split into the two things the agent loop cares about. */
 export interface ChatReply {
   /** The raw model turn, appended to the history verbatim. */
@@ -66,6 +84,8 @@ export interface ChatReply {
   text: string;
   /** Tool calls to execute, in the order the model asked for them. */
   calls: FunctionCall[];
+  /** Every token this round cost, retries included. */
+  usage: TokenUsage;
 }
 
 export type AIErrorKind =
@@ -74,10 +94,15 @@ export type AIErrorKind =
   | "timeout" // provider took too long
   | "invalid_json"; // model produced something we could not parse
 
-/** Carries the kind so routes can map failures to HTTP statuses without string matching. */
+/**
+ * Carries the kind so routes can map failures to HTTP statuses without string
+ * matching, and the tokens already spent before the failure — an attempt that
+ * came back empty was still billed by the provider, so it is still charged.
+ */
 export class AIError extends Error {
   readonly kind: AIErrorKind;
   readonly detail?: string;
+  usage: TokenUsage = NO_USAGE;
 
   constructor(kind: AIErrorKind, message: string, detail?: string) {
     super(message);
@@ -88,9 +113,9 @@ export class AIError extends Error {
 }
 
 export interface IAIService {
-  /** Short provider id, e.g. "google-ai" — surfaced in responses and logs. */
+  /** Short provider id, e.g. "google-ai" or "vertex-ai" — surfaced in responses and logs. */
   readonly provider: string;
-  /** Resolved model string, e.g. "models/gemma-4". */
+  /** Resolved model string, e.g. "models/gemini-3.5-flash-lite" or "gemini-3.1-flash-lite". */
   readonly model: string;
   /**
    * One round-trip: send the conversation so far plus the tool catalogue, get

@@ -78,10 +78,15 @@ docker-compose service `core` · systemd `deploy/files/stubbase-core.service`
 | `OAUTH_GOOGLE_AUTH_URL` / `OAUTH_GOOGLE_TOKEN_URL` / `OAUTH_GOOGLE_USERINFO_URL` | Google's real endpoints | Override only to point at a mock (same names, same purpose as the Core's). |
 | `OAUTH_GOOGLE_CERTS_URL` | `https://www.googleapis.com/oauth2/v3/certs` | JWKS used to verify a One Tap ID token's signature. Override only to point at a mock. |
 | `OAUTH_GITHUB_AUTH_URL` / `OAUTH_GITHUB_TOKEN_URL` / `OAUTH_GITHUB_USER_URL` / `OAUTH_GITHUB_EMAILS_URL` | GitHub's real endpoints | Same. The emails endpoint is **not** a fallback here: it is the only address source this service will trust, because a GitHub profile email need not be verified. |
-| `GOOGLE_AI_API_KEY` | *(unset = AI disabled)* | Google AI Studio key for `POST /projects/<id>/ai/chat`. Server-side only — it must never reach a browser. Without it the route answers `503`; the service still boots. |
-| `AI_MODEL_NAME` | `models/gemini-3.5-flash-lite` | Model string, with or without the `models/` prefix. **Must support function calling** — the Co-Pilot is an agent, and a model without tools (the Gemma family) can only talk about acting. Validated at boot; a malformed value **exits**, since it becomes a URL path segment. |
+| `AI_PROVIDER` | `vertex` when `VERTEX_PROJECT_ID` is set, else `google` | Which provider answers `POST /projects/<id>/ai/chat`: `vertex` (Vertex AI on Google Cloud — production) or `google` (Google AI Studio, with an API key — handy locally). Anything else **exits**. |
+| `VERTEX_PROJECT_ID` | *(unset = Vertex off)* | The Google Cloud project that runs the Co-Pilot's model. Setting it is enough to pick Vertex. Without it (and with `AI_PROVIDER=vertex`) the route answers `503`; the service still boots. |
+| `VERTEX_LOCATION` | `global` | Where the model is served. Gemini 3 models are on `global`; a region such as `us-central1` also works for models served there. |
+| `VERTEX_CREDENTIALS_FILE` | *(required with a project)* | Path to a service-account JSON key with the **Vertex AI User** role — `/etc/stubbase/vertex-sa.json` in production, where Ansible installs it (mode `0600`). Server-side only, like `ADMIN_SECRET`. Read and checked at boot: a missing or unusable file **exits**, rather than failing every Co-Pilot turn later. The key signs a JWT that is exchanged for an hour-long access token, cached and reused. |
+| `VERTEX_TOKEN_URL` | `https://oauth2.googleapis.com/token` | Where that JWT is exchanged. Override only to point at a mock in dev/tests. |
+| `GOOGLE_AI_API_KEY` | *(unset = AI disabled)* | Google AI Studio key, used when the provider is `google`. Server-side only — it must never reach a browser. Without it the route answers `503`; the service still boots. |
+| `AI_MODEL_NAME` | `gemini-3.1-flash-lite` on Vertex, `models/gemini-3.5-flash-lite` on AI Studio | Model string (Vertex drops a `models/` prefix). **Must support function calling** — the Co-Pilot is an agent, and a model without tools (the Gemma family) can only talk about acting. Validated at boot; a malformed value **exits**, since it becomes a URL path segment. |
 | `AI_TIMEOUT_MS` | `60000` | Per-call timeout (1s–300s). One chat turn can make several calls when tools run. |
-| `AI_BASE_URL` | Google's v1beta endpoint | Override only to point at a mock in dev/tests. |
+| `AI_BASE_URL` | The provider's own endpoint | Override only to point at a mock in dev/tests. On Vertex it replaces `https://<location>-aiplatform.googleapis.com/v1`. |
 | `PLATFORM_TENANTS` | `public` | Comma-separated tenants the platform serves itself. Counted for usage but never given a request allowance — see §2b. |
 
 Where it's set: dev shell · docker-compose service `dashboard-api` (adds
@@ -327,10 +332,10 @@ Locally, `scripts/seed-dev-users.ts` (run automatically by `scripts/dev.ts`)
 creates one account per plan — `free@` and `pro@stubbase.dev`, password
 `devpassword123` — so both sides can be exercised without touching SQL.
 
-| Plan id | Name | Requests/month | Requests/second | Burst | Unlocks |
+| Plan id | Name | Requests/month | Requests/second | Burst | AI credits/month |
 |---|---|---|---|---|---|
 | `free` | Free | 10,000 | 5 | 20 | — |
-| `pro` | Pro | 250,000 | 50 | 150 | `ai` |
+| `pro` | Pro | 250,000 | 50 | 150 | 1,000 |
 
 An unknown or absent plan string reads as **Free**, never as unlimited.
 Enterprise is sold by conversation and has no plan id.
@@ -362,9 +367,37 @@ Deleting the account removes its packs.
 
 **Plans differ by request limits.** Every project feature — auth and roles,
 webhooks, QA mode — is on every plan, so nothing a project's `.env` or
-`rbac.json` switches on is refused. The one gated feature is the AI Co-Pilot
-(`ai`): `POST /projects/<id>/ai/chat` answers `402` on Free, because every
-turn is a paid provider call.
+`rbac.json` switches on is refused. The AI Co-Pilot is on every plan too,
+metered in credits rather than gated.
+
+### AI credits
+
+Every Co-Pilot turn is a paid provider call, so it costs credits: **1 credit =
+1,000 tokens** (input, output and thinking), charged once when the turn ends
+for every round it took, rounded up — a failed turn included, since the
+provider billed what it read. With no credits left, `POST
+/projects/<id>/ai/chat` answers `402`. Credits come from:
+
+| Source | Credits | Lasts | Who |
+|---|---|---|---|
+| `gift` | 100 | 3 months from sign-up | every new account, once — a revived account gets no second one |
+| `monthly:YYYY-MM` | the plan's (1,000 on Pro) | to the end of the month | made on first use in the month; gone if the plan no longer grants them |
+| `credits_5k` | 5,000 | 12 months | any plan (Starter pack) |
+| `credits_20k` | 20,000 | 12 months | any plan (Builder pack) |
+| `credits_60k` | 60,000 | 12 months | any plan (Scale pack) |
+
+They are spent soonest-expiring first. A turn that costs more than is left
+stops the balance at zero, never below. One turn runs at a time per account
+(`409` otherwise). Like a pack of requests, a credit pack is granted by hand
+until there is a payment gateway:
+
+```sql
+INSERT INTO ai_credits (user_id, source)
+VALUES ((SELECT id FROM users WHERE email = 'someone@example.com'), 'credits_5k');
+```
+
+A source missing from `AI_PACKS` adds nothing. Deleting the account removes
+its credits.
 
 `PLATFORM_TENANTS` (Dashboard API env, default `public`) lists tenants the
 platform itself serves. They belong to no account, so they are counted but

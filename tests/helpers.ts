@@ -116,6 +116,8 @@ export async function startApp(
   return spawnService(`app "${name}"`, join(APPS, "dashboard-api"), "server-app.ts", dir, {
     DB_PATH: join(dir, "app.sqlite"),
     GOOGLE_AI_API_KEY: "",
+    VERTEX_PROJECT_ID: "",
+    AI_PROVIDER: "",
     DASHBOARD_GOOGLE_CLIENT_ID: "",
     DASHBOARD_GOOGLE_SECRET: "",
     DASHBOARD_GITHUB_CLIENT_ID: "",

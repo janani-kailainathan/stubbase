@@ -13,8 +13,9 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useCoPilotChat, useIsCoPilotThinking } from '@/hooks/ai'
-import { useHasFeature } from '@/hooks/plan'
-import { PlanNotice } from '@/components/shell/PlanNotice'
+import { toast } from 'sonner'
+import { useAccountSummary } from '@/hooks/account'
+import { OutOfCreditsNotice } from '@/components/shell/CreditNotice'
 import { useCurrentProject, useSetPaneMode } from '@/hooks/projects'
 import { useApplyDeletion } from '@/hooks/resources'
 import { AI_EXAMPLES } from '@/lib/ai-examples'
@@ -454,7 +455,11 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
   const setChatTurns = useWorkspaceStore((s) => s.setChatTurns)
   const setPaneMode = useSetPaneMode()
   const chat = useCoPilotChat(tenantId)
-  const entitled = useHasFeature('ai')
+  const { data: account } = useAccountSummary()
+  const credits = account?.aiCredits
+  // Unknown until /auth/account answers: allowed meanwhile, since the server
+  // refuses an empty balance on its own count either way.
+  const entitled = credits === undefined || credits.balance > 0
 
   const send = () => {
     const text = input.trim()
@@ -472,19 +477,25 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
 
     addChatEntry(tenantId, { id: crypto.randomUUID(), kind: 'turn', turn })
     chat.mutate([...history, turn], {
-      onSuccess: (res) => setChatTurns(tenantId, res.messages),
+      onSuccess: (res) => {
+        setChatTurns(tenantId, res.messages)
+        if (res.creditsCharged > 0)
+          toast(`Used ${res.creditsCharged.toLocaleString()} AI credit${res.creditsCharged === 1 ? '' : 's'}`, {
+            description: `${res.creditsRemaining.toLocaleString()} left`,
+          })
+      },
       onError: (e) =>
         addChatEntry(tenantId, { id: crypto.randomUUID(), kind: 'error', text: e.message }),
     })
   }
 
-  // Off-plan renders the composer disabled rather than removing it: a control
-  // that vanishes teaches nobody it exists, and the point of showing it is that
-  // the reader learns the Co-Pilot is there and what it would take to use it.
-  // The button keeps its shape so the bar does not reflow between plans.
+  // Out of credits renders the composer disabled rather than removing it: a
+  // control that vanishes teaches nobody it exists, and the point of showing it
+  // is that the reader learns the Co-Pilot is there and what it would take to
+  // use it. The button keeps its shape so the bar does not reflow.
   return (
     <div className="shrink-0 border-t border-border p-3">
-      {!entitled && <PlanNotice feature="ai" label="The AI Co-Pilot" />}
+      {!entitled && credits && <OutOfCreditsNotice monthly={credits.monthly} />}
       <div className="flex gap-2">
         <input
           type="text"
@@ -495,19 +506,24 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
           }}
           disabled={!tenantId || chat.isPending || !entitled}
           placeholder={
-            !entitled ? 'Upgrade to ask the AI Co-Pilot' : chat.isPending ? 'Working…' : 'Ask the AI Co-Pilot…'
+            !entitled ? 'Out of AI credits' : chat.isPending ? 'Working…' : 'Ask the AI Co-Pilot…'
           }
           className="min-w-0 flex-1 rounded-md border border-border bg-code-bg px-3 py-2 font-mono text-xs text-emphasis placeholder-faint focus:border-primary/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
         <button
           onClick={send}
           disabled={!tenantId || chat.isPending || !input.trim() || !entitled}
-          title={entitled ? undefined : 'Available on Pro'}
+          title={entitled ? undefined : 'Out of AI credits'}
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ArrowUp className="h-4 w-4" />
         </button>
       </div>
+      {credits && entitled && (
+        <p className="mt-1.5 font-mono text-[10px] text-faint">
+          {credits.balance.toLocaleString()} AI credit{credits.balance === 1 ? '' : 's'} left
+        </p>
+      )}
     </div>
   )
 }

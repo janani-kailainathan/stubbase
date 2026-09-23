@@ -24,6 +24,9 @@ export function useCoPilotChat(tenantId: string | undefined) {
   return useMutation({
     mutationKey: aiChatKey(tenantId),
     mutationFn: (messages: ChatTurn[]) => chatWithCoPilot(tenantId!, messages),
+    // Every turn is charged, a failed one included, so the balance shown on
+    // the composer and the Account card is refetched whichever way it ended.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['account', 'summary'] }),
     onSuccess: (res) => {
       if (!res.changed) return
       queryClient.invalidateQueries({ queryKey: ['projects'] })

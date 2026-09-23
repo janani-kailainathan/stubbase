@@ -183,6 +183,28 @@ export function AccountCard() {
             </span>
           )}
         </Stat>
+        <Stat
+          wide
+          label="AI credits"
+          hint="Spent by the AI Co-Pilot, soonest-expiring first. A reply costs one credit per 1,000 tokens it used."
+        >
+          {!account ? (
+            '—'
+          ) : account.aiCredits.grants.length === 0 ? (
+            <span className="font-normal text-subtle">None left</span>
+          ) : (
+            <span className="flex flex-col gap-1">
+              {account.aiCredits.grants.map((g) => (
+                <span key={`${g.name}-${g.expiresAt}`} className="whitespace-nowrap">
+                  {g.remaining.toLocaleString()}{' '}
+                  <span className="font-normal text-subtle">
+                    of {g.credits.toLocaleString()} · {g.name} · expires {utcDate(g.expiresAt.slice(0, 10))}
+                  </span>
+                </span>
+              ))}
+            </span>
+          )}
+        </Stat>
       </dl>
     </Card>
   )

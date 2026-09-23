@@ -16,12 +16,15 @@
  *    function calling on this API.
  */
 import {
+  addUsage,
   AIError,
+  NO_USAGE,
   type ChatPart,
   type ChatReply,
   type ChatTurn,
   type FunctionCall,
   type IAIService,
+  type TokenUsage,
   type ToolDefinition,
 } from "./ai.interface.ts";
 import { CO_PILOT_PERSONA } from "./prompts.ts";
@@ -57,82 +60,132 @@ export class GoogleAIService implements IAIService {
     this.#timeoutMs = config.timeoutMs ?? 60_000;
   }
 
-  async chat(messages: ChatTurn[], tools: ToolDefinition[]): Promise<ChatReply> {
-    if (messages.length === 0) throw new AIError("upstream", "no messages to send");
-
-    const body = {
-      contents: toWire(messages),
-      // A tool-less request is legal and means "just talk" — but an empty
-      // `tools` array is not, so the field is omitted rather than sent bare.
-      ...(tools.length > 0 ? { tools: [{ functionDeclarations: tools }] } : {}),
-      generationConfig: {
-        // Conversational, not creative: high enough to write readable prose,
-        // low enough that it doesn't invent tool names.
-        temperature: 0.7,
-        topP: 0.95,
-        // Seed data for several tables is a big function call; 4k truncated it.
-        maxOutputTokens: 8192,
-      },
-    };
-
-    // Generation is stochastic: a turn can come back empty (safety block, a
-    // malformed function call the API drops). One retry, then give up.
-    let lastError: AIError | null = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      let parts: ChatPart[];
-      try {
-        parts = await this.#call(body);
-      } catch (e) {
-        if (e instanceof AIError) throw e;
-        const timedOut =
-          e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-        throw new AIError(
-          timedOut ? "timeout" : "upstream",
-          timedOut ? "the AI provider timed out" : "could not reach the AI provider",
-          String(e),
-        );
-      }
-
-      const reply = toReply(parts);
-      if (reply.text || reply.calls.length > 0) return reply;
-      lastError = new AIError("upstream", "the model returned an empty turn");
-      console.warn(`[ai] attempt ${attempt} produced an empty turn`);
-    }
-    throw lastError!;
+  chat(messages: ChatTurn[], tools: ToolDefinition[]): Promise<ChatReply> {
+    return generateTurn(messages, tools, (body) =>
+      fetch(`${this.#baseUrl}/${this.model}:generateContent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          // Header rather than ?key= so the secret stays out of URLs and logs.
+          "x-goog-api-key": this.#apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      }),
+    );
   }
+}
 
-  async #call(body: unknown): Promise<ChatPart[]> {
-    const res = await fetch(`${this.#baseUrl}/${this.model}:generateContent`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        // Header rather than ?key= so the secret stays out of URLs and logs.
-        "x-goog-api-key": this.#apiKey,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
+// ── The Gemini wire, shared with vertex-ai.service.ts ─────────────
+//
+// Google AI Studio and Vertex AI speak the same generateContent body and
+// envelope; only the URL and the credential differ. So a provider supplies
+// `post` — one HTTP call with its own auth — and everything else lives here.
 
-    const raw = await res.text();
-    if (!res.ok)
-      throw new AIError("upstream", `AI provider returned ${res.status}`, raw.slice(0, 500));
+/**
+ * One model turn over the Gemini wire: builds the body, retries a turn that
+ * comes back empty once, and adds up the tokens of every attempt, since an
+ * empty attempt is billed like any other.
+ */
+export async function generateTurn(
+  messages: ChatTurn[],
+  tools: ToolDefinition[],
+  post: (body: unknown) => Promise<Response>,
+): Promise<ChatReply> {
+  if (messages.length === 0) throw new AIError("upstream", "no messages to send");
 
-    let envelope: any;
+  const body = {
+    contents: toWire(messages),
+    // A tool-less request is legal and means "just talk" — but an empty
+    // `tools` array is not, so the field is omitted rather than sent bare.
+    ...(tools.length > 0 ? { tools: [{ functionDeclarations: tools }] } : {}),
+    generationConfig: {
+      // Conversational, not creative: high enough to write readable prose,
+      // low enough that it doesn't invent tool names.
+      temperature: 0.7,
+      topP: 0.95,
+      // Seed data for several tables is a big function call; 4k truncated it.
+      maxOutputTokens: 8192,
+    },
+  };
+
+  // Generation is stochastic: a turn can come back empty (safety block, a
+  // malformed function call the API drops). One retry, then give up.
+  let usage = NO_USAGE;
+  let lastError: AIError | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let parts: ChatPart[];
     try {
-      envelope = JSON.parse(raw);
-    } catch {
-      throw new AIError("upstream", "AI provider returned a non-JSON envelope", raw.slice(0, 200));
+      const result = await callOnce(post, body);
+      usage = addUsage(usage, result.usage);
+      parts = result.parts;
+    } catch (e) {
+      const error =
+        e instanceof AIError
+          ? e
+          : (() => {
+              const timedOut =
+                e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+              return new AIError(
+                timedOut ? "timeout" : "upstream",
+                timedOut ? "the AI provider timed out" : "could not reach the AI provider",
+                String(e),
+              );
+            })();
+      error.usage = addUsage(usage, error.usage);
+      throw error;
     }
 
-    const candidate = envelope?.candidates?.[0];
-    const parts = candidate?.content?.parts;
-    if (!Array.isArray(parts)) {
-      // Safety blocks and token exhaustion both land here with no parts.
-      const reason = candidate?.finishReason ?? envelope?.promptFeedback?.blockReason ?? "unknown";
-      throw new AIError("upstream", `AI provider returned no content (${reason})`);
-    }
-    return parts as ChatPart[];
+    const reply = toReply(parts, usage);
+    if (reply.text || reply.calls.length > 0) return reply;
+    lastError = new AIError("upstream", "the model returned an empty turn");
+    console.warn(`[ai] attempt ${attempt} produced an empty turn`);
   }
+  lastError!.usage = usage;
+  throw lastError!;
+}
+
+async function callOnce(
+  post: (body: unknown) => Promise<Response>,
+  body: unknown,
+): Promise<{ parts: ChatPart[]; usage: TokenUsage }> {
+  const res = await post(body);
+  const raw = await res.text();
+  if (!res.ok)
+    throw new AIError("upstream", `AI provider returned ${res.status}`, raw.slice(0, 500));
+
+  let envelope: any;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    throw new AIError("upstream", "AI provider returned a non-JSON envelope", raw.slice(0, 200));
+  }
+
+  const usage = usageOf(envelope?.usageMetadata);
+  const candidate = envelope?.candidates?.[0];
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts)) {
+    // Safety blocks and token exhaustion both land here with no parts — and
+    // the prompt was still read, so its tokens still count.
+    const reason = candidate?.finishReason ?? envelope?.promptFeedback?.blockReason ?? "unknown";
+    const error = new AIError("upstream", `AI provider returned no content (${reason})`);
+    error.usage = usage;
+    throw error;
+  }
+  return { parts: parts as ChatPart[], usage };
+}
+
+/**
+ * `usageMetadata` → TokenUsage. `totalTokenCount` already includes thinking
+ * and tool-use prompt tokens; the sum of the parts is the fallback for an
+ * envelope that leaves it out. Anything missing or malformed counts as 0.
+ */
+export function usageOf(meta: any): TokenUsage {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const promptTokens = n(meta?.promptTokenCount) + n(meta?.toolUsePromptTokenCount);
+  const outputTokens = n(meta?.candidatesTokenCount) + n(meta?.thoughtsTokenCount);
+  const totalTokens = n(meta?.totalTokenCount) || promptTokens + outputTokens;
+  return { promptTokens, outputTokens, totalTokens };
 }
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -170,7 +223,7 @@ export function toWire(messages: ChatTurn[]): WireTurn[] {
 }
 
 /** Google reply parts → the two things the agent loop acts on. */
-export function toReply(parts: ChatPart[]): ChatReply {
+export function toReply(parts: ChatPart[], usage: TokenUsage = NO_USAGE): ChatReply {
   const text = parts
     .map((p) => (typeof p.text === "string" ? p.text : ""))
     .join("")
@@ -187,5 +240,5 @@ export function toReply(parts: ChatPart[]): ChatReply {
     });
   }
 
-  return { turn: { role: "model", parts }, text, calls };
+  return { turn: { role: "model", parts }, text, calls, usage };
 }

@@ -959,6 +959,10 @@ describe("delete account", () => {
     expect(me.user.name).toBeNull();
     expect(me.user.monthlyRequests).toBe(10_000); // Free, with no packs on top
     expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM request_packs WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
+    // No second gift either: the lineage had its one, or deleting would be a way to refill it.
+    const { account: summary } = await (await fetch(`${app.base}/auth/account`, { headers: as(back.token) })).json();
+    expect(summary.aiCredits).toMatchObject({ balance: 0, grants: [] });
+    expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM ai_credits WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
   }, 30_000);
 
   test("the deleted row keeps no readable trace of the address", async () => {

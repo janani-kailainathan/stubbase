@@ -38,6 +38,7 @@ import {
   as,
   jsonHeaders,
   readDbOf,
+  writeDbOf,
   grantPackOn,
   setPlanOn,
   sha256hex,
@@ -1417,8 +1418,9 @@ describe("plans and entitlements", () => {
     expect(user.monthlyRequests).toBe(10_000);
     expect(user.requestsPerSecond).toBe(5);
     expect(user.burst).toBe(20);
-    // Resolved server-side so the browser never keeps its own plan table.
-    expect(user.features).toEqual([]);
+    // Resolved server-side so the browser never keeps its own plan table —
+    // and no plan-feature list any more: the Co-Pilot is metered, not gated.
+    expect(user.features).toBeUndefined();
   }, 30_000);
 
   test("an unknown plan string reads as Free, never as unlimited", async () => {
@@ -1431,7 +1433,6 @@ describe("plans and entitlements", () => {
       );
       expect(user.monthlyRequests).toBe(10_000);
       expect(user.requestsPerSecond).toBe(5);
-      expect(user.features).toEqual([]);
     }
   }, 30_000);
 
@@ -1458,42 +1459,45 @@ describe("plans and entitlements", () => {
     expect(live).toMatchObject({ QA_MODE: "true", AUTH_ENABLED: "true" });
   }, 30_000);
 
-  test("the Co-Pilot is the one gated feature: Free is refused it, Pro is not", async () => {
-    const owner = await signup();
-    const { tenantId } = await createProject(owner.token, "FreeNoAi", { posts: [] });
-    const me = () =>
-      fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
-    expect((await me()).user.features).toEqual([]);
-
-    const ai = await fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
+  const ask = (token: string, tenantId: string, on: Service = app) =>
+    fetch(`${on.base}/projects/${tenantId}/ai/chat`, {
       method: "POST",
-      headers: jsonHeaders(owner.token),
+      headers: jsonHeaders(token),
       body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
     });
-    expect(ai.status).toBe(402);
-    expect((await ai.json()).error).toContain("part of Pro.");
+  /** Spends every credit an account holds, as a run of turns would. */
+  const spendAllCredits = (email: string) =>
+    writeDbOf(app, (db) =>
+      db.query("UPDATE ai_credits SET used = 1000000 WHERE user_id = (SELECT id FROM users WHERE email = ?)").run(email),
+    );
 
+  test("the Co-Pilot is on every plan, and refused only when the credits run out", async () => {
+    // This instance has no AI key, so an allowed turn ends in 503 — which is
+    // how these tests tell "let through" from "refused for credit" (402).
+    const owner = await signup();
+    const { tenantId } = await createProject(owner.token, "FreeAi", { posts: [] });
+    expect((await ask(owner.token, tenantId)).status).toBe(503); // Free, on its gift
+
+    spendAllCredits(owner.email);
+    const refused = await ask(owner.token, tenantId);
+    expect(refused.status).toBe(402);
+    expect(await refused.json()).toMatchObject({ creditsRemaining: 0, error: expect.stringContaining("no AI credits") });
+
+    // Pro's monthly credits are a grant of their own, made on first use.
     setPlan(owner.email, "pro");
-    expect((await me()).user.features).toEqual(["ai"]);
+    expect((await ask(owner.token, tenantId)).status).toBe(503);
   }, 30_000);
 
-  test("the Co-Pilot gate is checked before the provider key, so it can't probe the server", async () => {
-    // This instance has no AI key at all. Free is told about its plan (402);
-    // Pro gets past the entitlement and only then meets the 503. If the
-    // order were reversed, both would see the same answer and the refusal
-    // would leak whether the deployment is configured.
+  test("the Co-Pilot's credit check comes before the provider key, so it can't probe the server", async () => {
+    // Out of credit, the answer is 402 whether or not this deployment holds a
+    // key; only an account with credit learns that the Co-Pilot is off. If the
+    // order were reversed, the refusal would leak whether the server is configured.
     const owner = await signup();
     const { tenantId } = await createProject(owner.token, "Order");
-    const ask = () =>
-      fetch(`${app.base}/projects/${tenantId}/ai/chat`, {
-        method: "POST",
-        headers: jsonHeaders(owner.token),
-        body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
-      });
-
-    expect((await ask()).status).toBe(402);
+    spendAllCredits(owner.email);
+    expect((await ask(owner.token, tenantId)).status).toBe(402);
     setPlan(owner.email, "pro");
-    expect((await ask()).status).toBe(503);
+    expect((await ask(owner.token, tenantId)).status).toBe(503);
   }, 30_000);
 
   test("ownership still comes first: a stranger gets 404, not a plan lecture", async () => {
@@ -2085,6 +2089,101 @@ describe("plans and entitlements", () => {
   }, 30_000);
 });
 
+// ── AI credits ─────────────────────────────────────────────────────
+
+/**
+ * The Co-Pilot's ledger, read through /auth/account. Charging is exercised
+ * against a stub provider in "AI Co-Pilot agent loop"; this is where credits
+ * come from and when they stop counting.
+ */
+describe("AI credits", () => {
+  const credits = async (token: string) =>
+    (await fetch(`${app.base}/auth/account`, { headers: as(token) }).then((r) => r.json())).account.aiCredits;
+  const grant = (email: string, source: string, grantedAt: string[] = []) =>
+    writeDbOf(app, (db) =>
+      db
+        .query(
+          `INSERT INTO ai_credits (user_id, source, granted_at)
+           VALUES ((SELECT id FROM users WHERE email = ?), ?, datetime('now'${", ?".repeat(grantedAt.length)}))`,
+        )
+        .run(email, source, ...grantedAt),
+    );
+  const yearMonth = (monthsAhead: number) => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + monthsAhead, 1)).toISOString().slice(0, 7);
+  };
+
+  test("a new account starts with 100 gift credits, valid for three months", async () => {
+    const owner = await signup();
+    const summary = await credits(owner.token);
+    expect(summary).toMatchObject({ balance: 100, monthly: 0 });
+    expect(summary.grants).toEqual([
+      { name: "Gift credits", credits: 100, remaining: 100, expiresAt: expect.stringMatching(/Z$/) },
+    ]);
+    // Three months on from today (the day of the month can roll a little at a month's end).
+    expect([yearMonth(3), yearMonth(4)]).toContain(summary.grants[0].expiresAt.slice(0, 7));
+  }, 30_000);
+
+  test("the gift lapses three months after sign-up, to the minute", async () => {
+    const early = await signup();
+    const late = await signup();
+    const backdate = (email: string, modifiers: string[]) =>
+      writeDbOf(app, (db) =>
+        db
+          .query(
+            `UPDATE ai_credits SET granted_at = datetime('now', ?, ?)
+             WHERE source = 'gift' AND user_id = (SELECT id FROM users WHERE email = ?)`,
+          )
+          .run(...modifiers, email),
+      );
+    backdate(early.email, ["-3 months", "+1 minutes"]); // a minute to go
+    backdate(late.email, ["-3 months", "-1 minutes"]); // a minute gone
+    expect((await credits(early.token)).balance).toBe(100);
+    expect(await credits(late.token)).toMatchObject({ balance: 0, grants: [] });
+  }, 30_000);
+
+  test("Pro gets 1,000 credits each month, and last month's leftovers are gone", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    grant(owner.email, `monthly:${yearMonth(-1)}`); // last month's, never spent
+
+    const summary = await credits(owner.token);
+    expect(summary).toMatchObject({ balance: 1_100, monthly: 1_000 });
+    // This month's credits end first, so they are listed — and spent — before the gift.
+    expect(summary.grants).toEqual([
+      expect.objectContaining({ name: "Pro monthly credits", credits: 1_000, remaining: 1_000, expiresAt: `${yearMonth(1)}-01T00:00:00Z` }),
+      expect.objectContaining({ name: "Gift credits", remaining: 100 }),
+    ]);
+    // Reading the balance again does not grant the month twice.
+    expect((await credits(owner.token)).balance).toBe(1_100);
+  }, 30_000);
+
+  test("a downgrade drops the month's plan credits but keeps the gift and packs", async () => {
+    const owner = await signup();
+    setPlan(owner.email, "pro");
+    grant(owner.email, "credits_5k");
+    expect((await credits(owner.token)).balance).toBe(1_000 + 100 + 5_000);
+
+    setPlan(owner.email, "free");
+    expect(await credits(owner.token)).toMatchObject({ balance: 100 + 5_000, monthly: 0 });
+  }, 30_000);
+
+  test("credit packs stack on any plan and last twelve months; anything unsold adds nothing", async () => {
+    const owner = await signup(); // Free
+    grant(owner.email, "credits_5k");
+    grant(owner.email, "credits_60k", ["-12 months", "+1 minutes"]); // a minute to go
+    grant(owner.email, "credits_20k", ["-12 months", "-1 minutes"]); // lapsed
+    grant(owner.email, "credits_unlimited"); // never sold
+    grant(owner.email, "constructor"); // a name every JavaScript object answers to
+    grant(owner.email, "monthly:2020-01"); // a plan grant long gone
+
+    const summary = await credits(owner.token);
+    expect(summary.balance).toBe(100 + 5_000 + 60_000);
+    // Spent soonest-expiring first: the pack with a minute left goes before the gift.
+    expect(summary.grants.map((g: any) => g.name)).toEqual(["Scale pack", "Gift credits", "Starter pack"]);
+  }, 30_000);
+});
+
 // ── CORS allow-list ────────────────────────────────────────────────
 
 describe("CORS allow-list", () => {
@@ -2123,8 +2222,8 @@ describe("AI Co-Pilot", () => {
   test("reports 503 when no provider key is configured", async () => {
     // The default app instance runs with AI disabled — this asserts the
     // graceful path, and the suite never makes a billed provider call. The
-    // account must be entitled, or it would meet the plan gate first (which
-    // "plans and entitlements" covers).
+    // account has credit (every new account has its gift), or it would meet
+    // the credit check first, which "AI credits" covers.
     const owner = await signupOnPaidPlan();
     const { tenantId } = await createProject(owner.token, "AI");
 
@@ -2153,8 +2252,12 @@ describe("AI Co-Pilot agent loop", () => {
   let aiApp: Service;
   /** Every request body the stub provider received, in order. */
   let seen: any[] = [];
-  /** Queue of reply `parts` arrays; a test scripts the turns it needs. */
-  let script: any[][] = [];
+  /**
+   * Queue of scripted replies; a test scripts the turns it needs. An entry is
+   * a `parts` array, or `{ parts, usage, delayMs }` — `usage` becomes the
+   * envelope's usageMetadata, and `parts: null` a reply with no content.
+   */
+  let script: (any[] | { parts: any[] | null; usage?: Record<string, number>; delayMs?: number })[] = [];
 
   beforeAll(async () => {
     provider = Bun.serve({
@@ -2162,7 +2265,15 @@ describe("AI Co-Pilot agent loop", () => {
       async fetch(req) {
         const body = await req.json();
         seen.push(body);
-        if (script.length > 0) return Response.json({ candidates: [{ content: { parts: script.shift() } }] });
+        if (script.length > 0) {
+          const next = script.shift()!;
+          const item = Array.isArray(next) ? { parts: next } : next;
+          if (item.delayMs) await Bun.sleep(item.delayMs);
+          return Response.json({
+            candidates: item.parts ? [{ content: { parts: item.parts } }] : [{ finishReason: "SAFETY" }],
+            ...(item.usage ? { usageMetadata: item.usage } : {}),
+          });
+        }
         // Turn 1 asks for the tool; turn 2 (which now carries a
         // functionResponse) answers in prose.
         const usedTool = JSON.stringify(body.contents).includes("functionResponse");
@@ -2410,6 +2521,240 @@ describe("AI Co-Pilot agent loop", () => {
       body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "stage a table" }] }] }),
     });
     expect(res.status).toBe(404);
+  }, 30_000);
+
+  // ── Charging ──
+
+  const chat = (token: string, tenantId: string) =>
+    fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "how is my API doing?" }] }] }),
+    });
+  const credits = async (token: string) =>
+    (await fetch(`${aiApp.base}/auth/account`, { headers: as(token) }).then((r) => r.json())).account.aiCredits;
+
+  test("a turn is charged once, for every round's tokens, rounded up to whole credits", async () => {
+    seen = [];
+    script = [
+      { parts: [{ functionCall: { name: "get_diagnostics", args: {} } }], usage: { totalTokenCount: 1_500 } },
+      // No total: the parts are summed, thinking tokens included.
+      { parts: [{ text: "All quiet." }], usage: { promptTokenCount: 400, candidatesTokenCount: 200, thoughtsTokenCount: 100 } },
+    ];
+    const owner = await signupOnPaidPlan(aiApp); // Pro: 1,000 this month + the 100 gift
+    const { tenantId } = await createProject(owner.token, "Charged", {}, aiApp);
+
+    const res = await chat(owner.token, tenantId);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // 1,500 + 700 = 2,200 tokens is 3 credits, not 2 and not one per round.
+    expect(body).toMatchObject({ creditsCharged: 3, creditsRemaining: 1_097 });
+    expect(seen.length).toBe(2);
+
+    // Spent soonest-expiring first: this month's credits, not the gift.
+    const { balance, grants } = await credits(owner.token);
+    expect(balance).toBe(1_097);
+    expect(grants).toEqual([
+      expect.objectContaining({ name: "Pro monthly credits", credits: 1_000, remaining: 997 }),
+      expect.objectContaining({ name: "Gift credits", credits: 100, remaining: 100 }),
+    ]);
+  }, 30_000);
+
+  test("a failed turn still charges the tokens the provider billed", async () => {
+    seen = [];
+    // Two empty turns — the first attempt and its one retry — each billed.
+    script = [
+      { parts: [], usage: { totalTokenCount: 1_200 } },
+      { parts: [], usage: { totalTokenCount: 1_200 } },
+    ];
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Failed", {}, aiApp);
+
+    const res = await chat(owner.token, tenantId);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ creditsCharged: 3, creditsRemaining: 97 });
+    expect(seen.length).toBe(2);
+
+    // A reply with no content at all (a safety block) is not retried, and the
+    // prompt it read is still charged.
+    seen = [];
+    script = [{ parts: null, usage: { totalTokenCount: 900 } }];
+    const blocked = await chat(owner.token, tenantId);
+    expect(blocked.status).toBe(502);
+    expect(await blocked.json()).toMatchObject({ creditsCharged: 1, creditsRemaining: 96 });
+    expect(seen.length).toBe(1);
+  }, 30_000);
+
+  test("a turn that costs more than is left stops the balance at zero, and the next is refused", async () => {
+    seen = [];
+    script = [{ parts: [{ text: "Done." }], usage: { totalTokenCount: 5_000 } }];
+    const owner = await signup(aiApp); // the 100 gift
+    const { tenantId } = await createProject(owner.token, "Overrun", {}, aiApp);
+    writeDbOf(aiApp, (db) =>
+      db.query("UPDATE ai_credits SET used = 99 WHERE user_id = ? AND source = 'gift'").run(owner.id),
+    );
+
+    const res = await chat(owner.token, tenantId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ creditsCharged: 5, creditsRemaining: 0 });
+    expect((await credits(owner.token)).balance).toBe(0);
+
+    // Refused before any provider call: an empty balance costs nothing.
+    const refused = await chat(owner.token, tenantId);
+    expect(refused.status).toBe(402);
+    expect(seen.length).toBe(1);
+  }, 30_000);
+
+  test("an account runs one turn at a time", async () => {
+    seen = [];
+    script = [{ parts: [{ text: "Slow answer." }], usage: { totalTokenCount: 10 }, delayMs: 600 }];
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "OneAtATime", {}, aiApp);
+
+    const first = chat(owner.token, tenantId);
+    await Bun.sleep(150);
+    const second = await chat(owner.token, tenantId);
+    expect(second.status).toBe(409);
+    expect((await first).status).toBe(200);
+
+    // Once the first has finished, the account can ask again.
+    script = [{ parts: [{ text: "Next." }] }];
+    expect((await chat(owner.token, tenantId)).status).toBe(200);
+  }, 30_000);
+});
+
+/**
+ * The Vertex AI provider, against a stub that plays both Google's token
+ * endpoint and Vertex itself. What it holds: the service-account JWT is really
+ * signed by the key file's key and says what Google requires, the exchange
+ * happens once and the token is reused, and the model is addressed under the
+ * configured project and location with that token.
+ */
+describe("Vertex AI provider", () => {
+  let stub: ReturnType<typeof Bun.serve> | undefined;
+  let vertexApp: Service;
+  let publicKey: CryptoKey;
+  const exchanges: URLSearchParams[] = [];
+  const calls: { path: string; authorization: string | null; body: any }[] = [];
+
+  const b64url = (text: string) => Buffer.from(text.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+
+  beforeAll(async () => {
+    const pair = (await crypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    publicKey = pair.publicKey;
+    const der = Buffer.from(await crypto.subtle.exportKey("pkcs8", pair.privateKey)).toString("base64");
+    const pem = `-----BEGIN PRIVATE KEY-----\n${der.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----\n`;
+    const keyFile = join(ROOT, "vertex-sa.json");
+    await Bun.write(
+      keyFile,
+      JSON.stringify({ type: "service_account", client_email: "copilot@stub-project.iam.gserviceaccount.com", private_key: pem }),
+    );
+
+    stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/token") {
+          exchanges.push(new URLSearchParams(await req.text()));
+          return Response.json({ access_token: `tok-${exchanges.length}`, expires_in: 3600, token_type: "Bearer" });
+        }
+        calls.push({ path: url.pathname, authorization: req.headers.get("authorization"), body: await req.json() });
+        return Response.json({
+          candidates: [{ content: { parts: [{ text: "Hello from Vertex." }] } }],
+          usageMetadata: { totalTokenCount: 1_001 },
+        });
+      },
+    });
+
+    vertexApp = await startApp(ROOT, "vertex-app", {
+      CORE_API_URL: core.base,
+      VERTEX_PROJECT_ID: "stub-project",
+      VERTEX_LOCATION: "us-central1",
+      VERTEX_CREDENTIALS_FILE: keyFile,
+      VERTEX_TOKEN_URL: `http://127.0.0.1:${stub.port}/token`,
+      AI_BASE_URL: `http://127.0.0.1:${stub.port}/v1`,
+    });
+    running.push(vertexApp);
+  }, 30_000);
+
+  afterAll(() => {
+    stub?.stop(true);
+  });
+
+  test("signs a service-account JWT, exchanges it once, and calls the project's model", async () => {
+    const owner = await signup(vertexApp);
+    const { tenantId } = await createProject(owner.token, "Vertex", {}, vertexApp);
+    const ask = () =>
+      fetch(`${vertexApp.base}/projects/${tenantId}/ai/chat`, {
+        method: "POST",
+        headers: jsonHeaders(owner.token),
+        body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hello" }] }] }),
+      });
+
+    const first = await ask();
+    expect(first.status).toBe(200);
+    // Setting VERTEX_PROJECT_ID is enough to pick Vertex, with Flash-Lite by default.
+    expect(await first.json()).toMatchObject({
+      provider: "vertex-ai",
+      model: "gemini-3.1-flash-lite",
+      text: "Hello from Vertex.",
+      creditsCharged: 2,
+    });
+    expect((await ask()).status).toBe(200);
+
+    // One exchange for both turns: the token is cached, not fetched per call.
+    expect(exchanges.length).toBe(1);
+    expect(exchanges[0].get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
+
+    // The assertion is signed by the key in the file, and claims what Google requires.
+    const [header, claims, signature] = exchanges[0].get("assertion")!.split(".");
+    const valid = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      publicKey,
+      b64url(signature),
+      new TextEncoder().encode(`${header}.${claims}`),
+    );
+    expect(valid).toBe(true);
+    expect(JSON.parse(b64url(header).toString())).toEqual({ alg: "RS256", typ: "JWT" });
+    const payload = JSON.parse(b64url(claims).toString());
+    expect(payload).toMatchObject({
+      iss: "copilot@stub-project.iam.gserviceaccount.com",
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+      aud: `http://127.0.0.1:${stub!.port}/token`,
+    });
+    expect(payload.exp - payload.iat).toBe(3600);
+
+    // The model, under the configured project and location, with the exchanged token.
+    expect(calls.length).toBe(2);
+    for (const call of calls) {
+      expect(call.path).toBe(
+        "/v1/projects/stub-project/locations/us-central1/publishers/google/models/gemini-3.1-flash-lite:generateContent",
+      );
+      expect(call.authorization).toBe("Bearer tok-1");
+    }
+    // The same Gemini body as AI Studio: persona on the first user turn, tools advertised.
+    expect(calls[0].body.contents[0].parts[0].text).toStartWith("You are the Stubbase AI Co-Pilot");
+    expect(calls[0].body.tools[0].functionDeclarations.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  test("a missing or unusable key file fails the boot rather than every turn", async () => {
+    const broken = join(ROOT, "not-a-key.json");
+    await Bun.write(broken, JSON.stringify({ client_email: "x@y.z" }));
+    for (const [name, file] of [
+      ["vertex-missing-key", join(ROOT, "no-such-file.json")],
+      ["vertex-broken-key", broken],
+    ] as const)
+      await expect(
+        startApp(ROOT, name, {
+          CORE_API_URL: core.base,
+          VERTEX_PROJECT_ID: "stub-project",
+          VERTEX_CREDENTIALS_FILE: file,
+        }),
+      ).rejects.toThrow("never reported a port");
   }, 30_000);
 });
 

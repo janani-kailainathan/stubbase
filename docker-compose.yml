@@ -45,6 +45,8 @@ services:
       DASHBOARD_EMAIL_FROM: ${DASHBOARD_EMAIL_FROM:-}
       DASHBOARD_EMAIL_LOG_CODES: "true"
       # From .env (gitignored — see .env.example). Unset = AI route answers 503.
+      # The local stack talks to AI Studio with a plain key; production runs
+      # Vertex (VERTEX_PROJECT_ID + a service-account key file, see ENVIRONMENT.md).
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
       AI_MODEL_NAME: ${AI_MODEL_NAME:-models/gemini-3.5-flash-lite}
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-120000}

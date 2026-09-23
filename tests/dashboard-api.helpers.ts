@@ -54,6 +54,17 @@ export function readDbOf<T>(service: Service, fn: (db: Database) => T): T {
  * production (`UPDATE users SET plan = ...`). The column is part of the
  * contract now, which is what makes reaching for it here fair game.
  */
+/** Writes to a service's database as an operator would by hand (packs, backdated grants). */
+export function writeDbOf<T>(service: Service, fn: (db: Database) => T): T {
+  const db = new Database(join(service.dir, "app.sqlite"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000;");
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
 export function setPlanOn(service: Service, email: string, plan: string) {
   const db = new Database(join(service.dir, "app.sqlite"));
   try {

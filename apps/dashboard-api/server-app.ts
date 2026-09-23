@@ -48,9 +48,11 @@ import { Database } from "bun:sqlite";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import {
+  addUsage,
   AIError,
   CO_PILOT_TOOLS,
   createAIService,
+  NO_USAGE,
   type ChatPart,
   type ChatTurn,
   type FunctionCall,
@@ -99,7 +101,7 @@ const PUBLIC_API_BASE = (process.env.PUBLIC_API_BASE ?? "https://api.stubbase.de
 let aiService: ReturnType<typeof createAIService>["service"] = null;
 let aiDisabledReason = "";
 try {
-  const configured = createAIService();
+  const configured = await createAIService();
   aiService = configured.service;
   aiDisabledReason = configured.reason ?? "";
 } catch (e) {
@@ -237,6 +239,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS request_packs_user ON request_packs(user_id, granted_at);
   -- The monthly add-ons the packs replaced. Nothing was deployed on them.
   DROP TABLE IF EXISTS account_addons;
+  -- AI Co-Pilot credits, one row per grant; see creditGrantsOf. A grant's size
+  -- and lifetime come from its source, so a row holds only how much of it has
+  -- been spent: 'gift' (given once, at sign-up), 'monthly:YYYY-MM' (a plan's
+  -- monthly credits, made on first use in the month) or an AI_PACKS id
+  -- (bought, granted by hand until there is a payment gateway).
+  CREATE TABLE IF NOT EXISTS ai_credits (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    source     TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,   -- credits spent from this grant
+    granted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS ai_credits_user ON ai_credits(user_id);
+  -- One gift per account and one monthly grant per month: INSERT OR IGNORE
+  -- against this is what makes both idempotent. Packs stack, so they are not in it.
+  CREATE UNIQUE INDEX IF NOT EXISTS ai_credits_once ON ai_credits(user_id, source)
+    WHERE source = 'gift' OR source LIKE 'monthly:%';
   -- Throwaway mail providers, refused at sign-up. Loaded from the vendored
   -- blocked-email-domains.txt (see loadBlockedEmailDomains), which is why it
   -- lives in SQLite rather than a Set: 75,000 domains cost about 9 MB held in
@@ -339,16 +358,11 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 // of requests on Pro; nothing raises the per-second limit, which is what
 // keeps one account's peak from taking the box down for everyone. Every
 // project feature — auth and roles, webhooks, QA mode — is on every plan, so
-// nothing a project's .env or rbac.json can switch on is refused here. The one
-// exception is the AI Co-Pilot, which costs money on every turn and stays on
-// Pro for now (see aiChat).
+// nothing a project's .env or rbac.json can switch on is refused here. The AI
+// Co-Pilot is on every plan too, metered in credits rather than gated by plan
+// (see AI credits below): Pro differs only in getting credits every month.
 
 type PlanId = "free" | "pro";
-/**
- * Capabilities a plan can unlock. Only the Co-Pilot: project features are the
- * same on every plan, which differ by request limits alone.
- */
-type Feature = "ai";
 
 interface Plan {
   id: PlanId;
@@ -360,7 +374,8 @@ interface Plan {
   burst: number;
   /** Whether request packs are drawn on. A pack held on a plan without them sits idle. */
   requestPacks: boolean;
-  features: readonly Feature[];
+  /** AI credits granted each calendar month. They do not roll over. */
+  monthlyAiCredits: number;
 }
 
 // Bursts are generous on purpose: one page load fires several calls at once, and
@@ -373,7 +388,7 @@ const PLANS: Record<PlanId, Plan> = {
     requestsPerSecond: 5,
     burst: 20,
     requestPacks: false,
-    features: [],
+    monthlyAiCredits: 0,
   },
   pro: {
     id: "pro",
@@ -382,7 +397,7 @@ const PLANS: Record<PlanId, Plan> = {
     requestsPerSecond: 50,
     burst: 150,
     requestPacks: true,
-    features: ["ai"],
+    monthlyAiCredits: 1_000,
   },
 };
 
@@ -396,12 +411,6 @@ const DEFAULT_PLAN: PlanId = "free";
 const planOf = (u: { plan: string }): Plan =>
   Object.hasOwn(PLANS, u.plan) ? PLANS[u.plan as PlanId] : PLANS[DEFAULT_PLAN];
 
-const hasFeature = (u: { plan: string }, feature: Feature) =>
-  planOf(u).features.includes(feature);
-
-/** The cheapest plan that includes a feature — so a refusal can name it. */
-const cheapestPlanWith = (feature: Feature): Plan =>
-  (Object.values(PLANS).find((p) => p.features.includes(feature)) ?? PLANS.pro);
 
 // ── Add-ons ───────────────────────────────────────────────────────
 //
@@ -520,6 +529,120 @@ function allowanceOf(u: { id: number; plan: string }) {
  */
 const limitOf = (allowance: ReturnType<typeof allowanceOf>, used: number) =>
   Math.max(used, allowance.plan.monthlyRequests) + allowance.packRequests;
+
+// ── AI credits ────────────────────────────────────────────────────
+//
+// The Co-Pilot costs a provider call on every round of every turn, so it is
+// metered: 1 credit = TOKENS_PER_CREDIT tokens (input, output and thinking), a
+// turn charged once when it ends for everything its rounds used, rounded up.
+// Charging tokens rather than turns is what keeps "seed 5,000 rows" from
+// costing the same as "rename a field".
+//
+// Credits come from three places, all in the ai_credits table:
+//   - a gift of GIFT_CREDITS, once per account at sign-up, lasting
+//     GIFT_VALID_MONTHS. A revived account does not get another: its lineage
+//     already had one, and a gift per sign-up would be a gift per deletion.
+//   - a plan's monthlyAiCredits, as a 'monthly:YYYY-MM' row made on first use
+//     in the month and gone at its end. Counted only while the plan still
+//     grants them, so a downgrade mid-month does not keep Pro's credits.
+//   - packs (AI_PACKS), bought on any plan, lasting AI_PACK_VALID_MONTHS.
+//     Granted by hand until there is a payment gateway:
+//       INSERT INTO ai_credits (user_id, source)
+//       VALUES ((SELECT id FROM users WHERE email = ?), 'credits_5k');
+// They are spent soonest-expiring first, so the month's credits and the gift
+// go before anything that was paid for. The prices are the pricing page's;
+// this is the contract, and a source missing from it adds nothing.
+
+type AiPackId = "credits_5k" | "credits_20k" | "credits_60k";
+
+const AI_PACKS: Record<AiPackId, { id: AiPackId; name: string; credits: number }> = {
+  credits_5k: { id: "credits_5k", name: "Starter pack", credits: 5_000 },
+  credits_20k: { id: "credits_20k", name: "Builder pack", credits: 20_000 },
+  credits_60k: { id: "credits_60k", name: "Scale pack", credits: 60_000 },
+};
+
+const TOKENS_PER_CREDIT = 1_000;
+const GIFT_CREDITS = 100;
+const GIFT_VALID_MONTHS = 3;
+const AI_PACK_VALID_MONTHS = 12;
+
+interface CreditGrant {
+  id: number;
+  name: string;
+  credits: number;
+  remaining: number;
+  /** ISO timestamp, UTC: when the grant stops counting. */
+  expiresAt: string;
+}
+
+/**
+ * The grants an account can still spend, soonest-expiring first — the order
+ * they are spent in. Makes this month's plan grant first if the plan has one,
+ * which is the only write here, and idempotent.
+ */
+function creditGrantsOf(user: { id: number; plan: string }): CreditGrant[] {
+  const plan = planOf(user);
+  if (plan.monthlyAiCredits > 0)
+    db.query(
+      "INSERT OR IGNORE INTO ai_credits (user_id, source) VALUES (?, 'monthly:' || strftime('%Y-%m', 'now'))",
+    ).run(user.id);
+  const rows = db
+    .query(
+      `SELECT * FROM (
+         SELECT id, source, used,
+                CASE
+                  WHEN source = 'gift' THEN datetime(granted_at, '+${GIFT_VALID_MONTHS} months')
+                  WHEN source LIKE 'monthly:%' THEN datetime(substr(source, 9) || '-01', '+1 month')
+                  ELSE datetime(granted_at, '+${AI_PACK_VALID_MONTHS} months')
+                END AS expires_at
+         FROM ai_credits WHERE user_id = ?)
+       WHERE expires_at > datetime('now')
+       ORDER BY expires_at, id`,
+    )
+    .all(user.id) as { id: number; source: string; used: number; expires_at: string }[];
+  return rows.flatMap(({ id, source, used, expires_at }) => {
+    let name: string;
+    let credits: number;
+    if (source === "gift") [name, credits] = ["Gift credits", GIFT_CREDITS];
+    else if (source.startsWith("monthly:")) [name, credits] = [`${plan.name} monthly credits`, plan.monthlyAiCredits];
+    else if (Object.hasOwn(AI_PACKS, source)) {
+      const pack = AI_PACKS[source as AiPackId];
+      [name, credits] = [pack.name, pack.credits];
+    } else return [];
+    const remaining = credits - Math.max(0, Math.floor(Number(used) || 0));
+    if (remaining <= 0) return [];
+    return [{ id, name, credits, remaining, expiresAt: isoUtc(expires_at)! }];
+  });
+}
+
+const creditBalance = (user: { id: number; plan: string }) =>
+  creditGrantsOf(user).reduce((n, g) => n + g.remaining, 0);
+
+/** The balance and what it is made of, as /auth/account and the chat route report it. */
+function aiCreditsOf(user: { id: number; plan: string }) {
+  const grants = creditGrantsOf(user);
+  return {
+    balance: grants.reduce((n, g) => n + g.remaining, 0),
+    monthly: planOf(user).monthlyAiCredits,
+    grants: grants.map(({ name, credits, remaining, expiresAt }) => ({ name, credits, remaining, expiresAt })),
+  };
+}
+
+/**
+ * Spends `credits` soonest-expiring first, in one synchronous transaction.
+ * A turn that cost more than was left stops the balance at zero rather than
+ * below it: the overrun is bounded by the turn's round limit, and a debt would
+ * be a Co-Pilot that stays off after the next grant arrives.
+ */
+const spendCredits = db.transaction((user: { id: number; plan: string }, credits: number) => {
+  let owed = credits;
+  for (const grant of creditGrantsOf(user)) {
+    if (owed <= 0) break;
+    const take = Math.min(owed, grant.remaining);
+    db.query("UPDATE ai_credits SET used = used + ? WHERE id = ?").run(take, grant.id);
+    owed -= take;
+  }
+});
 
 // ── Auth ──────────────────────────────────────────────────────────
 
@@ -675,9 +798,11 @@ function createOrReviveUser(
     .query("SELECT id FROM users WHERE deleted_email_hash = ?")
     .get(emailLineageHash(email)) as { id: number } | null;
   if (!dormant) {
-    db.query(
-      "INSERT INTO users (email, name, password_hash, oauth_provider) VALUES (?, ?, ?, ?)",
-    ).run(email, name, passwordHash, oauthProvider);
+    const { lastInsertRowid } = db
+      .query("INSERT INTO users (email, name, password_hash, oauth_provider) VALUES (?, ?, ?, ?)")
+      .run(email, name, passwordHash, oauthProvider);
+    // The one gift the account's lineage ever gets: a revived row, below, has had it.
+    db.query("INSERT OR IGNORE INTO ai_credits (user_id, source) VALUES (?, 'gift')").run(lastInsertRowid);
     return;
   }
   const { changes } = db
@@ -762,7 +887,6 @@ const publicUser = (u: User) => {
     monthlyRequests: limitOf(allowance, accountMonthRequests(u.id)),
     requestsPerSecond: allowance.requestsPerSecond,
     burst: allowance.burst,
-    features: allowance.plan.features,
     // Whether the account can sign in with a password at all. An account made
     // by Google or GitHub cannot, so the account menu offers "Set a password"
     // (by emailed code) instead of "Change password" (by current password).
@@ -1286,7 +1410,8 @@ async function updateAccount(req: Request, user: User): Promise<Response> {
  * included. `planMonthlyRequests` and `packRequests` are its parts, so the page
  * can say where the number comes from, and `requestPacks` lists every pack still
  * holding requests — on Free too, where `packRequests` is 0 because the plan
- * does not draw on them.
+ * does not draw on them. `aiCredits` is the Co-Pilot's balance and the grants
+ * it is made of, in the order they will be spent.
  */
 function accountSummary(user: User): Response {
   const allowance = allowanceOf(user);
@@ -1314,6 +1439,9 @@ function accountSummary(user: User): Response {
       requestsPerSecond: allowance.requestsPerSecond,
       burst: allowance.burst,
       requestsUsed: used,
+      // Fresh on every read, like the usage: the Co-Pilot pane and this card
+      // both show the balance a turn will be refused on.
+      aiCredits: aiCreditsOf(user),
       // UTC calendar months, as the allowance counts them.
       resetsOn: row.resets_on,
       memberSince: isoUtc(row.created_at),
@@ -1425,6 +1553,7 @@ async function deleteAccount(req: Request, user: User): Promise<Response> {
     db.query("DELETE FROM sessions WHERE user_id = ?").run(user.id);
     db.query("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
     db.query("DELETE FROM request_packs WHERE user_id = ?").run(user.id);
+    db.query("DELETE FROM ai_credits WHERE user_id = ?").run(user.id);
     db.query(
       `UPDATE users
        SET email = ?, name = NULL, password_hash = NULL, oauth_provider = NULL,
@@ -3096,6 +3225,13 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
 // ── The agent loop ────────────────────────────────────────────────
 
 /**
+ * Accounts with a Co-Pilot turn in flight. One at a time per account: the
+ * balance is checked before a turn and charged after it, so two turns in
+ * parallel could each pass the check and together overrun it.
+ */
+const aiTurnsInFlight = new Set<number>();
+
+/**
  * POST /projects/<tenantId>/ai/chat — one conversational turn, including any
  * tool calls it takes to answer.
  *
@@ -3104,84 +3240,117 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
  * after which the model is asked once more with no tools available, so a
  * confused agent still ends the request with a sentence for the user instead of
  * spending provider calls in a circle.
+ *
+ * Every round's tokens are added up and the turn is charged once, when it ends
+ * — however it ends, a provider failure included, since the provider billed
+ * what it read. The reply carries `creditsCharged` and `creditsRemaining`.
  */
 async function aiChat(req: Request, user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
-  // Entitlement before configuration: a Free account gets the same answer
-  // whether or not this deployment happens to hold a provider key, so the
-  // refusal never doubles as a probe of the server's setup. 402 rather than
-  // 403 — the request is well-formed and the caller is who they say they are;
-  // what is missing is the plan.
-  if (!hasFeature(user, "ai"))
-    return err(
+  // Credits before configuration: an account with none gets the same answer
+  // whether or not this deployment happens to hold a provider credential, so
+  // the refusal never doubles as a probe of the server's setup. 402 rather
+  // than 403 — the request is well-formed and the caller is who they say they
+  // are; what is missing is credit.
+  if (creditBalance(user) < 1)
+    return json(
+      {
+        error:
+          planOf(user).monthlyAiCredits > 0
+            ? "You have used this month's AI credits. They refill on the 1st, or add a credit pack."
+            : "You have no AI credits left. Add a credit pack, or move to Pro for credits every month.",
+        creditsRemaining: 0,
+      },
       402,
-      `The AI Co-Pilot is part of ${cheapestPlanWith("ai").name}. Your account is on ${planOf(user).name}.`,
     );
   if (!aiService)
     return err(503, `The AI Co-Pilot is not configured on this server (${aiDisabledReason})`);
+  if (aiTurnsInFlight.has(user.id))
+    return err(409, "The AI Co-Pilot is still answering your last message.");
 
   const body = await readJsonBody(req);
   if (body instanceof Response) return body;
   const history = validateHistory((body as any)?.messages);
   if (typeof history === "string") return err(400, history);
 
-  const messages: ChatTurn[] = [...history];
-  const toolsUsed: string[] = [];
-  const deadline = Date.now() + AI_TURN_BUDGET_MS;
-  let changed = false;
+  aiTurnsInFlight.add(user.id);
+  let usage = NO_USAGE;
+  /** Charges the turn and reports it; every way out of the loop goes through here. */
+  const settle = () => {
+    const creditsCharged = Math.ceil(usage.totalTokens / TOKENS_PER_CREDIT);
+    if (creditsCharged > 0) spendCredits(user, creditsCharged);
+    console.log(
+      `[ai] turn for account ${user.id}: ${usage.totalTokens} tokens ` +
+        `(${usage.promptTokens} in, ${usage.outputTokens} out), ${creditsCharged} credits`,
+    );
+    return { creditsCharged, creditsRemaining: creditBalance(user) };
+  };
+  const failed = (status: number, error: string) => json({ error, ...settle() }, status);
 
-  for (let round = 0; round <= AI_MAX_TOOL_ROUNDS; round++) {
-    // The last round — or the first one past the time budget — runs tool-less,
-    // so it can only come back as prose and the turn ends.
-    const spent = Date.now() > deadline;
-    const tools = round === AI_MAX_TOOL_ROUNDS || spent ? [] : CO_PILOT_TOOLS;
+  try {
+    const messages: ChatTurn[] = [...history];
+    const toolsUsed: string[] = [];
+    const deadline = Date.now() + AI_TURN_BUDGET_MS;
+    let changed = false;
 
-    let reply;
-    try {
-      reply = await aiService.chat(messages, tools);
-    } catch (e) {
-      if (e instanceof AIError) {
-        console.warn(`[ai] ${e.kind}: ${e.message}${e.detail ? ` — ${e.detail}` : ""}`);
-        if (e.kind === "timeout")
-          return err(504, "The AI Co-Pilot took too long to respond, please try again.");
-        return err(502, "The AI Co-Pilot could not answer, please try again.");
+    for (let round = 0; round <= AI_MAX_TOOL_ROUNDS; round++) {
+      // The last round — or the first one past the time budget — runs tool-less,
+      // so it can only come back as prose and the turn ends.
+      const spent = Date.now() > deadline;
+      const tools = round === AI_MAX_TOOL_ROUNDS || spent ? [] : CO_PILOT_TOOLS;
+
+      let reply;
+      try {
+        reply = await aiService.chat(messages, tools);
+      } catch (e) {
+        if (e instanceof AIError) {
+          usage = addUsage(usage, e.usage);
+          console.warn(`[ai] ${e.kind}: ${e.message}${e.detail ? ` — ${e.detail}` : ""}`);
+          if (e.kind === "timeout")
+            return failed(504, "The AI Co-Pilot took too long to respond, please try again.");
+          return failed(502, "The AI Co-Pilot could not answer, please try again.");
+        }
+        console.error("[ai] unexpected failure:", e);
+        return failed(502, "The AI Co-Pilot could not answer, please try again.");
       }
-      console.error("[ai] unexpected failure:", e);
-      return err(502, "The AI Co-Pilot could not answer, please try again.");
+
+      usage = addUsage(usage, reply.usage);
+      messages.push(reply.turn);
+
+      if (reply.calls.length === 0)
+        return json({
+          ok: true,
+          tenant: tenantId,
+          provider: aiService.provider,
+          model: aiService.model,
+          text: reply.text,
+          messages,
+          toolsUsed,
+          changed,
+          ...settle(),
+        });
+
+      const parts: ChatPart[] = [];
+      for (const call of reply.calls) {
+        const outcome = await runTool(call, user, tenantId);
+        toolsUsed.push(call.name);
+        changed = changed || outcome.changed === true;
+        parts.push({
+          functionResponse: {
+            name: call.name,
+            response: { result: outcome.result },
+            ...(call.id ? { id: call.id } : {}),
+          },
+        });
+      }
+      messages.push({ role: "function", parts });
     }
 
-    messages.push(reply.turn);
-
-    if (reply.calls.length === 0)
-      return json({
-        ok: true,
-        tenant: tenantId,
-        provider: aiService.provider,
-        model: aiService.model,
-        text: reply.text,
-        messages,
-        toolsUsed,
-        changed,
-      });
-
-    const parts: ChatPart[] = [];
-    for (const call of reply.calls) {
-      const outcome = await runTool(call, user, tenantId);
-      toolsUsed.push(call.name);
-      changed = changed || outcome.changed === true;
-      parts.push({
-        functionResponse: {
-          name: call.name,
-          response: { result: outcome.result },
-          ...(call.id ? { id: call.id } : {}),
-        },
-      });
-    }
-    messages.push({ role: "function", parts });
+    // Unreachable: the tool-less final round cannot ask for a tool.
+    return failed(502, "The AI Co-Pilot could not finish its work, please try again.");
+  } finally {
+    aiTurnsInFlight.delete(user.id);
   }
-
-  // Unreachable: the tool-less final round cannot ask for a tool.
-  return err(502, "The AI Co-Pilot could not finish its work, please try again.");
 }
 
 // ── Usage analytics ───────────────────────────────────────────────

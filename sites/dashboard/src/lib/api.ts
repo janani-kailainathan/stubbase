@@ -103,15 +103,9 @@ function appHeaders(hasBody = false): Record<string, string> {
 // ── Dashboard API: auth ───────────────────────────────────────────
 
 /**
- * Capabilities a plan unlocks. Mirrors the Feature union in server-app.ts: only
- * the Co-Pilot, since every project feature is on every plan.
- */
-export type PlanFeature = 'ai'
-
-/**
  * The signed-in account, with its plan already resolved by the server.
  *
- * `features` and `monthlyRequests` arrive rather than being looked up here on
+ * `monthlyRequests` and the rate arrive rather than being looked up here on
  * purpose: the browser must never hold its own copy of the plan table, because
  * a stale copy would disagree with the side that actually enforces. Everything
  * the UI does with these is presentational — the server refuses the call
@@ -131,7 +125,6 @@ export interface ApiUser {
    */
   requestsPerSecond?: number
   burst?: number
-  features: PlanFeature[]
   /**
    * False for an account made by Google or GitHub, which has no password to
    * change and sets one by emailed code. Absent on a session stored before the
@@ -232,6 +225,23 @@ export interface RequestPack {
   expiresOn: string
 }
 
+/** One source of AI credits: the sign-up gift, a plan's monthly grant, or a pack. */
+export interface AiCreditGrant {
+  name: string
+  credits: number
+  remaining: number
+  /** ISO timestamp, UTC: when what is left stops counting. */
+  expiresAt: string
+}
+
+export interface AiCredits {
+  balance: number
+  /** Credits the plan grants each month; 0 on Free. */
+  monthly: number
+  /** In the order they are spent: soonest-expiring first. */
+  grants: AiCreditGrant[]
+}
+
 /** What the settings page's Account card shows: read-only, and fetched fresh rather than stored. */
 export interface AccountSummary {
   email: string
@@ -251,6 +261,8 @@ export interface AccountSummary {
   burst: number
   /** This month's requests across every project, deleted ones included — what the allowance is measured on. */
   requestsUsed: number
+  /** The AI Co-Pilot's balance: what a turn is refused on at 0. */
+  aiCredits: AiCredits
   /** YYYY-MM-DD, UTC: the first day of next month, when the count starts again. */
   resetsOn: string
   /** ISO timestamp the account was created. */
@@ -567,6 +579,10 @@ export interface CoPilotResponse {
   toolsUsed: string[]
   /** True when a tool changed server state the dashboard is showing. */
   changed: boolean
+  /** Credits this turn cost: its tokens across every round, rounded up. */
+  creditsCharged: number
+  /** The balance after it. */
+  creditsRemaining: number
 }
 
 /**

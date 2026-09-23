@@ -97,21 +97,22 @@ Shipped and working:
 - Per-tenant auth (JWT), record ownership/RBAC, schema validation, webhook
   proxying with an SSRF guard, notification proxy, virtual start/stop.
 - MCP over HTTP+SSE with one `execute_sql_query` tool against a read-only
-  in-memory SQLite projection; developer API keys for external agents.
+  in-memory SQLite projection; developer API keys for external agents. The
+  Co-Pilot runs on Gemini 3.1 Flash-Lite via Vertex AI and is metered in AI
+  credits on every plan (100 gift credits, 1,000 a month on Pro, packs).
 
 **Not built yet — the user is building these one at a time. Do not present them
 as shipped, and do not invent new claims in the same family:**
 
 - `?delay` / `?status` URL simulation params (currently advertised on the
   landing page; the header-driven chaos controls do exist).
-- Billing and payment. Plans (Free / Pro $29 / Enterprise) are displayed but
-  no checkout exists; every account is `free`. Lemon Squeezy is the intended
-  merchant of record, after MVP.
+- Billing and payment. Plans (Free / Pro $29 / Enterprise), request packs and
+  AI credit packs are displayed but no checkout exists, and the payment gateway
+  is not chosen yet; plans, packs and credits are granted by hand.
 - The `public` demo tenant with the six advertised resources — so the home
   "Try it live" runner falls back to a sample, and the Free Resources links 404.
 - OAuth login (Google/GitHub), password reset, contact-form backend.
 - Delete-project and delete-resource UI (the API and hooks exist).
-- AI Co-Pilot plan gating and per-account usage caps.
 - Not yet deployed: there is no live `stubbase.dev` production instance.
 
 Hard constraints that shape the product:

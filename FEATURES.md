@@ -738,7 +738,7 @@ other device is signed out.
 The first card in **Settings** shows what your account is: the email address
 you sign in with, your plan, when you joined, how many of your monthly requests
 you have used and when that count starts again, how many projects you have, your
-rate limit and any request packs. It is also where you switch the dashboard between
+rate limit, any request packs and your AI credits. It is also where you switch the dashboard between
 light and dark — the choice carries over to the Stubbase website.
 
 - Requests are counted across all your projects together — projects you have
@@ -756,6 +756,8 @@ light and dark — the choice carries over to the Stubbase website.
   used first. Your rate limit stays your plan's. On Free a pack is not used — a
   pack you bought on Pro waits until you are back on Pro. They are not on sale
   yet.
+- AI credits are listed in the order they will be used, each with what is left
+  and when it expires — see [2.7](#27-ai-credits-for-the-co-pilot).
 
 ### 2.5 Delete your account
 
@@ -795,6 +797,29 @@ choose **Duplicate** — the new project opens straight away.
 - The accounts that signed up to your API, their sessions, and your developer
   API keys are never copied: the copy starts with no users, and an MCP client
   needs a new key for it.
+
+### 2.7 AI credits for the Co-Pilot
+
+The AI Co-Pilot is on every plan. Each reply uses credits for the work it did:
+one credit per 1,000 tokens the model read and wrote, counted across every step
+of the reply and rounded up. A reply that designs a small table costs a few
+credits; one that seeds hundreds of rows costs more. After each reply the
+dashboard tells you what it used and what is left, and the number under the
+chat box always shows your balance.
+
+- **Every new account gets 100 gift credits**, valid for 3 months from sign-up.
+  You get them once — deleting your account and signing up again does not give
+  you more.
+- **Pro adds 1,000 credits every month.** They are there from the 1st and do
+  not carry over into the next month.
+- **Credit packs** add 5,000, 20,000 or 60,000 credits on any plan and last 12
+  months. They are not on sale yet.
+
+Credits are used in the order they expire, so this month's Pro credits and your
+gift go before a pack you paid for. A reply that fails still uses the credits
+for the work the model did before it failed. When you have none left, the chat
+box says so and stays disabled until you get more; your API itself is not
+affected. The Co-Pilot answers one message at a time for your account.
 
 ---
 
