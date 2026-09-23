@@ -119,12 +119,11 @@
    pre-paint script in index.html has stamped an explicit class.
 
    Three layers, and only the first inverts cleanly:
-     1. surfaces + the zinc text ramp — mechanical, but never flip the elevation
-        (dark cards are LIGHTER than the page, so light keeps white cards on a
-        zinc-50 page rather than a grey card on white);
-     2. brand emerald — one value does fill AND text duty in dark, which light
-        cannot do: emerald-500 is 8.3:1 as a fill under black text but 2.5:1 as
-        text on white, hence --primary-ink/--primary-accent at emerald-700;
+     1. surfaces + the zinc text ramp — light is a white page with zinc-50
+        cards and panels (see "light mode colors" in CLAUDE.md);
+     2. brand emerald — one value does fill AND text duty in dark; light fills
+        emerald-500 under white text, and sets text in emerald-600 (--primary-ink)
+        and icons in emerald-500 (--primary-accent);
      3. status (rose/amber/sky) and syntax — re-picked per theme, never stepped
         uniformly, since amber-400 is 1.7:1 on white where sky-400 is 2.1:1.
 
@@ -132,14 +131,14 @@
    editing is that DARK RENDERS UNCHANGED.
    --------------------------------------------------------------------------- */
 :root {
-  --background: var(--color-zinc-50);
-  --foreground: var(--color-zinc-950);
-  --card: var(--color-white);
-  --card-foreground: var(--color-zinc-950);
-  --popover: var(--color-white);
-  --popover-foreground: var(--color-zinc-950);
+  --background: var(--color-white);
+  --foreground: var(--color-zinc-900);
+  --card: var(--color-zinc-50);
+  --card-foreground: var(--color-zinc-900);
+  --popover: var(--color-zinc-50);
+  --popover-foreground: var(--color-zinc-900);
   --primary: var(--color-emerald-500);
-  --primary-foreground: var(--color-black);
+  --primary-foreground: var(--color-white);
   --secondary: var(--color-zinc-100);
   --secondary-foreground: var(--color-zinc-900);
   --muted: var(--color-zinc-100);
@@ -159,7 +158,7 @@
   --sidebar: var(--color-zinc-50);
   --sidebar-foreground: var(--color-zinc-600);
   --sidebar-primary: var(--color-emerald-600);
-  --sidebar-primary-foreground: var(--color-black);
+  --sidebar-primary-foreground: var(--color-white);
   --sidebar-accent: var(--color-white);
   --sidebar-accent-foreground: var(--color-zinc-950);
   --sidebar-border: var(--color-zinc-200);
@@ -167,8 +166,8 @@
 
   /* Panels. Dark layers these as translucent zinc over the page; light cannot
      copy that (white/40 over zinc-50 is invisible), so they resolve to solid. */
-  --panel: var(--color-white);
-  --panel-strong: var(--color-white);
+  --panel: var(--color-zinc-50);
+  --panel-strong: var(--color-zinc-50);
 
   /* Borders, three weights. */
   --border-soft: var(--color-zinc-200);
@@ -181,7 +180,7 @@
      legibility while dark keeps all eight distinct. */
   --heading: var(--color-zinc-900);
   --emphasis: var(--color-zinc-800);
-  --body: var(--color-zinc-700);
+  --body: var(--color-zinc-600);
   --subtle: var(--color-zinc-500);
   --faint: var(--color-zinc-500);
   /* Carries real 10px labels, so it compresses onto --faint rather than stepping
@@ -190,13 +189,13 @@
   --faintest: var(--color-zinc-500);
   --ghost: var(--color-zinc-300);
 
-  /* Brand. --primary stays emerald-500 as a fill in BOTH themes, so "emerald
-     buttons always with black text" survives; only the text roles move. */
+  /* Brand. --primary stays emerald-500 as a fill in BOTH themes; its text is
+     white in light and black in dark. */
   --primary-hover: var(--color-emerald-600);
-  --primary-ink: var(--color-emerald-700);
-  --primary-ink-hover: var(--color-emerald-800);
-  --primary-accent: var(--color-emerald-700);
-  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+  --primary-ink: var(--color-emerald-600);
+  --primary-ink-hover: var(--color-emerald-700);
+  --primary-accent: var(--color-emerald-500);
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
   --primary-soft-weak: color-mix(in oklab, var(--color-emerald-500) 8%, transparent);
   --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
   --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
@@ -234,13 +233,13 @@
   /* Editor / terminal surfaces and the syntax palette. Shared by the read-only
      renderer (lib/json-highlight.tsx) and the CodeMirror theme (JsonEditor.tsx)
      so flipping into edit mode never recolours the document. */
-  --code-bg: var(--color-white);
+  --code-bg: var(--color-zinc-100);
   --code-fg: var(--color-zinc-800);
-  --syntax-key: var(--color-emerald-700);
-  --syntax-str: var(--color-sky-700);
-  --syntax-num: var(--color-amber-700);
-  --syntax-bool: var(--color-violet-700);
-  --syntax-punct: var(--color-zinc-500);
+  --syntax-key: var(--color-emerald-600);
+  --syntax-str: var(--color-sky-600);
+  --syntax-num: var(--color-amber-600);
+  --syntax-bool: var(--color-purple-600);
+  --syntax-punct: var(--color-zinc-400);
   --syntax-invalid: var(--color-rose-600);
   --editor-active-line: color-mix(in oklab, var(--color-black) 4%, transparent);
   --editor-selection: color-mix(in oklab, var(--color-emerald-600) 20%, transparent);
@@ -253,7 +252,7 @@
   --selection-fg: var(--color-zinc-950);
 }
 
-/* Stubbase design system: zinc surfaces, emerald accent (black text on emerald).
+/* Stubbase design system: zinc surfaces, emerald accent (black text on emerald in dark).
    Mirror of the :root block above — every token here holds the exact literal it
    replaced in the components, which is what makes "dark renders unchanged" a
    checkable property rather than a hope. */

@@ -75,8 +75,8 @@ html:not(.signed-in) [data-auth='user'] {
   --primary-ink-hover: var(--color-emerald-300);
   /* A second emerald ramp really is in use: icons, eyebrows and mailto links sit
      at 500 and hover to 400, while resource links sit at 400 and hover to 300.
-     Both collapse onto emerald-700/800 in light, but keeping them apart is what
-     lets dark come out of this migration unchanged. */
+     In light they sit at emerald-500/600 (icons) and emerald-600/700 (text);
+     keeping them apart is what lets dark come out of this migration unchanged. */
   --primary-accent: var(--color-emerald-500);
   --primary-accent-hover: var(--color-emerald-400);
   --ring: var(--color-emerald-500);
@@ -128,11 +128,11 @@ html:not(.signed-in) [data-auth='user'] {
    still win once the pre-paint script has run. */
 @media (prefers-color-scheme: light) {
   :root:not(.dark) {
-    --background: var(--color-zinc-50);
-    --foreground: var(--color-zinc-950);
-    --card: var(--color-white);
-    --section: var(--color-white);
-    --chrome: var(--color-zinc-100);
+    --background: var(--color-white);
+    --foreground: var(--color-zinc-900);
+    --card: var(--color-zinc-50);
+    --section: var(--color-zinc-50);
+    --chrome: var(--color-zinc-50);
     --muted: var(--color-zinc-100);
     --muted-hover: var(--color-zinc-100);
     --muted-strong: var(--color-zinc-200);
@@ -146,31 +146,31 @@ html:not(.signed-in) [data-auth='user'] {
 
     --primary: var(--color-emerald-500);
     --primary-hover: var(--color-emerald-600);
-    --primary-foreground: var(--color-black);
-    --primary-ink: var(--color-emerald-700);
-    --primary-ink-hover: var(--color-emerald-800);
-    --primary-accent: var(--color-emerald-700);
-    --primary-accent-hover: var(--color-emerald-800);
+    --primary-foreground: var(--color-white);
+    --primary-ink: var(--color-emerald-600);
+    --primary-ink-hover: var(--color-emerald-700);
+    --primary-accent: var(--color-emerald-500);
+    --primary-accent-hover: var(--color-emerald-600);
     --ring: var(--color-emerald-600);
 
-    --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+    --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
     --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
     --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
-    --primary-soft-ink: var(--color-emerald-700);
+    --primary-soft-ink: var(--color-emerald-600);
 
     --contrast: var(--color-zinc-900);
     --contrast-hover: var(--color-zinc-950);
     --contrast-foreground: var(--color-zinc-50);
 
-    --code-bg: var(--color-white);
-    --code-fg: var(--color-zinc-700);
+    --code-bg: var(--color-zinc-100);
+    --code-fg: var(--color-zinc-800);
     --chrome-deep: var(--color-zinc-100);
     --field: var(--color-white);
-    --syntax-fn: var(--color-sky-700);
-    --syntax-str: var(--color-emerald-700);
-    --syntax-num: var(--color-amber-700);
-    --syntax-bool: var(--color-violet-700);
-    --syntax-punct: var(--color-zinc-500);
+    --syntax-fn: var(--color-sky-600);
+    --syntax-str: var(--color-emerald-600);
+    --syntax-num: var(--color-amber-600);
+    --syntax-bool: var(--color-purple-600);
+    --syntax-punct: var(--color-zinc-400);
 
     --glow-opacity: 0.1;
 
@@ -180,11 +180,11 @@ html:not(.signed-in) [data-auth='user'] {
 
 /* Explicit light choice (pre-paint script or toggle). */
 :root.light {
-  --background: var(--color-zinc-50);
-  --foreground: var(--color-zinc-950);
-  --card: var(--color-white);
-  --section: var(--color-white);
-  --chrome: var(--color-zinc-100);
+  --background: var(--color-white);
+  --foreground: var(--color-zinc-900);
+  --card: var(--color-zinc-50);
+  --section: var(--color-zinc-50);
+  --chrome: var(--color-zinc-50);
   --muted: var(--color-zinc-100);
   --muted-hover: var(--color-zinc-100);
   --muted-strong: var(--color-zinc-200);
@@ -198,31 +198,31 @@ html:not(.signed-in) [data-auth='user'] {
 
   --primary: var(--color-emerald-500);
   --primary-hover: var(--color-emerald-600);
-  --primary-foreground: var(--color-black);
-  --primary-ink: var(--color-emerald-700);
-  --primary-ink-hover: var(--color-emerald-800);
-  --primary-accent: var(--color-emerald-700);
-  --primary-accent-hover: var(--color-emerald-800);
+  --primary-foreground: var(--color-white);
+  --primary-ink: var(--color-emerald-600);
+  --primary-ink-hover: var(--color-emerald-700);
+  --primary-accent: var(--color-emerald-500);
+  --primary-accent-hover: var(--color-emerald-600);
   --ring: var(--color-emerald-600);
 
-  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+  --primary-soft: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
   --primary-soft-border: color-mix(in oklab, var(--color-emerald-600) 35%, transparent);
   --primary-soft-border-strong: color-mix(in oklab, var(--color-emerald-600) 55%, transparent);
-  --primary-soft-ink: var(--color-emerald-700);
+  --primary-soft-ink: var(--color-emerald-600);
 
   --contrast: var(--color-zinc-900);
   --contrast-hover: var(--color-zinc-950);
   --contrast-foreground: var(--color-zinc-50);
 
-  --code-bg: var(--color-white);
-  --code-fg: var(--color-zinc-700);
+  --code-bg: var(--color-zinc-100);
+  --code-fg: var(--color-zinc-800);
   --chrome-deep: var(--color-zinc-100);
   --field: var(--color-white);
-  --syntax-fn: var(--color-sky-700);
-  --syntax-str: var(--color-emerald-700);
-  --syntax-num: var(--color-amber-700);
-  --syntax-bool: var(--color-violet-700);
-  --syntax-punct: var(--color-zinc-500);
+  --syntax-fn: var(--color-sky-600);
+  --syntax-str: var(--color-emerald-600);
+  --syntax-num: var(--color-amber-600);
+  --syntax-bool: var(--color-purple-600);
+  --syntax-punct: var(--color-zinc-400);
 
   --glow-opacity: 0.1;
 
