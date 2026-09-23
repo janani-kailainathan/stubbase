@@ -71,7 +71,7 @@ const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS ?? 30);
 // not be metered against one. `public` is the demo tenant behind the landing
 // site's "Try it live" runner and its six free resources — quoting it the Free
 // allowance would 429 the marketing site once every visitor together crossed
-// 5,000 requests in a month.
+// 10,000 requests in a month.
 const PLATFORM_TENANTS = new Set(
   (process.env.PLATFORM_TENANTS ?? "public")
     .split(",")
@@ -315,10 +315,12 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 
 // ── Plans and entitlements ────────────────────────────────────────
 //
-// The three tiers the pricing page sells (sites/landing/src/pages/pricing.astro
-// is the copy; this is the contract). There is no payment gateway yet, so a
-// plan is set on the row — `UPDATE users SET plan = 'pro_ai' WHERE email = ?`
-// — and scripts/seed-dev-users.ts creates one account per tier locally.
+// The two self-serve tiers the pricing page sells (sites/landing/src/pages/pricing.astro
+// is the copy; this is the contract). Enterprise is a "let's talk" card there
+// and has no plan here: it is sold by conversation, not by a row. There is no
+// payment gateway yet, so a plan is set on the row —
+// `UPDATE users SET plan = 'pro' WHERE email = ?` — and
+// scripts/seed-dev-users.ts creates one account per tier locally.
 //
 // This service owns the table because it owns users. The Core Engine is
 // deliberately plan-blind: it is multi-tenant infrastructure that has never
@@ -334,9 +336,9 @@ db.exec("CREATE INDEX IF NOT EXISTS api_usage_user_date ON api_usage(user_id, da
 // project feature — auth and roles, webhooks, QA mode — is on every plan, so
 // nothing a project's .env or rbac.json can switch on is refused here. The one
 // exception is the AI Co-Pilot, which costs money on every turn and stays on
-// Pro + AI for now (see aiChat).
+// Pro for now (see aiChat).
 
-type PlanId = "free" | "pro" | "pro_ai";
+type PlanId = "free" | "pro";
 /**
  * Capabilities a plan can unlock. Only the Co-Pilot: project features are the
  * same on every plan, which differ by request limits alone.
@@ -360,28 +362,21 @@ const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free",
     name: "Free",
-    monthlyRequests: 5_000,
+    monthlyRequests: 10_000,
     requestsPerSecond: 5,
     burst: 20,
     features: [],
   },
   pro: {
     id: "pro",
-    name: "Pro QA",
-    monthlyRequests: 50_000,
-    requestsPerSecond: 20,
-    burst: 100,
-    features: [],
-  },
-  pro_ai: {
-    id: "pro_ai",
-    name: "Pro + AI",
+    name: "Pro",
     monthlyRequests: 250_000,
     requestsPerSecond: 50,
     burst: 150,
     features: ["ai"],
   },
 };
+
 
 const DEFAULT_PLAN: PlanId = "free";
 
@@ -397,7 +392,7 @@ const hasFeature = (u: { plan: string }, feature: Feature) =>
 
 /** The cheapest plan that includes a feature — so a refusal can name it. */
 const cheapestPlanWith = (feature: Feature): Plan =>
-  (Object.values(PLANS).find((p) => p.features.includes(feature)) ?? PLANS.pro_ai);
+  (Object.values(PLANS).find((p) => p.features.includes(feature)) ?? PLANS.pro);
 
 // ── Add-ons ───────────────────────────────────────────────────────
 //

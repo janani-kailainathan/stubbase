@@ -13,79 +13,110 @@ import { APP_URL } from '../lib/urls';
  * Flip `comingSoon` to false per tier when the gateway is wired; nothing else
  * on this page needs to change.
  */
-const tiers = [
+/**
+ * A spec line is one short fact. When it needs a qualifier, the qualifier goes
+ * in `hint`, shown from a small "?" on hover or focus, so the list stays one
+ * scannable line per item.
+ */
+type Spec = string | { text: string; hint: string };
+
+const tiers: {
+  name: string;
+  comingSoon: boolean;
+  price: string;
+  period: string;
+  tagline: string;
+  cta: { label: string; style: string; href: string };
+  featured: boolean;
+  ai: boolean;
+  specs: Spec[];
+}[] = [
   {
     name: 'Free',
     comingSoon: false,
     price: '$0',
     period: '/mo',
-    tagline: 'For Local Prototyping',
-    cta: { label: 'Start for free', style: 'outline' },
+    tagline: 'For prototypes and side projects',
+    cta: { label: 'Start for free', style: 'outline', href: APP_URL },
     featured: false,
+    ai: true,
     specs: [
+      '10,000 requests/month',
+      '5 requests/second',
       {
-        label: 'Compute',
-        value: 'Ephemeral instances (Endpoints sleep after 5 mins of inactivity).',
+        text: 'Bursts of 20',
+        hint: 'Up to 20 requests can arrive at once, then 5 per second after that. A page load or a test run firing several calls together stays within the limit.',
       },
-      {
-        label: 'Limits',
-        value: '5,000 requests/month. 5 requests/second, bursts of 20. Public APIs only.',
-      },
-      {
-        label: 'Features',
-        value: 'Basic CRUD generation, JSON upload, ?_expand= relational routing.',
-      },
+      { text: '100 AI gift credits', hint: 'Gift credits are valid for 3 months from sign-up.' },
+      'CRUD API from any JSON file',
+      'Relations with ?_expand=',
+      'Auth, roles and permissions',
+      'Webhooks',
+      'QA Mode chaos headers',
     ],
   },
   {
-    name: 'Pro QA',
-    comingSoon: true,
-    price: '$15',
-    period: '/mo',
-    tagline: 'For CI/CD & Test Automation',
-    cta: { label: 'Upgrade to Pro', style: 'solid' },
-    featured: true,
-    specs: [
-      { label: 'Compute', value: 'Always-on, zero-latency endpoints.' },
-      { label: 'Limits', value: '50,000 requests/month. 20 requests/second, bursts of 100.' },
-      {
-        label: 'Features',
-        value:
-          'Unlocks ChaosGuard (Header-driven latency, HTTP status interception, fractional error rates). Includes AuthGuard for JWT testing.',
-      },
-    ],
-  },
-  {
-    name: 'Pro + AI',
+    name: 'Pro',
     comingSoon: true,
     price: '$29',
     period: '/mo',
-    tagline: 'For Production MVPs',
-    cta: { label: 'Get AI Features', style: 'muted' },
-    featured: false,
+    tagline: 'For production MVPs and CI/CD',
+    cta: { label: 'Upgrade to Pro', style: 'solid', href: APP_URL },
+    featured: true,
+    ai: true,
     specs: [
-      { label: 'Compute', value: 'High-availability, priority execution.' },
-      { label: 'Limits', value: '250,000 requests/month. 50 requests/second, bursts of 150.' },
+      'Everything in Free',
+      '250,000 requests/month',
+      '50 requests/second',
       {
-        label: 'Features',
-        value:
-          'Unlocks AI Data Seeding, Prompt-to-JSON generation, dynamic GET /openapi.json export, and secure Webhook routing.',
+        text: 'Bursts of 150',
+        hint: 'Up to 150 requests can arrive at once, then 50 per second after that. A page load or a test run firing several calls together stays within the limit.',
       },
+      '1,000 AI credits every month',
+      'Request add-ons',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    comingSoon: false,
+    price: 'Custom',
+    period: '',
+    tagline: 'For teams with their own requirements',
+    cta: { label: "Let's talk", style: 'muted', href: '/contact' },
+    featured: false,
+    ai: false,
+    specs: [
+      'Everything in Pro',
+      'Custom request limits',
+      'Custom rate limits',
+      'Isolated infrastructure',
     ],
   },
 ];
 
 /**
- * Request packs, sold on top of any plan — Free included — and stackable. Each
- * raises the monthly allowance only; the per-second limit stays the plan's.
- * `comingSoon` for the paid tiers' reason: priced in full, nothing to buy until
- * billing opens. The pack sizes are the contract in ADDONS
- * (apps/dashboard-api/server-app.ts); keep the two in step.
+ * Request packs, sold to Pro only: a Free account that needs more requests
+ * needs Pro. A pack is a one-time purchase of a pool of requests, drawn on once
+ * the month's plan allowance is used up and valid for 12 months. The per-second
+ * limit stays the plan's. `comingSoon` for the paid tiers' reason: priced in
+ * full, nothing to buy until billing opens. Keep the sizes in step with ADDONS
+ * (apps/dashboard-api/server-app.ts).
  */
 const addons = [
-  { name: '+100,000 requests', price: '$5', perThousand: '$0.05', comingSoon: true },
-  { name: '+250,000 requests', price: '$10', perThousand: '$0.04', comingSoon: true },
-  { name: '+1,000,000 requests', price: '$19', perThousand: '$0.019', comingSoon: true },
+  { name: '+250,000 requests', price: '$9.99', perThousand: '$0.04', comingSoon: true },
+  { name: '+1,000,000 requests', price: '$24.99', perThousand: '$0.025', comingSoon: true },
+];
+
+/**
+ * AI credit packs, sold on any plan. Free starts with 100 gift credits and Pro
+ * gets 1,000 a month; a pack tops either up. Credits pay for the Co-Pilot: each reply
+ * spends credits in proportion to the work it did. A pack is a one-time
+ * purchase, valid for 12 months, spent after a plan's own credits.
+ */
+const creditPacks = [
+  { name: 'Starter', credits: '5,000 credits', price: '$4.99', comingSoon: true },
+  { name: 'Builder', credits: '20,000 credits', price: '$14.99', comingSoon: true },
+  { name: 'Scale', credits: '60,000 credits', price: '$39.99', comingSoon: true },
 ];
 
 const ctaClass = {
@@ -116,9 +147,10 @@ const offerSchema = {
   '@type': 'Product',
   name: 'Stubbase',
   description:
-    'Flat, predictable limits. Start mocking APIs for free, upgrade for continuous CI/CD reliability and AI features.',
+    'Flat, predictable limits. Start mocking APIs for free, upgrade to Pro for higher limits and monthly AI credits.',
   offers: [
-    ...tiers.map((tier) => ({
+    // Enterprise has no list price, so it is no Offer.
+    ...tiers.filter((tier) => tier.price.startsWith('$')).map((tier) => ({
       '@type': 'Offer',
       name: tier.name,
       description: tier.tagline,
@@ -134,7 +166,7 @@ const offerSchema = {
     ...addons.map((addon) => ({
       '@type': 'Offer',
       name: `Request add-on: ${addon.name}`,
-      description: 'Monthly requests on top of any plan',
+      description: 'One-time request pack for Pro, valid 12 months',
       price: addon.price.replace('$', ''),
       priceCurrency: 'USD',
       availability: addon.comingSoon
@@ -142,13 +174,24 @@ const offerSchema = {
         : 'https://schema.org/InStock',
       url: new URL('/pricing#add-ons', Astro.site).toString(),
     })),
+    ...creditPacks.map((pack) => ({
+      '@type': 'Offer',
+      name: `AI credit pack: ${pack.name} (${pack.credits})`,
+      description: 'One-time AI Co-Pilot credits for any plan, valid 12 months',
+      price: pack.price.replace('$', ''),
+      priceCurrency: 'USD',
+      availability: pack.comingSoon
+        ? 'https://schema.org/PreOrder'
+        : 'https://schema.org/InStock',
+      url: new URL('/pricing#ai-credits', Astro.site).toString(),
+    })),
   ],
 };
 ---
 
 <Layout
   title="Transparent API Pricing for Developers and Teams — Stubbase"
-  description="Flat, predictable Stubbase limits: start mocking APIs for free, then upgrade for continuous CI/CD reliability with ChaosGuard at $15/mo and AI generation at $29/mo."
+  description="Flat, predictable Stubbase limits: start mocking APIs for free, then upgrade to Pro at $29/mo for 250,000 requests a month and 1,000 AI credits every month. Enterprise on request."
   active="pricing"
   schema={[offerSchema]}
 >
@@ -158,8 +201,8 @@ const offerSchema = {
         Transparent API Pricing for Developers and Teams
       </h1>
       <p class="text-lg leading-relaxed text-muted-foreground">
-        Flat, predictable limits. Start mocking APIs for free, upgrade for continuous CI/CD
-        reliability and AI features.
+        Flat, predictable limits. Every feature is on every plan: start mocking APIs for free,
+        upgrade to Pro for higher limits and monthly AI credits.
       </p>
     </div>
   </section>
@@ -169,10 +212,10 @@ const offerSchema = {
       <div class="mb-10 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Free to try. Donate to keep trying.</h2>
         <p class="leading-relaxed text-muted-foreground">
-          Start on the Free plan below — no card, no donation, nothing to cancel. The AI
-          features are the one part with a real bill behind them: every generated schema
-          is a live provider call, paid out of pocket. A donation switches those on for
-          you, and keeps them on for everyone else trying Stubbase.
+          Start on the Free plan below — no card, no donation, nothing to cancel. Until
+          billing opens, the servers and every AI Co-Pilot reply are paid for out of pocket.
+          A donation helps keep the Free plan, and its AI credits, free for everyone trying
+          Stubbase.
         </p>
       </div>
 
@@ -245,8 +288,9 @@ const offerSchema = {
       <div class="mb-10 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Feature Tiers</h2>
         <p class="leading-relaxed text-muted-foreground">
-          Free is live today. The paid tiers are what billing will look like once it opens
-          — priced here so there are no surprises later.
+          Plans differ in how many requests you can make, never in what your API can do. Free
+          is live today; Pro is what billing will look like once it opens, priced here so there
+          are no surprises later.
         </p>
       </div>
 
@@ -268,7 +312,7 @@ const offerSchema = {
 
               <h3 class="mb-2 flex items-center gap-2 text-xl font-semibold text-foreground">
                 {tier.name}
-                {tier.name === 'Pro + AI' && <Sparkles class="h-5 w-5 text-primary-ink" />}
+                {tier.ai && <Sparkles class="h-5 w-5 text-primary-ink" />}
                 {tier.comingSoon && (
                   <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
                     Not active yet
@@ -296,22 +340,44 @@ const offerSchema = {
                   Not available yet
                 </p>
               ) : (
-                <a href={APP_URL} class={`mb-8 ${ctaClass[tier.cta.style as keyof typeof ctaClass]}`}>
+                <a href={tier.cta.href} class={`mb-8 ${ctaClass[tier.cta.style as keyof typeof ctaClass]}`}>
                   {tier.cta.label}
                 </a>
               )}
 
-              <dl class="space-y-4">
-                {tier.specs.map((spec) => (
-                  <div class="flex gap-3">
+              <ul class="space-y-3">
+                {tier.specs.map((spec, i) => (
+                  <li class="flex gap-3 text-sm leading-relaxed text-muted-foreground">
                     <Check class="mt-0.5 h-4 w-4 shrink-0 text-primary-accent" />
-                    <div>
-                      <dt class="text-sm font-semibold text-foreground">{spec.label}</dt>
-                      <dd class="text-sm leading-relaxed text-muted-foreground">{spec.value}</dd>
-                    </div>
-                  </div>
+                    {typeof spec === 'string' ? (
+                      spec
+                    ) : (
+                      <span class="inline-flex items-center gap-1.5">
+                        {spec.text}
+                        {/* CSS only: the tooltip shows on hover and on keyboard
+                            focus, and a tap focuses the button on touch. */}
+                        <span class="relative inline-flex">
+                          <button
+                            type="button"
+                            aria-describedby={`hint-${tier.name}-${i}`}
+                            aria-label={`About ${spec.text}`}
+                            class="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-border-strong text-[10px] leading-none font-semibold text-subtle transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            ?
+                          </button>
+                          <span
+                            id={`hint-${tier.name}-${i}`}
+                            role="tooltip"
+                            class="pointer-events-none invisible absolute bottom-full left-1/2 z-10 mb-2 w-52 -translate-x-1/2 rounded-md border border-border-strong bg-background px-3 py-2 text-xs leading-snug text-foreground opacity-0 transition-opacity peer-hover:visible peer-hover:opacity-100 peer-focus:visible peer-focus:opacity-100"
+                          >
+                            {spec.hint}
+                          </span>
+                        </span>
+                      </span>
+                    )}
+                  </li>
                 ))}
-              </dl>
+              </ul>
             </article>
           ))
         }
@@ -320,17 +386,17 @@ const offerSchema = {
   </section>
 
   <section id="add-ons">
-    <div class="mx-auto max-w-6xl px-6 pb-20">
+    <div class="mx-auto max-w-4xl px-6 pb-20">
       <div class="mb-10 text-center">
-        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Any Plan</h2>
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Pro</h2>
         <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
-          Need more requests than your plan includes? Add a request pack to any plan, Free
-          included, and stack as many as you need. Packs raise your monthly requests; your
-          per-second limit stays your plan's.
+          Need more requests than Pro includes? Buy a request pack once and it is there when a
+          month runs past your plan's allowance. Packs stack, last 12 months, and raise your
+          requests only; your per-second limit stays your plan's.
         </p>
       </div>
 
-      <div class="grid gap-6 md:grid-cols-3">
+      <div class="grid gap-6 md:grid-cols-2">
         {
           addons.map((addon) => (
             <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
@@ -343,16 +409,66 @@ const offerSchema = {
                 )}
               </h3>
               <p class="mb-6 text-sm font-medium text-muted-foreground">
-                {addon.perThousand} per 1,000 requests
+                {addon.perThousand} per 1,000 requests &middot; valid 12 months
               </p>
               <p class="mb-6 text-4xl font-extrabold text-foreground">
                 <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
                   {addon.price}
                 </span>
-                <span class="text-base font-medium text-subtle">/mo</span>
+                <span class="text-base font-medium text-subtle"> once</span>
               </p>
               {/* Inert for the tiers' reason: there is nothing to buy yet. */}
               {addon.comingSoon && (
+                <p
+                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  aria-disabled="true"
+                >
+                  Not available yet
+                </p>
+              )}
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section id="ai-credits">
+    <div class="mx-auto max-w-6xl px-6 pb-20">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 flex items-center justify-center gap-2 text-3xl font-extrabold text-foreground">
+          <Sparkles class="h-6 w-6 text-primary-ink" />
+          AI Credit Packs for Any Plan
+        </h2>
+        <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
+          Credits pay for the AI Co-Pilot. Each reply spends credits in proportion to the work it
+          does: a small schema costs a few, seeding hundreds of rows costs more. Packs work on
+          Free and Pro, are spent after your plan's own credits, and last 12 months.
+        </p>
+      </div>
+
+      <div class="grid gap-6 md:grid-cols-3">
+        {
+          creditPacks.map((pack) => (
+            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
+              <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
+                {pack.name}
+                {pack.comingSoon && (
+                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                    Not active yet
+                  </span>
+                )}
+              </h3>
+              <p class="mb-6 text-sm font-medium text-muted-foreground">
+                {pack.credits} &middot; valid 12 months
+              </p>
+              <p class="mb-6 text-4xl font-extrabold text-foreground">
+                <span class={pack.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
+                  {pack.price}
+                </span>
+                <span class="text-base font-medium text-subtle"> once</span>
+              </p>
+              {pack.comingSoon && (
                 <p
                   class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
                   aria-disabled="true"

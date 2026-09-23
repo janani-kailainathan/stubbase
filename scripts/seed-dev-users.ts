@@ -1,17 +1,16 @@
 /**
  * Seeds one dashboard account per plan, so the entitlement work can actually be
  * exercised locally — there is no payment gateway, so a plan is a column value
- * and these three rows are how you see all three sides of it.
+ * and these two rows are how you see both sides of it.
  *
- *   free@stubbase.dev   Free      5,000 requests/mo
- *   pro@stubbase.dev    Pro QA    50,000/mo
- *   ai@stubbase.dev     Pro + AI  250,000/mo, everything incl. the Co-Pilot
+ *   free@stubbase.dev   Free   10,000 requests/mo
+ *   pro@stubbase.dev    Pro    250,000/mo, everything incl. the Co-Pilot
  *
- * All three share the password below. Dev-only: this writes to the local
+ * Both share the password below. Dev-only: this writes to the local
  * app.sqlite that scripts/dev.ts points the Dashboard API at, and nothing here
  * is deployed. In production a plan is set by hand:
  *
- *   UPDATE users SET plan = 'pro_ai' WHERE email = 'someone@example.com';
+ *   UPDATE users SET plan = 'pro' WHERE email = 'someone@example.com';
  *
  * Existing rows are left alone except for the plan, which is re-asserted every
  * run — so a plan you changed by hand while testing snaps back, and a password
@@ -30,8 +29,7 @@ const ARGON = { algorithm: "argon2id", memoryCost: 19_456, timeCost: 2 } as cons
 
 export const DEV_USERS = [
   { email: "free@stubbase.dev", name: "Free Tier", plan: "free" },
-  { email: "pro@stubbase.dev", name: "Pro QA", plan: "pro" },
-  { email: "ai@stubbase.dev", name: "Pro Plus AI", plan: "pro_ai" },
+  { email: "pro@stubbase.dev", name: "Pro", plan: "pro" },
 ] as const;
 
 /**
@@ -63,7 +61,7 @@ export async function seedDevUsers(): Promise<number> {
       | { id: number }
       | null;
     if (existing) {
-      // Re-assert the plan only: the point of these three is which tier they
+      // Re-assert the plan only: the point of these two is which tier they
       // are on, and a run of this script should restore that.
       db.query("UPDATE users SET plan = ? WHERE id = ?").run(user.plan, existing.id);
       continue;

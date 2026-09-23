@@ -502,7 +502,7 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
         <button
           onClick={send}
           disabled={!tenantId || chat.isPending || !input.trim() || !entitled}
-          title={entitled ? undefined : 'Available on Pro + AI'}
+          title={entitled ? undefined : 'Available on Pro'}
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ArrowUp className="h-4 w-4" />

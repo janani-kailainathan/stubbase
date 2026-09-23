@@ -11,7 +11,7 @@ const faqs = [
   },
   {
     q: 'How do I simulate a slow network connection?',
-    a: "With QA Mode enabled on a Pro QA project, send the 'x-stubbase-delay' header with your request. For example, fetching https://api.stubbase.dev/my-api/users with 'x-stubbase-delay: 3000' waits 3 seconds before returning the JSON, so you can test your loading spinners. Delays are sent as headers rather than URL parameters so Playwright or Cypress can inject them from the test runner without changing the URLs your frontend builds. The cap is 10 seconds.",
+    a: "With QA Mode enabled on a project, send the 'x-stubbase-delay' header with your request. For example, fetching https://api.stubbase.dev/my-api/users with 'x-stubbase-delay: 3000' waits 3 seconds before returning the JSON, so you can test your loading spinners. Delays are sent as headers rather than URL parameters so Playwright or Cypress can inject them from the test runner without changing the URLs your frontend builds. The cap is 10 seconds.",
   },
   {
     q: 'Can I test my error boundaries?',
@@ -19,11 +19,11 @@ const faqs = [
   },
   {
     q: 'Do my API endpoints expire?',
-    a: 'On the Free tier, generated endpoints are temporary and will be deleted after 24 hours. If you upgrade to Pro, your endpoints are persistent and will remain active forever for your CI/CD pipelines.',
+    a: 'No. Your endpoints stay up on every plan, Free included, until you stop or delete the project. A project nobody is calling is unloaded from memory and loaded again on its next request, so it keeps its data and its URL.',
   },
   {
     q: 'Is there a limit to how much JSON I can mock?',
-    a: 'Free tier users are limited to standard file sizes suitable for prototyping. Pro users can mock larger payloads and utilize our dynamic data generation features to simulate hundreds of users at once.',
+    a: 'The limits are the same on every plan: one request body, including a file saved from the dashboard, can be up to 1 MiB. Plans differ only in how many requests you can make each month and each second.',
   },
 ];
 

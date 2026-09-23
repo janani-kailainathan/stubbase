@@ -320,20 +320,20 @@ it meaning is `PLANS` in `apps/dashboard-api/server-app.ts`. There is no payment
 gateway yet, so a plan is set by hand:
 
 ```sql
-UPDATE users SET plan = 'pro_ai' WHERE email = 'someone@example.com';
+UPDATE users SET plan = 'pro' WHERE email = 'someone@example.com';
 ```
 
 Locally, `scripts/seed-dev-users.ts` (run automatically by `scripts/dev.ts`)
-creates one account per plan — `free@`, `pro@` and `ai@stubbase.dev`, password
-`devpassword123` — so all three sides can be exercised without touching SQL.
+creates one account per plan — `free@` and `pro@stubbase.dev`, password
+`devpassword123` — so both sides can be exercised without touching SQL.
 
 | Plan id | Name | Requests/month | Requests/second | Burst | Unlocks |
 |---|---|---|---|---|---|
-| `free` | Free | 5,000 | 5 | 20 | — |
-| `pro` | Pro QA | 50,000 | 20 | 100 | — |
-| `pro_ai` | Pro + AI | 250,000 | 50 | 150 | `ai` |
+| `free` | Free | 10,000 | 5 | 20 | — |
+| `pro` | Pro | 250,000 | 50 | 150 | `ai` |
 
 An unknown or absent plan string reads as **Free**, never as unlimited.
+Enterprise is sold by conversation and has no plan id.
 
 ### Add-ons
 
@@ -360,7 +360,7 @@ account removes its add-ons.
 **Plans differ by request limits.** Every project feature — auth and roles,
 webhooks, QA mode — is on every plan, so nothing a project's `.env` or
 `rbac.json` switches on is refused. The one gated feature is the AI Co-Pilot
-(`ai`): `POST /projects/<id>/ai/chat` answers `402` below Pro + AI, because every
+(`ai`): `POST /projects/<id>/ai/chat` answers `402` on Free, because every
 turn is a paid provider call.
 
 `PLATFORM_TENANTS` (Dashboard API env, default `public`) lists tenants the

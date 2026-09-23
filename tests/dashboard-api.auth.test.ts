@@ -946,7 +946,7 @@ describe("delete account", () => {
       headers: jsonHeaders(account.token),
       body: JSON.stringify({ name: "Old Name" }),
     });
-    setPlanOn(app, account.email, "pro_ai");
+    setPlanOn(app, account.email, "pro");
     setAddonOn(app, account.email, "requests_100k", 3);
     expect((await remove(account.token, PASSWORD)).status).toBe(200);
 
@@ -957,7 +957,7 @@ describe("delete account", () => {
     };
     expect(me.user.planName).toBe("Free");
     expect(me.user.name).toBeNull();
-    expect(me.user.monthlyRequests).toBe(5_000); // Free, with no add-ons on top
+    expect(me.user.monthlyRequests).toBe(10_000); // Free, with no add-ons on top
     expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM account_addons WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
   }, 30_000);
 

@@ -15,7 +15,7 @@ import { LANDING_URL, type PlanFeature } from '@/lib/api'
  * Keep the labels in step with it and with the pricing page.
  */
 const SELLS: Record<PlanFeature, string> = {
-  ai: 'Pro + AI',
+  ai: 'Pro',
 }
 
 export function PlanNotice({ feature, label }: { feature: PlanFeature; label: string }) {

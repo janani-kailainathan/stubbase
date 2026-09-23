@@ -104,7 +104,7 @@ as shipped, and do not invent new claims in the same family:**
 
 - `?delay` / `?status` URL simulation params (currently advertised on the
   landing page; the header-driven chaos controls do exist).
-- Billing and payment. Plans (Free / Pro QA $15 / Pro+AI $29) are displayed but
+- Billing and payment. Plans (Free / Pro $29 / Enterprise) are displayed but
   no checkout exists; every account is `free`. Lemon Squeezy is the intended
   merchant of record, after MVP.
 - The `public` demo tenant with the six advertised resources — so the home

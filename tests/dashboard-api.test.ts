@@ -60,7 +60,7 @@ const signup = (on: Service = app) => signupOn(on);
 /** Signs up an account that is entitled to everything. */
 async function signupOnPaidPlan(on: Service = app): Promise<Account> {
   const account = await signup(on);
-  setPlanOn(on, account.email, "pro_ai");
+  setPlanOn(on, account.email, "pro");
   return account;
 }
 
@@ -1226,7 +1226,7 @@ describe("tenant config writes", () => {
     owner = await signup();
     // QA_MODE is a paid key; this block is about the config *shape*, so take
     // the entitlement out of the picture. The gate has its own suite below.
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     tenantId = (await createProject(owner.token, "Config", { posts: [] })).tenantId;
   }, 30_000);
 
@@ -1413,7 +1413,7 @@ describe("plans and entitlements", () => {
     );
     expect(user.plan).toBe("free");
     expect(user.planName).toBe("Free");
-    expect(user.monthlyRequests).toBe(5_000);
+    expect(user.monthlyRequests).toBe(10_000);
     expect(user.requestsPerSecond).toBe(5);
     expect(user.burst).toBe(20);
     // Resolved server-side so the browser never keeps its own plan table.
@@ -1428,7 +1428,7 @@ describe("plans and entitlements", () => {
       const { user } = await fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) =>
         r.json(),
       );
-      expect(user.monthlyRequests).toBe(5_000);
+      expect(user.monthlyRequests).toBe(10_000);
       expect(user.requestsPerSecond).toBe(5);
       expect(user.features).toEqual([]);
     }
@@ -1457,10 +1457,9 @@ describe("plans and entitlements", () => {
     expect(live).toMatchObject({ QA_MODE: "true", AUTH_ENABLED: "true" });
   }, 30_000);
 
-  test("the Co-Pilot is the one gated feature: Pro is still refused it", async () => {
+  test("the Co-Pilot is the one gated feature: Free is refused it, Pro is not", async () => {
     const owner = await signup();
-    setPlan(owner.email, "pro");
-    const { tenantId } = await createProject(owner.token, "ProNoAi", { posts: [] });
+    const { tenantId } = await createProject(owner.token, "FreeNoAi", { posts: [] });
     const me = () =>
       fetch(`${app.base}/auth/me`, { headers: as(owner.token) }).then((r) => r.json());
     expect((await me()).user.features).toEqual([]);
@@ -1471,15 +1470,15 @@ describe("plans and entitlements", () => {
       body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
     });
     expect(ai.status).toBe(402);
-    expect((await ai.json()).error).toContain("Pro + AI");
+    expect((await ai.json()).error).toContain("part of Pro.");
 
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     expect((await me()).user.features).toEqual(["ai"]);
   }, 30_000);
 
   test("the Co-Pilot gate is checked before the provider key, so it can't probe the server", async () => {
     // This instance has no AI key at all. Free is told about its plan (402);
-    // Pro + AI gets past the entitlement and only then meets the 503. If the
+    // Pro gets past the entitlement and only then meets the 503. If the
     // order were reversed, both would see the same answer and the refusal
     // would leak whether the deployment is configured.
     const owner = await signup();
@@ -1492,7 +1491,7 @@ describe("plans and entitlements", () => {
       });
 
     expect((await ask()).status).toBe(402);
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     expect((await ask()).status).toBe(503);
   }, 30_000);
 
@@ -1519,7 +1518,7 @@ describe("plans and entitlements", () => {
   test("the platform's own demo tenant is never quoted an allowance", async () => {
     // `public` backs the landing site's live demo and belongs to no account.
     // Metering it against the Free plan would 429 the marketing site once all
-    // its visitors together crossed 5,000 requests in a month.
+    // its visitors together crossed 10,000 requests in a month.
     const date = new Date().toISOString().slice(0, 10);
     const res = await fetch(`${app.base}/_internal/usage`, {
       method: "POST",
@@ -1552,7 +1551,7 @@ describe("plans and entitlements", () => {
     const body = await res.json();
     // Numbers per tenant — the core is never told what a plan is.
     expect(body.quotas).toEqual([
-      { tenantId, limit: 50_000, used: 12, rps: 20, burst: 100, bucket: expect.any(String) },
+      { tenantId, limit: 250_000, used: 12, rps: 50, burst: 150, bucket: expect.any(String) },
     ]);
   }, 30_000);
 
@@ -1594,7 +1593,7 @@ describe("plans and entitlements", () => {
     expect(account).toMatchObject({
       email: owner.email,
       plan: "pro",
-      planName: "Pro QA",
+      planName: "Pro",
       monthlyRequests: quotas.get(a.tenantId)!.limit,
       requestsUsed: 42,
     });
@@ -1621,19 +1620,19 @@ describe("plans and entitlements", () => {
       { tenantId: a.tenantId, requests: 30 },
       { tenantId: b.tenantId, requests: 12 },
     ]);
-    // Not 30 and 12 against 50,000 each: 42 against the one allowance.
-    expect(quotas.get(a.tenantId)).toMatchObject({ tenantId: a.tenantId, limit: 50_000, used: 42 });
-    expect(quotas.get(b.tenantId)).toMatchObject({ tenantId: b.tenantId, limit: 50_000, used: 42 });
+    // Not 30 and 12 against 250,000 each: 42 against the one allowance.
+    expect(quotas.get(a.tenantId)).toMatchObject({ tenantId: a.tenantId, limit: 250_000, used: 42 });
+    expect(quotas.get(b.tenantId)).toMatchObject({ tenantId: b.tenantId, limit: 250_000, used: 42 });
   }, 30_000);
 
   test("one project's report quotes the account's idle projects too, so they stop together", async () => {
-    const owner = await signup(); // Free: 5,000
+    const owner = await signup(); // Free: 10,000
     const busy = await createProject(owner.token, "Busy", { posts: [] });
     const idle = await createProject(owner.token, "Idle", { posts: [] });
 
-    const quotas = await reportUsage([{ tenantId: busy.tenantId, requests: 5_000 }]);
+    const quotas = await reportUsage([{ tenantId: busy.tenantId, requests: 10_000 }]);
     // The idle project sent nothing this minute, but the pool it draws on is spent.
-    expect(quotas.get(idle.tenantId)).toMatchObject({ tenantId: idle.tenantId, limit: 5_000, used: 5_000 });
+    expect(quotas.get(idle.tenantId)).toMatchObject({ tenantId: idle.tenantId, limit: 10_000, used: 10_000 });
   }, 30_000);
 
   test("another account's traffic never joins the pool", async () => {
@@ -1705,7 +1704,7 @@ describe("plans and entitlements", () => {
 
   test("the usage view gives this project's own traffic and the account's pooled total", async () => {
     const owner = await signup();
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     const a = await createProject(owner.token, "ViewA", { posts: [] });
     const b = await createProject(owner.token, "ViewB", { posts: [] });
     await reportUsage([
@@ -1759,8 +1758,8 @@ describe("plans and entitlements", () => {
 
     const quotas = await reportUsage([{ tenantId: "legacy-a", requests: 1 }], upgraded);
     // 7 + 5 from before the upgrade, 1 after; the platform tenant's 1,000 stays out.
-    expect(quotas.get("legacy-a")).toMatchObject({ tenantId: "legacy-a", limit: 50_000, used: 13 });
-    expect(quotas.get("legacy-b")).toMatchObject({ tenantId: "legacy-b", limit: 50_000, used: 13 });
+    expect(quotas.get("legacy-a")).toMatchObject({ tenantId: "legacy-a", limit: 250_000, used: 13 });
+    expect(quotas.get("legacy-b")).toMatchObject({ tenantId: "legacy-b", limit: 250_000, used: 13 });
     expect(quotas.has("public")).toBe(false);
   }, 30_000);
 
@@ -1774,7 +1773,7 @@ describe("plans and entitlements", () => {
     expect((await res.json()).quotas).toEqual([
       {
         tenantId: "orphaned",
-        limit: 5_000,
+        limit: 10_000,
         used: 4,
         rps: 5,
         burst: 20,
@@ -1785,7 +1784,7 @@ describe("plans and entitlements", () => {
 
   test("the owner's usage view reports the allowance it is measured against", async () => {
     const owner = await signup();
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     const { tenantId } = await createProject(owner.token, "Panel", { posts: [] });
 
     const usage = await fetch(`${app.base}/projects/${tenantId}/usage`, {
@@ -1797,7 +1796,7 @@ describe("plans and entitlements", () => {
   test("each plan quotes its per-second limit, in one bucket per account", async () => {
     const owner = await signup();
     const stranger = await signup();
-    setPlan(owner.email, "pro_ai");
+    setPlan(owner.email, "pro");
     const a = await createProject(owner.token, "RateA", { posts: [] });
     const b = await createProject(owner.token, "RateB", { posts: [] });
     const other = await createProject(stranger.token, "RateOther", { posts: [] });
@@ -1820,11 +1819,11 @@ describe("plans and entitlements", () => {
   }, 30_000);
 
   test("add-ons raise the monthly allowance on any plan, stack, and leave the rate alone", async () => {
-    const owner = await signup(); // Free: 5,000
+    const owner = await signup(); // Free: 10,000
     const { tenantId } = await createProject(owner.token, "Packed", { posts: [] });
     setAddon(owner.email, "requests_100k", 2);
     setAddon(owner.email, "requests_1m");
-    const total = 5_000 + 2 * 100_000 + 1_000_000;
+    const total = 10_000 + 2 * 100_000 + 1_000_000;
 
     // The core is held to the sum…
     const quotas = await reportUsage([{ tenantId, requests: 3 }]);
@@ -1842,7 +1841,7 @@ describe("plans and entitlements", () => {
     );
     expect(account).toMatchObject({
       monthlyRequests: total,
-      planMonthlyRequests: 5_000,
+      planMonthlyRequests: 10_000,
       requestsPerSecond: 5,
       burst: 20,
     });
@@ -1861,11 +1860,11 @@ describe("plans and entitlements", () => {
     setAddon(owner.email, "requests_1m", -3);
 
     const quotas = await reportUsage([{ tenantId, requests: 1 }]);
-    expect(quotas.get(tenantId)?.limit).toBe(5_000);
+    expect(quotas.get(tenantId)?.limit).toBe(10_000);
     const { account } = await fetch(`${app.base}/auth/account`, { headers: as(owner.token) }).then((r) =>
       r.json(),
     );
-    expect(account).toMatchObject({ monthlyRequests: 5_000, addons: [] });
+    expect(account).toMatchObject({ monthlyRequests: 10_000, addons: [] });
   }, 30_000);
 
   test("deleting an account gives up its add-ons", async () => {
