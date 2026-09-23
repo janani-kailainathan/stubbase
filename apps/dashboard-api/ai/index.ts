@@ -9,7 +9,7 @@ import { GoogleAIService } from "./google-ai.service.ts";
 import { loadServiceAccountKey, VertexAIService } from "./vertex-ai.service.ts";
 
 export * from "./ai.interface.ts";
-export { CO_PILOT_PERSONA, CO_PILOT_TOOLS } from "./prompts.ts";
+export { CO_PILOT_PERSONA, CO_PILOT_TOOLS, STARTER_CATALOGUE } from "./prompts.ts";
 
 /**
  * The Co-Pilot is an agent, so the default has to be a model that can actually

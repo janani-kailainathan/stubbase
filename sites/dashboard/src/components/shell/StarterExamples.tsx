@@ -1,12 +1,7 @@
 import { toast } from 'sonner'
 import { StarterGrid } from '@/components/shell/StarterGrid'
-import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
-import { useSaveRbac } from '@/hooks/rbac'
-import { useCreateResources } from '@/hooks/resources'
-import { CORE_PUBLIC_URL } from '@/lib/api'
-import { mergeEnv } from '@/lib/env'
+import { useApplyStarter } from '@/hooks/starters'
 import type { Starter } from '@/lib/starters'
-import { useSelectInEditor } from '@/hooks/projects'
 
 /**
  * A project's own empty state — the same starter cards the account-level empty
@@ -15,29 +10,13 @@ import { useSelectInEditor } from '@/hooks/projects'
  * than provisioning a new one.
  */
 export function StarterExamples({ tenantId }: { tenantId: string }) {
-  const create = useCreateResources(tenantId)
-  const { data: config } = useTenantConfig(tenantId)
-  const saveConfig = useSaveTenantConfig(tenantId)
-  const saveRules = useSaveRbac(tenantId)
-  const select = useSelectInEditor()
-
-  const busy = create.isPending || saveConfig.isPending || saveRules.isPending
+  const starters = useApplyStarter(tenantId)
+  const busy = starters.busy
 
   const pick = async (starter: Starter) => {
     if (busy) return
-    const names = Object.keys(starter.resources)
     try {
-      await create.mutateAsync(starter.resources)
-      // Merged over what is already there, so the project's own settings
-      // survive the starter turning auth on; and into the .env text as well,
-      // so the editor shows those lines switched on.
-      if (starter.config)
-        await saveConfig.mutateAsync(
-          mergeEnv(config ?? {}, starter.config, { tenantBase: `${CORE_PUBLIC_URL}/${tenantId}` }),
-        )
-      // After the config: rbac.json is refused until RBAC_ENABLED is staged.
-      if (starter.rbac) await saveRules.mutateAsync(starter.rbac)
-      select({ kind: 'resource', resource: names[0] })
+      starters.open(await starters.apply(starter))
       toast.success('Project created.')
     } catch (e) {
       toast.error(`Could not add the ${starter.title} example: ${(e as Error).message}`)

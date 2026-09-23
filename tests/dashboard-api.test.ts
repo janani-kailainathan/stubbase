@@ -23,6 +23,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
+// Data only, React-free: the Co-Pilot's prompt must offer exactly these.
+import { STARTERS } from "../sites/dashboard/src/lib/starters.ts";
 import {
   ADMIN_SECRET,
   startApp,
@@ -2349,6 +2351,8 @@ describe("AI Co-Pilot agent loop", () => {
       "set_server_status",
       "deploy_project",
       "delete_resources",
+      "change_settings",
+      "use_starter",
       "get_diagnostics",
     ]);
 
@@ -2521,6 +2525,149 @@ describe("AI Co-Pilot agent loop", () => {
       body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "stage a table" }] }] }),
     });
     expect(res.status).toBe(404);
+  }, 30_000);
+
+  // ── Settings and starters ──
+
+  /** Runs one turn in which the model calls `name` with `args`; returns what the tool handed back. */
+  async function toolResult(token: string, tenantId: string, name: string, args: Record<string, unknown>) {
+    seen = [];
+    script = [[{ functionCall: { name, args } }], [{ text: "Done." }]];
+    const res = await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "please" }] }] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const tool = body.messages.find((m: any) => m.role === "function");
+    return tool.parts[0].functionResponse.response.result;
+  }
+  const coreFile = (tenantId: string, name: string) =>
+    fetch(`${core.base}/${tenantId}/_admin/files/${name}`, { headers: { authorization: `Bearer ${ADMIN_SECRET}` } });
+  const writeCoreFile = (tenantId: string, name: string, body: unknown) =>
+    fetch(`${core.base}/${tenantId}/_admin/files/${name}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("the prompt offers every starter the dashboard has, and the tool accepts exactly those", async () => {
+    seen = [];
+    script = [[{ text: "Hello." }]];
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Starters listed", {}, aiApp);
+    await fetch(`${aiApp.base}/projects/${tenantId}/ai/chat`, {
+      method: "POST",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({ messages: [{ role: "user", parts: [{ text: "hi" }] }] }),
+    });
+    const persona = seen[0].contents[0].parts[0].text as string;
+    // The server keeps its own copy of the list; this is what keeps it honest.
+    for (const starter of STARTERS) {
+      expect(persona).toContain(`${starter.id} `);
+      expect(persona).toContain(starter.title);
+      for (const table of Object.keys(starter.resources)) expect(persona).toContain(table);
+    }
+    const useStarter = seen[0].tools[0].functionDeclarations.find((d: any) => d.name === "use_starter");
+    expect(useStarter.parameters.properties.id.enum).toEqual(STARTERS.map((s) => s.id));
+  }, 30_000);
+
+  test("a settings proposal changes nothing, and only settings the agent may set get into it", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Settings", { posts: [] }, aiApp);
+    const draftBefore = (await coreFile(tenantId, "draft_config")).status;
+
+    const result = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: [
+        { key: "AUTH_ENABLED", value: "true" },
+        { key: "qa_mode", value: true }, // any case, and a boolean the model sent as one
+        { key: "AUTH_PUBLIC_ROUTES", value: "posts,comments" },
+        { key: "SCHEMA_POSTS", value: '{"type":"object","required":["title"]}' },
+        { key: "AUTH_GOOGLE_SECRET", value: "GOCSPX-stolen" }, // a credential
+        { key: "HOOK_AFTER_INSERT_POSTS", value: "https://attacker.example/steal" }, // a URL
+        { key: "AUTH_MAGIC_LINKS", value: "true" }, // not a feature
+        { key: "AUTH_JWT_TTL_SECONDS", value: "5" }, // below the minimum
+        { key: "SCHEMA_TAGS", value: "not json" },
+      ],
+    });
+
+    expect(result.pendingConfirmation).toEqual({
+      kind: "settings",
+      set: {
+        AUTH_ENABLED: "true",
+        QA_MODE: "true",
+        AUTH_PUBLIC_ROUTES: "posts,comments",
+        SCHEMA_POSTS: '{"type":"object","required":["title"]}',
+      },
+    });
+    const refused = Object.fromEntries(result.refused.map((r: any) => [r.key, r.reason]));
+    expect(refused.AUTH_GOOGLE_SECRET).toContain("only the user sets");
+    expect(refused.HOOK_AFTER_INSERT_POSTS).toContain("only the user sets");
+    expect(refused.AUTH_MAGIC_LINKS).toContain("does not exist");
+    expect(refused.AUTH_JWT_TTL_SECONDS).toContain("at least 60");
+    expect(refused.SCHEMA_TAGS).toContain("JSON Schema");
+    expect(result.note).toContain("NOTHING HAS CHANGED YET");
+
+    // A proposal writes nothing: no draft appears, the project is not dirty.
+    expect((await coreFile(tenantId, "draft_config")).status).toBe(draftBefore);
+    const projects = await fetch(`${aiApp.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(projects.find((p: any) => p.tenant_id === tenantId).dirty).toBeFalsy();
+
+    // Nothing usable at all is an error, and names what can be set.
+    const none = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: [{ key: "AUTH_MAGIC_LINKS", value: "true" }],
+    });
+    expect(none.error).toBeString();
+    expect(none.pendingConfirmation).toBeUndefined();
+    expect(none.supported).toContain("AUTH_ENABLED");
+  }, 30_000);
+
+  test("a starter is proposed only for an empty project, and only one that exists", async () => {
+    const owner = await signup(aiApp);
+    const empty = await createProject(owner.token, "Empty", {}, aiApp);
+    const full = await createProject(owner.token, "Full", { notes: [{ id: "1" }] }, aiApp);
+
+    const proposed = await toolResult(owner.token, empty.tenantId, "use_starter", { id: "blog" });
+    expect(proposed.pendingConfirmation).toEqual({
+      kind: "starter",
+      id: "blog",
+      title: "Blog",
+      tables: ["posts", "authors", "comments"],
+    });
+    // Proposed, not applied.
+    expect((await coreFile(empty.tenantId, "draft_posts")).status).toBe(404);
+
+    const refused = await toolResult(owner.token, full.tenantId, "use_starter", { id: "blog" });
+    expect(refused.pendingConfirmation).toBeUndefined();
+    expect(refused.error).toContain("already has tables");
+    expect(refused.resources).toEqual(["notes"]);
+
+    const unknown = await toolResult(owner.token, empty.tenantId, "use_starter", { id: "crm" });
+    expect(unknown.error).toContain("no starter");
+    expect(unknown.starters).toEqual(STARTERS.map((s) => s.id));
+  }, 30_000);
+
+  test("diagnostics show the settings in force and staged, but never a credential or a URL", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Diag settings", { posts: [] }, aiApp);
+    await writeCoreFile(tenantId, "config", {
+      AUTH_ENABLED: "true",
+      QA_MODE: "",
+      RESEND_API_KEY: "re_live_secret",
+      HOOK_AFTER_INSERT_POSTS: "https://hooks.example/in?token=abc123",
+    });
+    await writeCoreFile(tenantId, "draft_config", { AUTH_ENABLED: "false", RESEND_API_KEY: "re_live_secret" });
+
+    const result = await toolResult(owner.token, tenantId, "get_diagnostics", {});
+    expect(result.settings).toEqual({
+      deployed: { values: { AUTH_ENABLED: "true" }, alsoSet: ["HOOK_AFTER_INSERT_POSTS", "RESEND_API_KEY"] },
+      staged: { values: { AUTH_ENABLED: "false" }, alsoSet: ["RESEND_API_KEY"] },
+    });
+    // Nowhere in what went to the provider.
+    const sent = JSON.stringify(seen);
+    expect(sent).not.toContain("re_live_secret");
+    expect(sent).not.toContain("abc123");
   }, 30_000);
 
   // ── Charging ──

@@ -52,6 +52,7 @@ import {
   AIError,
   CO_PILOT_TOOLS,
   createAIService,
+  STARTER_CATALOGUE,
   NO_USAGE,
   type ChatPart,
   type ChatTurn,
@@ -3145,13 +3146,173 @@ async function toolDeleteResources(
   };
 }
 
-/** get_diagnostics — syntax health, server status and recent traffic. */
+// ── Settings and starters: proposals the user confirms ─────────────
+//
+// Like delete_resources, these two decide and never do. A settings change
+// written by the agent would be a tenant setting changed unreviewed — and the
+// agent reads text strangers wrote (get_diagnostics hands it failed requests'
+// bodies), so a prompt injection could otherwise switch auth off or open a
+// project's sign-up. Each returns a `pendingConfirmation` the dashboard shows
+// as a card; the user's click applies it through the ordinary files routes,
+// staged like any edit, and it goes live only on a deploy.
+
+const bool = (v: string) => (v === "true" || v === "false" ? null : "must be true or false");
+const atLeast = (min: number) => (v: string) =>
+  /^\d{1,9}$/.test(v) && Number(v) >= min ? null : `must be a whole number of seconds, at least ${min}`;
+const nameList = (v: string) =>
+  v === "" || v.split(",").every((n) => NAME_RE.test(n))
+    ? null
+    : "must be table names separated by commas, with no spaces";
+const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+const domainListSetting = (v: string) =>
+  v === "" || v.split(",").every((d) => DOMAIN_RE.test(d))
+    ? null
+    : "must be domains separated by commas, with no spaces";
+
+/**
+ * The settings the agent may propose, each with its value check. Switches,
+ * lifetimes and lists only: nothing here is a credential or a URL, because a
+ * proposal is a click away from being staged and those are exfiltration and
+ * phishing routes. Keep in step with the persona's SETTINGS list.
+ */
+const AGENT_SETTINGS: Record<string, (value: string) => string | null> = {
+  AUTH_ENABLED: bool,
+  AUTH_EMAIL_VERIFICATION: bool,
+  AUTH_PUBLIC_ROUTES: nameList,
+  AUTH_JWT_TTL_SECONDS: atLeast(60),
+  AUTH_REFRESH_TTL_SECONDS: atLeast(3600),
+  RBAC_ENABLED: bool,
+  AUTH_EMAIL_DOMAINS_ONLY: domainListSetting,
+  AUTH_EMAIL_DOMAINS_BLOCKED: domainListSetting,
+  AUTH_EMAIL_DOMAINS_ALLOWED: domainListSetting,
+  AUTH_BLOCK_DISPOSABLE_EMAIL: bool,
+  QA_MODE: bool,
+};
+
+/** Settings that exist but only the user may set: credentials, and URLs a request would be sent to. */
+const USER_ONLY_SETTING_RE =
+  /^(AUTH_GOOGLE_CLIENT_ID|AUTH_GOOGLE_SECRET|AUTH_GITHUB_CLIENT_ID|AUTH_GITHUB_SECRET|RESEND_API_KEY|RESEND_FROM|TWILIO_ACCOUNT_SID|TWILIO_AUTH_TOKEN|TWILIO_FROM|AUTH_OAUTH_REDIRECT|AUTH_RESET_URL|HOOK_(BEFORE|AFTER)_(INSERT|UPDATE|DELETE)_[A-Z0-9_]+)$/;
+
+const SCHEMA_KEY_RE = /^SCHEMA_[A-Z0-9_]{1,64}$/;
+const AI_MAX_SETTINGS = 20;
+const AI_MAX_SCHEMA_CHARS = 4_000;
+
+/** Why a proposed setting is refused, or null when it may be proposed. */
+function settingRefusal(key: string, value: string): string | null {
+  if (Object.hasOwn(AGENT_SETTINGS, key)) return AGENT_SETTINGS[key](value);
+  if (SCHEMA_KEY_RE.test(key)) {
+    if (value.length > AI_MAX_SCHEMA_CHARS) return `must be at most ${AI_MAX_SCHEMA_CHARS} characters`;
+    if (/[\r\n]/.test(value)) return "must be a JSON Schema on one line";
+    try {
+      const schema = JSON.parse(value);
+      if (schema && typeof schema === "object" && !Array.isArray(schema)) return null;
+    } catch {}
+    return "must be a JSON Schema object";
+  }
+  if (USER_ONLY_SETTING_RE.test(key))
+    return "is a credential or a URL, which only the user sets: tell them to fill in this line in the .env editor themselves";
+  return "is not a Stubbase setting. There is no feature by that name — tell the user it does not exist";
+}
+
+/** change_settings — validates a proposal and hands it to the user; changes nothing. */
+function toolChangeSettings(args: Record<string, unknown>): ToolOutcome {
+  const raw = Array.isArray(args.settings) ? args.settings.slice(0, AI_MAX_SETTINGS) : [];
+  if (raw.length === 0)
+    return { result: { error: "no settings were supplied; name each setting and its new value" } };
+
+  const set: Record<string, string> = {};
+  const refused: { key: string; reason: string }[] = [];
+  for (const entry of raw) {
+    const key = typeof (entry as any)?.key === "string" ? (entry as any).key.trim().toUpperCase() : "";
+    const v = (entry as any)?.value;
+    const value = typeof v === "string" ? v.trim() : typeof v === "number" || typeof v === "boolean" ? String(v) : null;
+    if (!key || value === null) {
+      refused.push({ key: key || "(unnamed)", reason: "needs a key and a value" });
+      continue;
+    }
+    const reason = settingRefusal(key, value);
+    if (reason) refused.push({ key, reason });
+    else set[key] = value;
+  }
+
+  const supported = [...Object.keys(AGENT_SETTINGS), "SCHEMA_<TABLE>"];
+  if (Object.keys(set).length === 0)
+    return { result: { error: "none of those settings can be proposed", refused, supported } };
+  return {
+    result: {
+      pendingConfirmation: { kind: "settings", set },
+      ...(refused.length > 0 ? { refused } : {}),
+      note:
+        "NOTHING HAS CHANGED YET. The user is shown these settings to confirm in the dashboard; " +
+        "once confirmed they are staged, and they go live when the project is deployed. " +
+        "Tell them both, and do not claim the settings are on.",
+    },
+  };
+}
+
+/** use_starter — proposes filling an empty project from a starter; changes nothing. */
+function toolUseStarter(args: Record<string, unknown>, user: User, tenantId: string): ToolOutcome {
+  const starter = STARTER_CATALOGUE.find((s) => s.id === args.id);
+  if (!starter)
+    return {
+      result: {
+        error: "there is no starter by that id",
+        starters: STARTER_CATALOGUE.map((s) => s.id),
+      },
+    };
+  const existing = parseResources(ownedProject(tenantId, user.id)!.resources);
+  if (existing.length > 0)
+    return {
+      result: {
+        error:
+          "this project already has tables, and a starter only fills an empty project. " +
+          "Design what the user asked for with stage_schema_drafts instead.",
+        resources: existing,
+      },
+    };
+  return {
+    result: {
+      pendingConfirmation: { kind: "starter", id: starter.id, title: starter.title, tables: starter.tables },
+      note:
+        "NOTHING HAS CHANGED YET. The user is shown this starter to confirm in the dashboard; " +
+        "once confirmed its tables are staged as drafts, and they go live when the project is " +
+        "deployed. Tell them it is waiting for their confirmation.",
+    },
+  };
+}
+
+/**
+ * A project's settings as the agent may see them: the value of every setting
+ * it could propose, and only the NAMES of the rest. Credentials never reach the
+ * provider — and a webhook URL is named but not shown, since it can carry a
+ * token in its query string.
+ */
+function visibleSettings(env: unknown): { values: Record<string, string>; alsoSet: string[] } {
+  const values: Record<string, string> = {};
+  const alsoSet: string[] = [];
+  if (!env || typeof env !== "object" || Array.isArray(env)) return { values, alsoSet };
+  for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
+    if (key === "__raw" || typeof value !== "string" || value.trim() === "") continue;
+    if (Object.hasOwn(AGENT_SETTINGS, key) || SCHEMA_KEY_RE.test(key)) values[key] = value;
+    else alsoSet.push(key);
+  }
+  return { values, alsoSet: alsoSet.sort() };
+}
+
+async function readSettings(tenantId: string, name: string) {
+  const res = await coreAdmin("GET", tenantId, name);
+  return res.ok ? visibleSettings(res.data) : null;
+}
+
+/** get_diagnostics — tables, settings, syntax health, server status and recent traffic. */
 async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOutcome> {
   const project = ownedProject(tenantId, user.id)!;
-  const [{ syntaxErrors, checked }, status, logs] = await Promise.all([
+  const [{ syntaxErrors, checked }, status, logs, deployed, staged] = await Promise.all([
     collectSyntaxErrors(tenantId, project),
     projectStatus(tenantId),
     coreLogSnapshot(tenantId, AI_MAX_LOG_ENTRIES),
+    readSettings(tenantId, "config"),
+    readSettings(tenantId, `${DRAFT_PREFIX}config`),
   ]);
 
   const recent = logs.slice(-AI_MAX_LOG_ENTRIES).map((e) => {
@@ -3189,6 +3350,13 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
       status,
       resources: parseResources(project.resources),
       apiBase: `${PUBLIC_API_BASE}/${tenantId}`,
+      // What the live API runs on, and — when an edit is waiting for a deploy —
+      // what it will run on after one. `alsoSet` names the settings whose
+      // values are not shown (credentials, URLs).
+      settings: {
+        deployed: deployed ?? { values: {}, alsoSet: [] },
+        ...(staged ? { staged } : {}),
+      },
       filesChecked: checked,
       syntaxErrors,
       warnings,
@@ -3211,6 +3379,10 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
         return await toolDeployProject(tenantId);
       case "delete_resources":
         return await toolDeleteResources(call.args, user, tenantId);
+      case "change_settings":
+        return toolChangeSettings(call.args);
+      case "use_starter":
+        return toolUseStarter(call.args, user, tenantId);
       case "get_diagnostics":
         return await toolGetDiagnostics(user, tenantId);
       default:

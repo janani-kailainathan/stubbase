@@ -4,8 +4,10 @@ import {
   Activity,
   CircleStop,
   Info,
+  LayoutTemplate,
   Play,
   Rocket,
+  Settings2,
   Sparkles,
   Table2,
   Trash2,
@@ -18,6 +20,11 @@ import { useAccountSummary } from '@/hooks/account'
 import { OutOfCreditsNotice } from '@/components/shell/CreditNotice'
 import { useCurrentProject, useSetPaneMode } from '@/hooks/projects'
 import { useApplyDeletion } from '@/hooks/resources'
+import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
+import { useApplyStarter } from '@/hooks/starters'
+import { CORE_PUBLIC_URL } from '@/lib/api'
+import { mergeEnv } from '@/lib/env'
+import { STARTERS } from '@/lib/starters'
 import { AI_EXAMPLES } from '@/lib/ai-examples'
 import { Markdown } from '@/lib/markdown'
 import type { ChatPart, ChatTurn } from '@/lib/api'
@@ -236,6 +243,180 @@ function ConfirmDeletion({
   )
 }
 
+/**
+ * The frame both proposals share: what the Co-Pilot wants to do, a Confirm
+ * that does it and a Cancel that throws it away. Neither is destructive — a
+ * confirmed proposal is staged like any edit and only goes live on Deploy —
+ * so it wears the ordinary panel colours, not the deletion card's.
+ */
+function ProposalCard({
+  icon: Icon,
+  title,
+  detail,
+  confirm,
+  busy,
+  blocked,
+  error,
+  onConfirm,
+  onCancel,
+  children,
+}: {
+  icon: typeof Wrench
+  title: string
+  detail: string
+  confirm: string
+  busy: boolean
+  /** Why Confirm is unavailable, when it is. */
+  blocked?: string
+  error?: string
+  onConfirm: () => void
+  onCancel: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-md border border-primary-soft-border-strong bg-panel p-2.5">
+      <div className="flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-primary-accent" />
+        <span className="font-mono text-[11px] text-body">{title}</span>
+      </div>
+      <div className="mt-2">{children}</div>
+      <p className="mt-1.5 font-mono text-[10px] text-subtle">{blocked ?? detail}</p>
+      {error && <p className="mt-1 font-mono text-[10px] text-danger-ink">{error}</p>}
+      <div className="mt-2.5 flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={busy || Boolean(blocked)}
+          className="cursor-pointer rounded bg-primary px-2.5 py-1 font-mono text-[11px] text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? 'Applying…' : confirm}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="cursor-pointer rounded border border-border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Settings the Co-Pilot proposed. The server validated them against what the
+ * agent may set; the user's click merges them into the .env the editor shows
+ * (mergeEnv, so the text and the keys agree) and stages it like a Save.
+ */
+function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set: Record<string, string> }) {
+  const [settled, setSettled] = useState<'done' | 'cancelled' | null>(null)
+  const [error, setError] = useState<string>()
+  const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
+  const { data: config, isLoading } = useTenantConfig(tenantId)
+  const save = useSaveTenantConfig(tenantId)
+  const lines = Object.entries(set).map(([k, v]) => `${k}=${v}`)
+
+  if (settled)
+    return (
+      <ToolCard icon={Settings2} title={settled === 'done' ? 'Settings staged' : 'Cancelled'}>
+        <p className="font-mono text-[10px] text-subtle">
+          {settled === 'done' ? 'Deploy to put them live.' : 'Nothing was changed.'}
+        </p>
+      </ToolCard>
+    )
+
+  const notice = (text: string, tone: 'done' | 'cancelled') => {
+    if (tenantId) addChatEntry(tenantId, { id: crypto.randomUUID(), kind: 'notice', text, tone })
+  }
+
+  return (
+    <ProposalCard
+      icon={Settings2}
+      title={`Change ${lines.length} setting${lines.length === 1 ? '' : 's'}?`}
+      detail="Staged into your .env like a Save. Your live API keeps its current settings until you Deploy."
+      confirm="Yes, stage them"
+      busy={save.isPending || isLoading}
+      error={error}
+      onConfirm={() => {
+        if (!tenantId) return
+        setError(undefined)
+        save.mutate(mergeEnv(config ?? {}, set, { tenantBase: `${CORE_PUBLIC_URL}/${tenantId}` }), {
+          onSuccess: () => {
+            setSettled('done')
+            notice(`Staged ${Object.keys(set).join(', ')} — Deploy to put them live.`, 'done')
+          },
+          onError: (e) => setError(e.message),
+        })
+      }}
+      onCancel={() => {
+        setSettled('cancelled')
+        notice('Cancelled — no settings were changed.', 'cancelled')
+      }}
+    >
+      <pre className="overflow-x-auto rounded border border-border bg-code-bg px-2.5 py-1.5 font-mono text-[10px] text-emphasis">
+        {lines.join('\n')}
+      </pre>
+    </ProposalCard>
+  )
+}
+
+/**
+ * A starter the Co-Pilot proposed for an empty project. Applied exactly as the
+ * starter cards apply one (useApplyStarter), and refused here as on the server
+ * if the project has gained tables since the proposal was made.
+ */
+function ConfirmStarter({ tenantId, id }: { tenantId: string; id: string }) {
+  const [settled, setSettled] = useState<'done' | 'cancelled' | null>(null)
+  const [error, setError] = useState<string>()
+  const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
+  const project = useCurrentProject()
+  const starters = useApplyStarter(tenantId)
+  const starter = STARTERS.find((s) => s.id === id)
+  if (!starter) return <ToolCard icon={TriangleAlert} title={`Unknown starter '${id}'`} />
+  const tables = Object.keys(starter.resources)
+
+  if (settled)
+    return (
+      <ToolCard icon={LayoutTemplate} title={settled === 'done' ? `${starter.title} staged` : 'Cancelled'}>
+        <p className="font-mono text-[10px] text-subtle">
+          {settled === 'done' ? `${tables.join(' · ')} — Deploy to put them live.` : 'Nothing was changed.'}
+        </p>
+      </ToolCard>
+    )
+
+  const notice = (text: string, tone: 'done' | 'cancelled') =>
+    addChatEntry(tenantId, { id: crypto.randomUUID(), kind: 'notice', text, tone })
+  const hasTables = (project?.resources.length ?? 0) > 0
+
+  return (
+    <ProposalCard
+      icon={LayoutTemplate}
+      title={`Start from ${starter.title}?`}
+      detail={`${starter.blurb} Staged as drafts; your live API changes when you Deploy.`}
+      blocked={hasTables ? 'This project has tables now, so a starter can no longer be used here.' : undefined}
+      confirm="Yes, use it"
+      busy={starters.busy}
+      error={error}
+      onConfirm={() => {
+        setError(undefined)
+        starters
+          .apply(starter)
+          .then((names) => {
+            setSettled('done')
+            notice(`Staged the ${starter.title} starter — Deploy to put it live.`, 'done')
+            starters.open(names)
+          })
+          .catch((e: Error) => setError(e.message))
+      }}
+      onCancel={() => {
+        setSettled('cancelled')
+        notice('Cancelled — no starter was used.', 'cancelled')
+      }}
+    >
+      <p className="font-mono text-[10px] text-muted-foreground">{tables.join(' · ')}</p>
+    </ProposalCard>
+  )
+}
+
 function ToolResult({
   name,
   result,
@@ -247,8 +428,18 @@ function ToolResult({
 }) {
   // A proposal, not an outcome — render the confirmation rather than a summary.
   const pending = result.pendingConfirmation as
-    | { names?: unknown; mode?: unknown }
+    | { kind?: unknown; names?: unknown; mode?: unknown; set?: unknown; id?: unknown }
     | undefined
+  if (pending?.kind === 'settings' && pending.set && typeof pending.set === 'object') {
+    const set = Object.fromEntries(
+      Object.entries(pending.set as Record<string, unknown>).filter(
+        (e): e is [string, string] => typeof e[1] === 'string',
+      ),
+    )
+    if (Object.keys(set).length > 0) return <ConfirmSettings tenantId={tenantId} set={set} />
+  }
+  if (pending?.kind === 'starter' && typeof pending.id === 'string' && tenantId)
+    return <ConfirmStarter tenantId={tenantId} id={pending.id} />
   if (pending) {
     const names = list(pending.names).filter((n): n is string => typeof n === 'string')
     const mode = pending.mode === 'remove' ? 'remove' : 'empty'

@@ -821,6 +821,31 @@ for the work the model did before it failed. When you have none left, the chat
 box says so and stays disabled until you get more; your API itself is not
 affected. The Co-Pilot answers one message at a time for your account.
 
+### 2.8 What the Co-Pilot can do for your project
+
+Ask the Co-Pilot in plain words and it works on the project you have open. It
+knows every feature Stubbase has and the settings that switch them on, and it
+tells you plainly when you ask for something Stubbase does not do.
+
+- **Design tables.** Describe your data and it drafts the tables with realistic
+  sample records.
+- **Start from a starter.** In an empty project, if one of the starter APIs
+  fits what you describe — a blog, a storefront, a helpdesk and more — it
+  offers that first.
+- **Change settings.** Ask for sign-in, public tables, roles, QA headers or
+  validation and it proposes the `.env` lines. It never fills in secrets or
+  URLs — your Google, GitHub, Resend and Twilio keys, webhook addresses — and
+  tells you which line to fill in yourself.
+- **Debug.** It reads your recent requests, your settings and any file that
+  does not parse. It sees which secrets are set, never their values.
+- **Deploy, start and stop** your API, and **propose deleting or emptying**
+  tables.
+
+Anything that changes your settings, fills your project from a starter or
+deletes data is a proposal: a card in the chat with a button to confirm it.
+Nothing happens until you click, and a confirmed change is staged like an edit
+of your own — your live API changes when you Deploy.
+
 ---
 
 ## 3. Env settings — the central reference
