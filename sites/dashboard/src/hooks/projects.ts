@@ -24,13 +24,16 @@ export interface Project {
   name: string
   resources: string[]
   /**
-   * A save is staged that the live API is not serving yet.
+   * A change is staged that the live API is not serving yet — a new table, a
+   * table marked for removal, or settings. Records are saved live, so editing
+   * them never raises it.
    *
-   * Server-owned: a save writes a draft file the live API does not serve, and
-   * that outlives this tab, so the flag has to come back with the project
-   * rather than being remembered in a store (see StagedChanges).
+   * Server-owned: it outlives this tab, so the flag has to come back with the
+   * project rather than being remembered in a store (see StagedChanges).
    */
   dirty: boolean
+  /** Live tables marked for removal; they keep serving until the next deploy. */
+  removing: string[]
   createdAt: string
   color: string
 }
@@ -42,6 +45,7 @@ const toProject = (row: ProjectRow, index: number): Project => ({
   // Tolerated as missing: a Dashboard API from before the column shipped
   // reports clean rather than crashing the workspace.
   dirty: row.dirty ?? false,
+  removing: row.removing ?? [],
   createdAt: row.created_at,
   color: PROJECT_COLORS[index % PROJECT_COLORS.length],
 })

@@ -318,6 +318,24 @@ const projectCols = (db.query("PRAGMA table_info(projects)").all() as { name: st
 );
 if (!projectCols.includes("dirty"))
   db.exec("ALTER TABLE projects ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0");
+// Live tables the owner removed, waiting for the deploy that removes them. A
+// table's records are saved live, but whether the table exists is published by
+// Deploy — so a removal is recorded here and carried out there (promoteDrafts).
+if (!projectCols.includes("removing"))
+  db.exec("ALTER TABLE projects ADD COLUMN removing TEXT NOT NULL DEFAULT '[]'");
+// What undoes a record change the Co-Pilot made: the core's before-images,
+// kept here and never handed to the model (see "Record tools"). One row per
+// change, spent by its Undo, and gone after AI_UNDO_TTL_HOURS either way.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ai_undo (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    tenant_id  TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
 // Which account a usage row was charged to. The monthly allowance is one pool
 // per account (see quotaFor), and a row has to remember its account itself:
 // joining through `projects` would forget every project deleted this month,
@@ -1959,21 +1977,38 @@ async function googleOneTap(req: Request): Promise<Response> {
 
 // ── Core Engine admin client ──────────────────────────────────────
 
+/**
+ * One call to the core's `_admin/files` plane. `revision` is the file's, as the
+ * core reports it on a read (x-revision) or a write (in the body); `ifMatch`
+ * makes a write conditional on the file still being that revision — the core
+ * answers 409 otherwise. HEAD asks whether a file exists without reading it
+ * across the wire.
+ */
 async function coreAdmin(
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "HEAD" | "POST" | "DELETE",
   tenantId: string,
   resource: string,
   body?: unknown,
-): Promise<{ ok: boolean; status: number; data: unknown }> {
+  options: { ifMatch?: string | null } = {},
+): Promise<{ ok: boolean; status: number; data: unknown; revision: string | null }> {
   const res = await fetch(`${CORE_API_URL}/${tenantId}/_admin/files/${resource}`, {
     method,
     headers: {
       authorization: `Bearer ${ADMIN_SECRET}`,
       "content-type": "application/json",
+      ...(options.ifMatch ? { "if-match": options.ifMatch } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { ok: res.ok, status: res.status, data: await res.json().catch(() => null) };
+  const data = method === "HEAD" ? null : await res.json().catch(() => null);
+  const revision =
+    res.headers.get("x-revision") ?? (typeof (data as any)?.revision === "string" ? (data as any).revision : null);
+  return { ok: res.ok, status: res.status, data, revision };
+}
+
+/** Whether a table is live — its production file exists — without reading it. */
+async function isLiveTable(tenantId: string, resource: string): Promise<boolean> {
+  return (await coreAdmin("HEAD", tenantId, resource)).ok;
 }
 
 /** Non-file admin actions on the core: "flush" | "deploy". */
@@ -2100,13 +2135,15 @@ interface ProjectRow {
   name: string;
   resources: string;
   dirty: number;
+  /** JSON string[]: live tables removed by the owner, gone at the next deploy. */
+  removing: string;
   created_at: string;
 }
 
 function ownedProject(tenantId: string, userId: number): ProjectRow | null {
   return db
     .query(
-      "SELECT tenant_id, name, resources, dirty, created_at FROM projects WHERE tenant_id = ? AND user_id = ?",
+      "SELECT tenant_id, name, resources, dirty, removing, created_at FROM projects WHERE tenant_id = ? AND user_id = ?",
     )
     .get(tenantId, userId) as ProjectRow | null;
 }
@@ -2115,6 +2152,7 @@ const projectJson = (r: ProjectRow) => ({
   ...r,
   resources: JSON.parse(r.resources),
   dirty: r.dirty === 1,
+  removing: parseResources(r.removing ?? "[]"),
 });
 
 /** The resources column as a string[], tolerating a legacy/corrupt value. */
@@ -2167,6 +2205,24 @@ function removeResource(tenantId: string, name: string): void {
   if (!resources.includes(name)) return;
   db.query("UPDATE projects SET resources = ? WHERE tenant_id = ?").run(
     JSON.stringify(resources.filter((r) => r !== name)),
+    tenantId,
+  );
+}
+
+/**
+ * Mark or unmark a live table for removal at the next deploy. Same
+ * single-synchronous-turn read-modify-write as addResources, for the same
+ * reason.
+ */
+function setRemoving(tenantId: string, name: string, removing: boolean): void {
+  const row = db
+    .query("SELECT removing FROM projects WHERE tenant_id = ?")
+    .get(tenantId) as { removing: string } | null;
+  if (!row) return;
+  const list = parseResources(row.removing);
+  if (list.includes(name) === removing) return;
+  db.query("UPDATE projects SET removing = ? WHERE tenant_id = ?").run(
+    JSON.stringify(removing ? [...list, name] : list.filter((n) => n !== name)),
     tenantId,
   );
 }
@@ -2643,15 +2699,19 @@ async function deleteProject(user: User, tenantId: string): Promise<Response> {
 
 // ── Files proxy (keeps ADMIN_SECRET server-side) ──────────────────
 
-// Draft model: UI saves land as draft_<name>.json (invisible to the public
-// plane — the core skips draft_* on load); POST /projects/:id/deploy promotes
-// drafts over their production files and deletes them. Reads prefer whichever
-// copy `dirty` says is current — the draft while an edit is staged, the live
-// file otherwise — and fall back to the other, never 404ing when only one
-// exists. See getFile: preferring the draft unconditionally is what hid a
-// project's own API writes behind a stranded snapshot. A caller that needs the
-// *deployed* file rather than the edit in progress asks for `?source=live`,
-// which reads the production copy alone.
+// Save model: data is live when saved, structure and settings when deployed.
+//   - Records of a live table are saved straight to its production file,
+//     conditional on the revision the editor loaded (If-Match), so a save can
+//     never overwrite records the public API wrote meanwhile.
+//   - A new table is staged as draft_<name>.json — its endpoint does not exist
+//     until Deploy promotes it — and edits to it go to that draft.
+//   - Removing a live table marks it (`removing`); Deploy removes it.
+//   - Settings (config, rbac) are staged as drafts and deployed, as before.
+// A draft over a live table therefore never arises; one left from before this
+// model is ignored by reads and discarded by the core's deploy rather than
+// promoted over newer records. A caller that needs the *deployed* file rather
+// than the edit in progress asks for `?source=live`, which reads the
+// production copy alone.
 //
 // `config` is the tenant's env-style settings (the dashboard's .env editor
 // compiles to it): an object, not a record array, and never a CRUD resource —
@@ -2673,6 +2733,9 @@ function invalidResourceName(resource: string): Response | null {
  * as exactly what the source's editor shows.
  */
 function editedOrder(row: ProjectRow, name: string): [string, string] {
+  // A table's records are edited live, so its production file is what the
+  // editor shows; the draft is read only for a table that is not live yet.
+  if (name !== "config" && name !== "rbac") return [name, `${DRAFT_PREFIX}${name}`];
   return row.dirty === 1 ? [`${DRAFT_PREFIX}${name}`, name] : [name, `${DRAFT_PREFIX}${name}`];
 }
 
@@ -2721,7 +2784,11 @@ async function getFile(
     res = await coreAdmin("GET", tenantId, order[1]);
   if (res.status === 404) return err(404, "file not found");
   if (!res.ok) return err(502, `core engine refused the read (status ${res.status})`);
-  return json(res.data);
+  // The revision goes back with the save (If-Match), which is what makes a
+  // save of a live table refuse to overwrite records written since this read.
+  const out = json(res.data);
+  if (res.revision) out.headers.set("x-revision", res.revision);
+  return out;
 }
 
 /**
@@ -2782,44 +2849,72 @@ async function putFile(
     return err(400, "body must be a JSON array of records");
   }
 
-  const res = await coreAdmin("POST", tenantId, `${DRAFT_PREFIX}${resource}`, body);
+  // Records of a live table are saved live; anything else — settings, and a
+  // table not deployed yet — is staged as a draft.
+  const live = !isSettings && (await isLiveTable(tenantId, resource));
+  const target = live ? resource : `${DRAFT_PREFIX}${resource}`;
+  const res = await coreAdmin("POST", tenantId, target, body, { ifMatch: req.headers.get("if-match") });
+  // Someone wrote the file since the editor read it: the caller reloads and
+  // makes the change again, rather than this save erasing theirs.
+  if (res.status === 409) return json(res.data ?? { error: "the file changed since it was read" }, 409);
   // The core validates rules where they are written; its reasons are the user's to read.
   if (res.status === 400) return json(res.data ?? { error: "the core engine refused the file" }, 400);
   if (!res.ok) return err(502, `core engine refused the write (status ${res.status})`);
 
-  // The draft is on disk, so the live API is now behind — recorded after the
-  // write rather than before, so a refused write never leaves the project
-  // claiming changes it does not have.
-  markDirty(tenantId);
+  if (live) {
+    // A draft over a live table is a leftover from before records were saved
+    // live; nothing should read it again, and deploy would discard it anyway.
+    await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}${resource}`);
+  } else {
+    // A draft is on disk, so the live API is now behind — recorded after the
+    // write rather than before, so a refused write never leaves the project
+    // claiming changes it does not have.
+    markDirty(tenantId);
+  }
 
   // Re-read inside addResources rather than reusing `row`: that snapshot was
   // taken before the core write above, so it is stale by the time we get here.
   if (!isSettings) addResources(tenantId, [resource]);
   const records = Array.isArray(body) ? body.length : Object.keys(body as object).length;
-  return json({ ok: true, tenant: tenantId, resource, records, draft: true });
+  return json({ ok: true, tenant: tenantId, resource, records, draft: !live, revision: res.revision });
 }
 
+/**
+ * DELETE /projects/<id>/files/<res> — remove a table. A live one is only marked:
+ * its endpoint keeps serving until the next deploy removes it, because whether
+ * a table exists is published by Deploy, like its creation. A table not live
+ * yet exists only as a draft, and goes at once.
+ */
 async function deleteFile(user: User, tenantId: string, resource: string): Promise<Response> {
   const row = ownedProject(tenantId, user.id);
   if (!row) return err(404, "project not found");
   const invalid = invalidResourceName(resource);
   if (invalid) return invalid;
 
-  await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}${resource}`); // best-effort draft cleanup
-  const res = await coreAdmin("DELETE", tenantId, resource);
+  if (await isLiveTable(tenantId, resource)) {
+    setRemoving(tenantId, resource, true);
+    markDirty(tenantId);
+    return json({ ok: true, tenant: tenantId, resource, pendingRemoval: true });
+  }
+
+  const res = await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}${resource}`);
   if (!res.ok && res.status !== 404)
     return err(502, `core engine failed to delete (status ${res.status})`);
-
-  // Deliberately does not clear the flag. A delete applies to the live file
-  // immediately, so it stages nothing — but with one boolean for the whole
-  // project there is no way to tell whether *other* resources are still
-  // staged, and clearing would hide them. Leaving it costs at most one
-  // redeploy that promotes nothing.
-
   // Same reason as putFile: `row` predates the core calls above, so filtering
   // it would write back a list missing anything created in the meantime.
   removeResource(tenantId, resource);
   return json({ ok: true, tenant: tenantId, resource, deleted: true });
+}
+
+/** POST /projects/<id>/files/<res>/restore — take back a removal before it is deployed. */
+function restoreFile(user: User, tenantId: string, resource: string): Response {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  const invalid = invalidResourceName(resource);
+  if (invalid) return invalid;
+  // The flag stays: other changes may still be staged, and one boolean cannot
+  // say — over-reporting costs a redundant deploy, see markDirty.
+  setRemoving(tenantId, resource, false);
+  return json({ ok: true, tenant: tenantId, resource, restored: true });
 }
 
 // ── System files (read-only) ──────────────────────────────────────
@@ -2897,7 +2992,6 @@ const AI_TURN_BUDGET_MS = 180_000;
 const AI_MAX_TABLES = 12;
 const AI_MAX_RECORDS = 50;
 const AI_MAX_LOG_ENTRIES = 15; // recent requests handed to get_diagnostics
-const AI_MAX_LOG_BODY = 300;
 /** Names the core treats as settings or routes — never generatable tables. */
 const RESERVED_TABLES = new Set(["config", "rbac", "stubbase", "env", "auth"]);
 
@@ -3042,8 +3136,9 @@ async function toolStageSchemaDrafts(
   // is how "clear all data" once produced a fabricated `placeholders` table and
   // a claim that the data had been cleared.
   const CANNOT_DELETE =
-    "This tool only creates or replaces tables; it cannot delete or empty them. " +
-    "Use delete_resources for that. Do not invent a filler table to satisfy the request.";
+    "This tool only creates new tables; it cannot delete or empty them, or change the records " +
+    "of a table that is live. Use delete_resources to remove or empty a table, and the record " +
+    "tools to change records. Do not invent a filler table to satisfy the request.";
 
   if (!Array.isArray(args.tables) || args.tables.length === 0)
     return { result: { error: `no tables were supplied. ${CANNOT_DELETE}` } };
@@ -3054,6 +3149,15 @@ async function toolStageSchemaDrafts(
 
   const staged: { name: string; records: number; fields: string[] }[] = [];
   for (const table of tables) {
+    // A live table's records are the project's real data, saved live — never
+    // replaced wholesale by generated seed rows. Only a table not deployed yet
+    // (a draft, still being designed) may be staged over.
+    if (await isLiveTable(tenantId, table.name)) {
+      warnings.push(
+        `skipped '${table.name}': it is a live table holding real records. Use the record tools to change them.`,
+      );
+      continue;
+    }
     const res = await coreAdmin("POST", tenantId, `${DRAFT_PREFIX}${table.name}`, table.records);
     if (!res.ok) {
       console.warn(`[ai] core refused draft_${table.name} (status ${res.status})`);
@@ -3066,7 +3170,7 @@ async function toolStageSchemaDrafts(
       fields: [...new Set(table.records.flatMap((r) => Object.keys(r)))],
     });
   }
-  if (staged.length === 0) return { result: { error: "nothing could be staged", warnings } };
+  if (staged.length === 0) return { result: { error: `nothing could be staged. ${CANNOT_DELETE}`, warnings } };
 
   // This tool writes drafts through coreAdmin rather than putFile, so it is the
   // second of the two places that has to record them as undeployed.
@@ -3353,6 +3457,216 @@ async function readSettings(tenantId: string, name: string) {
   return res.ok ? visibleSettings(res.data) : null;
 }
 
+// ── Record tools ───────────────────────────────────────────────────
+// The Co-Pilot's hands on the data: create, update, delete and count records,
+// through the core's `_admin/records` plane. The chat is the confirmation —
+// what the user asked for happens — with three things around it:
+//   - Nothing about the records goes to the model. A tool answers with counts
+//     and new ids; records are named with `where` in the public API's filter
+//     language, which the model can write without reading anything.
+//   - A change to more than AI_BULK_THRESHOLD records needs the user's answer:
+//     the first call returns the count and a confirmation that is valid only
+//     in a LATER chat request, so the model has to stop and ask.
+//   - Every change is undoable from its chat card. The core returns the
+//     before-images, which are kept here (ai_undo) and never sent to the model.
+
+const AI_BULK_THRESHOLD = 20;
+const AI_MAX_CREATE = 200;
+const AI_MAX_RECORD_CHARS = 10_000;
+const AI_UNDO_TTL_HOURS = 24;
+const AI_MAX_UNDO_CHARS = 5_000_000;
+const AI_CONFIRM_TTL_MS = 30 * 60_000;
+
+/** A bulk change waiting for the user's go-ahead, keyed by the confirmation handed to the model. */
+const pendingBulk = new Map<string, { userId: number; tenantId: string; key: string; turnId: string; expires: number }>();
+
+async function coreRecords(tenantId: string, table: string, body: unknown) {
+  const res = await fetch(`${CORE_API_URL}/${tenantId}/_admin/records/${encodeURIComponent(table)}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ADMIN_SECRET}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { ok: res.ok, status: res.status, data: (await res.json().catch(() => null)) as any };
+}
+
+/** The table argument, or a refusal naming the tables that do exist. */
+function recordTable(args: Record<string, unknown>, user: User, tenantId: string): string | ToolOutcome {
+  const table = typeof args.table === "string" ? args.table.trim() : "";
+  const tables = parseResources(ownedProject(tenantId, user.id)!.resources);
+  if (!NAME_RE.test(table) || !tables.includes(table))
+    return { result: { error: `there is no table '${table}' in this project`, tables } };
+  return table;
+}
+
+/** A core refusal, in words the model can act on. */
+function recordRefusal(res: { status: number; data: any }, table: string, tables: string[]): ToolOutcome {
+  if (res.status === 404) return { result: { error: `there is no table '${table}' in this project`, tables } };
+  return { result: { error: String(res.data?.error ?? `the change was refused (status ${res.status})`) } };
+}
+
+/** Keeps a change's undo, when it is small enough to keep. Returns its id, or null. */
+function keepUndo(user: User, tenantId: string, table: string, undo: unknown): string | null {
+  const payload = JSON.stringify(undo ?? null);
+  if (!undo || payload.length > AI_MAX_UNDO_CHARS) return null;
+  db.query(`DELETE FROM ai_undo WHERE created_at < datetime('now', '-${AI_UNDO_TTL_HOURS} hours')`).run();
+  const id = crypto.randomUUID();
+  db.query("INSERT INTO ai_undo (id, user_id, tenant_id, table_name, payload) VALUES (?, ?, ?, ?, ?)").run(
+    id,
+    user.id,
+    tenantId,
+    table,
+    payload,
+  );
+  return id;
+}
+
+/** create_records — adds records; answers with how many and their ids. */
+async function toolCreateRecords(args: Record<string, unknown>, user: User, tenantId: string): Promise<ToolOutcome> {
+  const table = recordTable(args, user, tenantId);
+  if (typeof table !== "string") return table;
+  const records = Array.isArray(args.records) ? args.records : [];
+  if (records.length === 0) return { result: { error: "give the records to create, one object each" } };
+  if (records.length > AI_MAX_CREATE)
+    return { result: { error: `at most ${AI_MAX_CREATE} records per call; split the rest into further calls` } };
+  for (const r of records) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) return { result: { error: "every record must be an object" } };
+    if (JSON.stringify(r).length > AI_MAX_RECORD_CHARS)
+      return { result: { error: `a record is larger than ${AI_MAX_RECORD_CHARS} characters` } };
+  }
+  const res = await coreRecords(tenantId, table, { op: "create", records });
+  if (!res.ok) return recordRefusal(res, table, parseResources(ownedProject(tenantId, user.id)!.resources));
+  const undoId = keepUndo(user, tenantId, table, res.data?.undo);
+  return {
+    changed: true,
+    result: {
+      table,
+      created: res.data.result.created,
+      ids: (res.data.result.ids as string[]).slice(0, 10),
+      ...(res.data.staged ? { staged: true, note: "The table is not deployed yet: these records go live with it." } : {}),
+      undoId,
+    },
+  };
+}
+
+/** The `where` argument as the core takes it — values only as strings, numbers or booleans. */
+function whereArg(args: Record<string, unknown>): Record<string, string | number | boolean> | string {
+  if (args.where === undefined) return {};
+  if (!args.where || typeof args.where !== "object" || Array.isArray(args.where))
+    return "'where' must be an object of filters, e.g. { \"status\": \"pending\", \"price[gt]\": 20 }";
+  const where: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(args.where as Record<string, unknown>)) {
+    if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+      return `'where.${k}' must be a string, number or boolean`;
+    Object.defineProperty(where, k, { value: v, enumerable: true, writable: true, configurable: true });
+  }
+  return where;
+}
+
+/** update_records / delete_records — by filter, with the bulk guard and an undo. */
+async function toolChangeRecords(
+  kind: "update" | "delete",
+  args: Record<string, unknown>,
+  user: User,
+  tenantId: string,
+  turnId: string,
+): Promise<ToolOutcome> {
+  const table = recordTable(args, user, tenantId);
+  if (typeof table !== "string") return table;
+  const tables = parseResources(ownedProject(tenantId, user.id)!.resources);
+  const where = whereArg(args);
+  if (typeof where === "string") return { result: { error: where } };
+  const all = args.all === true;
+  if (Object.keys(where).length === 0 && !all)
+    return { result: { error: "name the records with 'where', or set 'all': true to change every record" } };
+  const change =
+    kind === "update"
+      ? { op: "update", where, all, set: args.set ?? {}, unset: args.unset ?? [] }
+      : { op: "delete", where, all };
+
+  // How many it would touch, before touching any.
+  const counted = await coreRecords(tenantId, table, { op: "count", where });
+  if (!counted.ok) return recordRefusal(counted, table, tables);
+  const matched = counted.data.result.count as number;
+  if (matched === 0) return { result: { table, matched: 0, note: "No records match, so nothing was changed." } };
+
+  if (matched > AI_BULK_THRESHOLD) {
+    const key = JSON.stringify([kind, table, change]);
+    const given = typeof args.confirmation === "string" ? pendingBulk.get(args.confirmation) : undefined;
+    const valid =
+      given &&
+      given.userId === user.id &&
+      given.tenantId === tenantId &&
+      given.key === key &&
+      given.turnId !== turnId &&
+      given.expires > Date.now();
+    if (!valid) {
+      for (const [id, p] of pendingBulk) if (p.expires <= Date.now()) pendingBulk.delete(id);
+      const confirmation = crypto.randomUUID();
+      pendingBulk.set(confirmation, { userId: user.id, tenantId, key, turnId, expires: Date.now() + AI_CONFIRM_TTL_MS });
+      return {
+        result: {
+          table,
+          matched,
+          needsConfirmation: true,
+          confirmation,
+          note:
+            `NOTHING HAS CHANGED. This would ${kind} ${matched} records. Tell the user that number and ` +
+            `ask them to confirm. Only after they agree, in their next message, call again with exactly ` +
+            `the same arguments plus this confirmation.`,
+        },
+      };
+    }
+    pendingBulk.delete(args.confirmation as string);
+  }
+
+  const res = await coreRecords(tenantId, table, change);
+  if (!res.ok) return recordRefusal(res, table, tables);
+  const undoId = keepUndo(user, tenantId, table, res.data?.undo);
+  return {
+    changed: true,
+    result: {
+      table,
+      ...res.data.result,
+      ...(res.data.staged ? { staged: true } : {}),
+      undoId,
+      ...(undoId ? {} : { note: "Too large to keep an undo for; the change stands." }),
+    },
+  };
+}
+
+/** count_records — how many records match; never the records. */
+async function toolCountRecords(args: Record<string, unknown>, tenantId: string): Promise<ToolOutcome> {
+  const table = typeof args.table === "string" ? args.table.trim() : "";
+  if (!NAME_RE.test(table)) return { result: { error: "name one table, e.g. 'books'" } };
+  const where = whereArg(args);
+  if (typeof where === "string") return { result: { error: where } };
+  const res = await coreRecords(tenantId, table, { op: "count", where });
+  if (res.status === 404) return { result: { error: `there is no table '${table}' in this project` } };
+  if (!res.ok) return { result: { error: String(res.data?.error ?? `the count was refused (status ${res.status})`) } };
+  return { result: { table, count: res.data.result.count } };
+}
+
+/**
+ * POST /projects/<id>/ai/undo/<undoId> — puts back what one Co-Pilot record
+ * change altered. Spent on use. The core skips any record written since the
+ * change, so an undo never erases a later write; the answer says how many.
+ */
+async function undoRecordChange(user: User, tenantId: string, undoId: string): Promise<Response> {
+  if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
+  const row = db
+    .query(
+      `SELECT table_name, payload FROM ai_undo
+       WHERE id = ? AND user_id = ? AND tenant_id = ? AND created_at >= datetime('now', '-${AI_UNDO_TTL_HOURS} hours')`,
+    )
+    .get(undoId, user.id, tenantId) as { table_name: string; payload: string } | null;
+  if (!row) return err(404, "nothing to undo — it was already undone, or has expired");
+  // Spent before the call: a double click must not restore twice.
+  db.query("DELETE FROM ai_undo WHERE id = ?").run(undoId);
+  const res = await coreRecords(tenantId, row.table_name, { op: "restore", ...JSON.parse(row.payload) });
+  if (!res.ok) return err(502, `core engine refused the undo (status ${res.status})`);
+  return json({ ok: true, table: row.table_name, ...res.data.result });
+}
+
 // ── Data model ─────────────────────────────────────────────────────
 // The shape of the project's tables, from the core's models/ folder: what the
 // Co-Pilot designs against instead of being sent the records. Field names are
@@ -3434,7 +3748,9 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
 
   const recent = logs.slice(-AI_MAX_LOG_ENTRIES).map((e) => {
     const rejected = Array.isArray(e.lifecycle) ? e.lifecycle.find((s) => !s.ok) : undefined;
-    const failed = e.status >= 400;
+    // No request or response bodies: they are text strangers sent to the public
+    // API, and the agent that reads this can change records. The status and
+    // the pipeline stage that refused the request are what a diagnosis needs.
     return {
       ts: e.ts,
       method: e.method,
@@ -3442,10 +3758,6 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
       status: e.status,
       durationMs: e.durationMs,
       ...(rejected ? { rejectedAt: rejected.stage, reason: rejected.note ?? null } : {}),
-      ...(failed && e.requestBody ? { requestBody: e.requestBody.slice(0, AI_MAX_LOG_BODY) } : {}),
-      ...(failed && e.responseBody
-        ? { responseBody: e.responseBody.slice(0, AI_MAX_LOG_BODY) }
-        : {}),
     };
   });
 
@@ -3485,7 +3797,7 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
   };
 }
 
-async function runTool(call: FunctionCall, user: User, tenantId: string): Promise<ToolOutcome> {
+async function runTool(call: FunctionCall, user: User, tenantId: string, turnId: string): Promise<ToolOutcome> {
   try {
     switch (call.name) {
       case "stage_schema_drafts":
@@ -3504,6 +3816,14 @@ async function runTool(call: FunctionCall, user: User, tenantId: string): Promis
         return await toolGetDiagnostics(user, tenantId);
       case "get_data_model":
         return await toolGetDataModel(tenantId);
+      case "create_records":
+        return await toolCreateRecords(call.args, user, tenantId);
+      case "update_records":
+        return await toolChangeRecords("update", call.args, user, tenantId, turnId);
+      case "delete_records":
+        return await toolChangeRecords("delete", call.args, user, tenantId, turnId);
+      case "count_records":
+        return await toolCountRecords(call.args, tenantId);
       case "set_required_fields":
         return await toolSetRequiredFields(call.args, tenantId);
       default:
@@ -3567,6 +3887,9 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
   if (typeof history === "string") return err(400, history);
 
   aiTurnsInFlight.add(user.id);
+  // Identifies this request, so a bulk change's confirmation can be required to
+  // come from a later one — the user's answer — and never from the same turn.
+  const turnId = crypto.randomUUID();
   let usage = NO_USAGE;
   /** Charges the turn and reports it; every way out of the loop goes through here. */
   const settle = () => {
@@ -3625,7 +3948,7 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
 
       const parts: ChatPart[] = [];
       for (const call of reply.calls) {
-        const outcome = await runTool(call, user, tenantId);
+        const outcome = await runTool(call, user, tenantId, turnId);
         toolsUsed.push(call.name);
         changed = changed || outcome.changed === true;
         parts.push({
@@ -3974,13 +4297,29 @@ async function projectDiagnostics(user: User, tenantId: string): Promise<Respons
  */
 async function promoteDrafts(
   tenantId: string,
-): Promise<{ promoted: string[] } | { error: string }> {
+): Promise<{ promoted: string[]; removed?: string[] } | { error: string }> {
+  // Removals first, each unmarked as soon as it is done, so a deploy that fails
+  // part-way leaves exactly the tables still to remove marked.
+  const removed: string[] = [];
+  const pending = db.query("SELECT removing FROM projects WHERE tenant_id = ?").get(tenantId) as {
+    removing: string;
+  } | null;
+  for (const name of parseResources(pending?.removing ?? "[]")) {
+    await coreAdmin("DELETE", tenantId, `${DRAFT_PREFIX}${name}`);
+    const gone = await coreAdmin("DELETE", tenantId, name);
+    if (!gone.ok && gone.status !== 404)
+      return { error: `core engine failed to remove '${name}' (status ${gone.status})` };
+    removeResource(tenantId, name);
+    setRemoving(tenantId, name, false);
+    removed.push(name);
+  }
+
   const res = await coreAdminAction(tenantId, "deploy");
   // A project with nothing written yet has no tenant folder on the core, which
   // answers 404. Ownership is already verified by the caller, so that is not an
   // error: this service owns "the project exists", and there is simply nothing
   // staged to promote. Without this, Deploy fails on every brand-new project.
-  if (res.status === 404) return { promoted: [] };
+  if (res.status === 404) return { promoted: [], ...(removed.length > 0 ? { removed } : {}) };
   if (!res.ok) return { error: `core engine refused the deploy (status ${res.status})` };
   // Cleared here rather than in deployProject so the Deploy button and the
   // Co-Pilot's deploy_project tool cannot disagree about what a deploy means.
@@ -3990,14 +4329,17 @@ async function promoteDrafts(
   // silently. The core promotes every draft it finds, including any staged
   // before this column existed, so clearing the whole set is right.
   clearDirty(tenantId);
-  return { promoted: ((res.data as any)?.promoted ?? []) as string[] };
+  return {
+    promoted: ((res.data as any)?.promoted ?? []) as string[],
+    ...(removed.length > 0 ? { removed } : {}),
+  };
 }
 
 async function deployProject(user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
   const out = await promoteDrafts(tenantId);
   if ("error" in out) return err(502, out.error);
-  return json({ ok: true, tenant: tenantId, promoted: out.promoted });
+  return json({ ok: true, tenant: tenantId, promoted: out.promoted, removed: out.removed ?? [] });
 }
 
 /**
@@ -4274,13 +4616,15 @@ function withCors(res: Response, req: Request): Response {
   if (!origin || !ALLOWED_ORIGINS.includes(origin)) return res;
   res.headers.set("access-control-allow-origin", origin);
   res.headers.set("vary", "Origin");
+  // The file revision an editor sends back with its save (If-Match).
+  res.headers.set("access-control-expose-headers", "x-revision");
   return res;
 }
 
 function preflight(req: Request): Response {
   const res = new Response(null, { status: 204 });
   res.headers.set("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.headers.set("access-control-allow-headers", "authorization, content-type");
+  res.headers.set("access-control-allow-headers", "authorization, content-type, if-match");
   res.headers.set("access-control-max-age", "86400");
   return withCors(res, req);
 }
@@ -4370,7 +4714,7 @@ async function route(req: Request): Promise<Response> {
       if (req.method === "GET") {
         const rows = db
           .query(
-            "SELECT tenant_id, name, resources, dirty, created_at FROM projects WHERE user_id = ? ORDER BY created_at DESC",
+            "SELECT tenant_id, name, resources, dirty, removing, created_at FROM projects WHERE user_id = ? ORDER BY created_at DESC",
           )
           .all(user.id) as ProjectRow[];
         return json(rows.map(projectJson));
@@ -4418,6 +4762,11 @@ async function route(req: Request): Promise<Response> {
 
     if (segments.length === 4 && req.method === "POST" && segments[2] === "ai" && segments[3] === "chat")
       return aiChat(req, user, segments[1]);
+    if (segments.length === 5 && req.method === "POST" && segments[2] === "ai" && segments[3] === "undo")
+      return undoRecordChange(user, segments[1], segments[4]);
+
+    if (segments.length === 5 && segments[2] === "files" && segments[4] === "restore" && req.method === "POST")
+      return restoreFile(user, segments[1], segments[3]);
 
     if (segments.length === 4 && segments[2] === "files") {
       if (req.method === "GET")

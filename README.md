@@ -44,8 +44,10 @@ POST   /projects                           (auth) { name, resources? } → provi
 PATCH  /projects/<tenantId>                (auth) { name } rename
 DELETE /projects/<tenantId>                (auth) deprovision tenant + remove row
 POST   /projects/<tenantId>/duplicate      (auth) { name, copyEnv? } → new project from this one
-PUT    /projects/<tenantId>/files/<res>    (auth) body = JSON array → create/replace file
-DELETE /projects/<tenantId>/files/<res>    (auth) delete file
+PUT    /projects/<tenantId>/files/<res>    (auth) body = JSON array; If-Match: <revision> → live save (a new table stays a draft)
+DELETE /projects/<tenantId>/files/<res>    (auth) a live table is marked, removed at the next deploy
+POST   /projects/<tenantId>/files/<res>/restore (auth) take back a removal before it is deployed
+POST   /projects/<tenantId>/ai/undo/<undoId>  (auth) undo one Co-Pilot record change
 GET    /projects/<tenantId>/live-logs      (auth) SSE proxy of the request log
 GET    /projects/<tenantId>/diagnostics    (auth) JSON syntax health check
 ```
@@ -109,6 +111,7 @@ POST   /<tenant>/_admin/files/<resource>   create/overwrite file (body = seed ar
 DELETE /<tenant>/_admin/files/<resource>   delete file
 GET    /<tenant>/_admin/system[/<file>]    list / read a feature's files (read-only, credentials stripped)
 GET    /<tenant>/_admin/models             every data file's model: fields, counts, types, required
+POST   /<tenant>/_admin/records/<resource> { op: create|update|delete|count|restore, … } — record ops by filter
 POST   /<tenant>/_admin/models/<resource>  { required: { <field>: true|false } } — declared, not enforced
 GET|POST /<tenant>/_admin/status           read / set whether the public plane is serving (applies immediately)
 POST   /<tenant>/_admin/users/<id>/role    set an account's role (must exist in the rules)

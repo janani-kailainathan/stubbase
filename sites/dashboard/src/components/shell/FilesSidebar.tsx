@@ -16,9 +16,29 @@ import { NAME_RE } from '@/lib/api'
 import { rbacEnabled } from '@/lib/rbac'
 import { useTenantConfig } from '@/hooks/config'
 import { useCurrentProject, useSelectInEditor } from '@/hooks/projects'
-import { useCreateResources } from '@/hooks/resources'
+import { useCreateResources, useRestoreResource } from '@/hooks/resources'
 import { useSystemFiles } from '@/hooks/system'
 import { useWorkspaceStore } from '@/stores/workspace'
+
+/** Takes back a table's removal before the deploy that would carry it out. */
+function RestoreButton({ tenantId, resource }: { tenantId: string; resource: string }) {
+  const restore = useRestoreResource(tenantId)
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        restore.mutate(resource, {
+          onSuccess: () => toast.success(`${resource}.json will stay.`),
+          onError: (err) => toast.error(`Could not restore ${resource}.json: ${err.message}`),
+        })
+      }}
+      disabled={restore.isPending}
+      className="shrink-0 cursor-pointer font-mono text-[10px] text-primary-accent hover:text-primary-ink disabled:opacity-50"
+    >
+      Restore
+    </button>
+  )
+}
 
 function NewResourceDialog({
   tenantId,
@@ -181,6 +201,9 @@ export function FilesSidebar() {
         {dataExpanded &&
           resources.map((resource) => {
             const isSelected = selection?.kind === 'resource' && selection.resource === resource
+            // Marked for removal: still served until the next deploy, which is
+            // what removes it — so it stays listed, says so, and can be taken back.
+            const removing = project?.removing.includes(resource) ?? false
             return (
               <div
                 key={resource}
@@ -190,9 +213,15 @@ export function FilesSidebar() {
                     : 'flex cursor-pointer items-center gap-2 rounded border border-transparent py-1.5 pr-2 pl-8 hover:bg-card'
                 }
                 onClick={() => select({ kind: 'resource', resource })}
+                title={removing ? `${resource}.json is removed when you Deploy` : undefined}
               >
-                <span className="shrink-0 font-mono text-xs text-danger-ink">{'{}'}</span>
-                <span className="truncate font-mono text-xs text-body">{resource}.json</span>
+                <span className={`shrink-0 font-mono text-xs ${removing ? 'text-faint' : 'text-danger-ink'}`}>{'{}'}</span>
+                <span
+                  className={`min-w-0 flex-1 truncate font-mono text-xs ${removing ? 'text-faint line-through' : 'text-body'}`}
+                >
+                  {resource}.json
+                </span>
+                {removing && project && <RestoreButton tenantId={project.tenantId} resource={resource} />}
               </div>
             )
           })}

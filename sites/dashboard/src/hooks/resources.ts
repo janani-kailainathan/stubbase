@@ -4,20 +4,34 @@ import {
   deleteResourceFile,
   fetchLiveResource,
   fetchResource,
+  restoreResourceFile,
   saveResourceFile,
 } from '@/lib/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 
+/**
+ * One query per file, holding the records and the revision they came with.
+ * useResource and useResourceRevision read the two halves of the same cache
+ * entry, so the revision an editor saves against is always the one of the
+ * records it shows.
+ */
+const resourceQuery = (tenantId: string | undefined, resource: string | undefined) => ({
+  queryKey: ['resource', tenantId, resource],
+  queryFn: () => fetchResource(tenantId!, resource!),
+  enabled: Boolean(tenantId && resource),
+  // Without this the default staleTime of 0 refetches on every remount, so
+  // simply clicking between the Docs/Live tabs re-hit the API
+  // each time. Writes invalidate this key explicitly, so nothing goes stale.
+  staleTime: 30_000,
+})
+
 export function useResource(tenantId: string | undefined, resource: string | undefined) {
-  return useQuery({
-    queryKey: ['resource', tenantId, resource],
-    queryFn: () => fetchResource(tenantId!, resource!),
-    enabled: Boolean(tenantId && resource),
-    // Without this the default staleTime of 0 refetches on every remount, so
-    // simply clicking between the Docs/Live tabs re-hit the API
-    // each time. Writes invalidate this key explicitly, so nothing goes stale.
-    staleTime: 30_000,
-  })
+  return useQuery({ ...resourceQuery(tenantId, resource), select: (r) => r.records })
+}
+
+/** The revision of the records useResource shows — what a save names in If-Match. */
+export function useResourceRevision(tenantId: string | undefined, resource: string | undefined) {
+  return useQuery({ ...resourceQuery(tenantId, resource), select: (r) => r.revision }).data ?? null
 }
 
 /**
@@ -47,18 +61,25 @@ export function useLiveResource(tenantId: string | undefined, resource: string |
   })
 }
 
-/** Replace a resource file wholesale (the editor's Save). */
+/**
+ * Replace a resource file wholesale (the editor's Save, and its Undo). A live
+ * table's records go live at once; a table not deployed yet stays a draft.
+ * `revision` is the one the records were read at: a save after someone else
+ * wrote is refused with a 409 instead of erasing their records.
+ */
 export function useSaveResource(tenantId: string | undefined, resource: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: unknown[]) => saveResourceFile(tenantId!, resource!, data),
-    onSuccess: () => {
+    mutationFn: ({ records, revision }: { records: unknown[]; revision: string | null }) =>
+      saveResourceFile(tenantId!, resource!, records, revision),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['resource', tenantId, resource] })
-      // The save staged a draft, so the project is dirty now — this refetch is
-      // what raises the "not live yet" strip.
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      // …and a new change undoes an earlier dismissal of it.
-      useWorkspaceStore.getState().resurfaceStaged()
+      if (res.draft) {
+        // A new table's draft: the project has something to deploy now, and a
+        // new change undoes an earlier dismissal of the strip saying so.
+        queryClient.invalidateQueries({ queryKey: ['projects'] })
+        useWorkspaceStore.getState().resurfaceStaged()
+      }
     },
   })
 }
@@ -107,26 +128,38 @@ export function useApplyDeletion(tenantId: string | undefined) {
       }
       return { names, mode }
     },
-    onSuccess: ({ names, mode }) => {
-      for (const name of names) {
-        if (mode === 'remove') queryClient.removeQueries({ queryKey: ['resource', tenantId, name] })
-        else queryClient.invalidateQueries({ queryKey: ['resource', tenantId, name] })
-      }
+    onSuccess: ({ mode }) => {
+      // Emptying is live at once; removing marks the tables for the next
+      // deploy, so it raises the "not live yet" strip.
+      queryClient.invalidateQueries({ queryKey: ['resource', tenantId] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['diagnostics', tenantId] })
-      // Emptying a resource stages a draft like any other save.
-      if (mode === 'empty') useWorkspaceStore.getState().resurfaceStaged()
+      if (mode === 'remove') useWorkspaceStore.getState().resurfaceStaged()
     },
   })
 }
 
+/**
+ * Remove a table. A live one is marked and keeps serving until the next
+ * deploy; one never deployed is gone at once.
+ */
 export function useDeleteResource(tenantId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (resource: string) => deleteResourceFile(tenantId!, resource),
-    onSuccess: (_data, resource) => {
-      queryClient.removeQueries({ queryKey: ['resource', tenantId, resource] })
+    onSuccess: (res, resource) => {
+      if (res.deleted) queryClient.removeQueries({ queryKey: ['resource', tenantId, resource] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      if (res.pendingRemoval) useWorkspaceStore.getState().resurfaceStaged()
     },
+  })
+}
+
+/** Take back a table's removal before it is deployed. */
+export function useRestoreResource(tenantId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (resource: string) => restoreResourceFile(tenantId!, resource),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
   })
 }

@@ -127,7 +127,10 @@ beforeAll(async () => {
   });
   await seed(core, "deployable", {
     posts: [{ id: "1", title: "live" }],
-    draft_posts: [{ id: "1", title: "promoted" }],
+    // A draft over a live table, as the old save model left them.
+    draft_posts: [{ id: "1", title: "stale" }],
+    // A new table, staged until its first deploy.
+    draft_notes: [{ id: "n1", text: "promoted" }],
   });
 }, 30_000);
 
@@ -620,8 +623,15 @@ describe("write-through persistence", () => {
     expect(after.status).toBe(404);
   });
 
-  test("deploy promotes every draft over its live file and evicts", async () => {
+  /**
+   * Deploy publishes structure: a new table's draft becomes live. Records of a
+   * live table are saved live, never staged, so a data draft over a live file
+   * can only be a leftover from before that rule — promoting it would overwrite
+   * every record written since, so it is discarded instead.
+   */
+  test("deploy promotes a new table's draft and evicts, and discards a draft over a live table", async () => {
     // Cache the pre-deploy state so a missing evict() would be visible.
+    expect((await fetch(`${core.base}/deployable/notes`)).status).toBe(404);
     const before = await fetch(`${core.base}/deployable/posts`).then((r) => r.json());
     expect(before[0]).toMatchObject({ title: "live" });
 
@@ -630,29 +640,32 @@ describe("write-through persistence", () => {
       headers: adminAuth,
     });
     expect(deploy.status).toBe(200);
-    expect(await deploy.json()).toMatchObject({ promoted: ["posts"] });
+    expect(await deploy.json()).toMatchObject({ promoted: ["notes"], discarded: ["posts"] });
 
+    expect(await fetch(`${core.base}/deployable/notes`).then((r) => r.json())).toEqual([
+      { id: "n1", text: "promoted" },
+    ]);
+    // The live table kept its records; the stale draft did not replace them.
     const after = await fetch(`${core.base}/deployable/posts`).then((r) => r.json());
-    expect(after[0]).toMatchObject({ title: "promoted" });
+    expect(after[0]).toMatchObject({ title: "live" });
   });
 
   /**
    * A promoted draft has to be consumed, or it becomes a frozen second copy of
-   * the resource that nothing updates again — and drafts are read in preference
-   * to live files. Left behind, it hides every record the public API creates
-   * from the dashboard editor, and the next deploy re-promotes it over the live
-   * file, destroying those records even for a resource nobody edited.
+   * the resource that nothing updates again — and the next deploy would put it
+   * back over the live file, destroying every record written since.
    */
   test("a promoted draft is consumed, so a second deploy promotes nothing", async () => {
     const files = await readdir(join(core.dir, "deployable", "data"));
-    expect(files).toContain("posts.json");
+    expect(files).toContain("notes.json");
+    expect(files).not.toContain("draft_notes.json");
     expect(files).not.toContain("draft_posts.json");
 
     // The live data now belongs to whoever writes it, including the public API.
-    const created = await fetch(`${core.base}/deployable/posts`, {
+    const created = await fetch(`${core.base}/deployable/notes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "written through the API" }),
+      body: JSON.stringify({ text: "written through the API" }),
     });
     expect(created.status).toBe(201);
 
@@ -662,9 +675,9 @@ describe("write-through persistence", () => {
     });
     expect(await redeploy.json()).toMatchObject({ promoted: [] });
 
-    // The API-created record is still there — the stale draft did not come back.
-    const posts = await fetch(`${core.base}/deployable/posts`).then((r) => r.json());
-    expect(posts.map((p: any) => p.title)).toEqual(["promoted", "written through the API"]);
+    // The API-created record is still there — nothing came back over it.
+    const notes = await fetch(`${core.base}/deployable/notes`).then((r) => r.json());
+    expect(notes.map((n: any) => n.text)).toEqual(["promoted", "written through the API"]);
   });
 });
 
@@ -1501,7 +1514,7 @@ describe("tenant layout", () => {
   test("deploy promotes each draft within its own folder, and never a feature's file", async () => {
     await seed(core, "promote", {
       posts: [{ id: "1", title: "live" }],
-      draft_posts: [{ id: "1", title: "staged" }],
+      draft_tags: [{ id: "t1", name: "staged" }],
       config: { QA_MODE: "false" },
       draft_config: { QA_MODE: "true" },
     });
@@ -1510,9 +1523,10 @@ describe("tenant layout", () => {
     await Bun.write(join(core.dir, "promote", "data", "draft_config.json"), JSON.stringify({ QA_MODE: "false" }));
 
     const deploy = await fetch(`${core.base}/promote/_admin/deploy`, { method: "POST", headers: adminAuth });
-    expect(((await deploy.json()).promoted as string[]).sort()).toEqual(["config", "posts"]);
+    expect(((await deploy.json()).promoted as string[]).sort()).toEqual(["config", "tags"]);
 
-    expect(await readFile(core, "promote", "posts")).toEqual([{ id: "1", title: "staged" }]);
+    expect(await readFile(core, "promote", "tags")).toEqual([{ id: "t1", name: "staged" }]);
+    expect(await readFile(core, "promote", "posts")).toEqual([{ id: "1", title: "live" }]);
     expect(await readFile(core, "promote", "config")).toEqual({ QA_MODE: "true" });
     expect(await Bun.file(join(core.dir, "promote", "system", "users.json")).exists()).toBe(false);
     // Served, so the stray data/draft_config did not stop it; QA on, so system/'s draft did go live.
@@ -1528,6 +1542,169 @@ describe("tenant layout", () => {
     const res = await fetch(`${core.base}/rootfiles/posts`);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "resource not found" });
+  });
+});
+
+/**
+ * Record operations are how the AI Co-Pilot changes data: by filter, with the
+ * public plane's stamping, answering with counts — and with the before-images
+ * an undo needs, which restore puts back only where nothing changed since.
+ */
+describe("record operations", () => {
+  const op = (tenant: string, resource: string, body: unknown) =>
+    fetch(`${core.base}/${tenant}/_admin/records/${resource}`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const rows = (tenant: string, resource = "books") =>
+    fetch(`${core.base}/${tenant}/_admin/files/${resource}`, { headers: adminAuth }).then((r) => r.json());
+
+  test("create stamps like the public plane, answers with counts, and is all or nothing", async () => {
+    await seed(core, "rec-create", { books: [{ id: "1", title: "Dune" }] });
+    const res = await op("rec-create", "books", {
+      op: "create",
+      records: [{ title: "Hyperion", createdAt: "1999-01-01" }, { id: "b2", title: "Solaris" }],
+    });
+    expect(res.status).toBe(200);
+    const out = await res.json();
+    expect(out).toMatchObject({ staged: false, result: { created: 2 } });
+    expect(out.result.ids[1]).toBe("b2");
+    const all = await rows("rec-create");
+    expect(all).toHaveLength(3);
+    // Server-owned timestamps overwrite what was sent; the id is kept when given.
+    expect(all[1].createdAt).not.toBe("1999-01-01");
+    expect(all[1].id).toMatch(/^[0-9a-f-]{36}$/);
+
+    // A clashing id refuses the whole batch.
+    const clash = await op("rec-create", "books", { op: "create", records: [{ title: "New" }, { id: "b2" }] });
+    expect(clash.status).toBe(409);
+    expect(await rows("rec-create")).toHaveLength(3);
+
+    // Undo removes exactly what was created.
+    const undone = await op("rec-create", "books", { op: "restore", ...out.undo });
+    expect((await undone.json()).result).toEqual({ restored: 2, skipped: 0 });
+    expect((await rows("rec-create")).map((b: any) => b.title)).toEqual(["Dune"]);
+  });
+
+  test("update and delete by filter, count first, and never touch server fields", async () => {
+    await seed(core, "rec-update", {
+      books: [
+        { id: "1", title: "Dune", price: 10, createdAt: "2020-01-01T00:00:00.000Z" },
+        { id: "2", title: "Hyperion", price: 25 },
+        { id: "3", title: "Solaris", price: 30, draftNote: "x" },
+      ],
+    });
+    expect((await (await op("rec-update", "books", { op: "count", where: { "price[gte]": 25 } })).json()).result).toEqual({
+      count: 2,
+    });
+
+    const updated = await (
+      await op("rec-update", "books", { op: "update", where: { "price[gte]": 25 }, set: { onSale: true }, unset: ["draftNote"] })
+    ).json();
+    expect(updated.result).toEqual({ matched: 2, updated: 2 });
+    let all = await rows("rec-update");
+    expect(all[2]).toMatchObject({ onSale: true });
+    expect(all[2].draftNote).toBeUndefined();
+    expect(all[2].updatedAt).toBeString();
+    expect(all[0].onSale).toBeUndefined();
+
+    // A filter is required; every record is a deliberate choice.
+    expect((await op("rec-update", "books", { op: "delete" })).status).toBe(400);
+    expect((await op("rec-update", "books", { op: "update", where: { id: "1" }, set: { id: "9" } })).status).toBe(400);
+    expect((await op("rec-update", "books", { op: "update", where: { "price[near]": 1 }, set: { a: 1 } })).status).toBe(400);
+
+    const deleted = await (await op("rec-update", "books", { op: "delete", where: { title: "Dune" } })).json();
+    expect(deleted.result).toEqual({ deleted: 1 });
+    all = await rows("rec-update");
+    expect(all.map((b: any) => b.id)).toEqual(["2", "3"]);
+
+    // Undoing the delete puts the record back as it was.
+    await op("rec-update", "books", { op: "restore", ...deleted.undo });
+    all = await rows("rec-update");
+    expect(all.find((b: any) => b.id === "1")).toEqual({ id: "1", title: "Dune", price: 10, createdAt: "2020-01-01T00:00:00.000Z" });
+
+    // Undoing the update restores what was there — except a record written since, which it leaves alone.
+    await fetch(`${core.base}/rec-update/books/3`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Solaris (2nd ed.)", price: 30 }),
+    });
+    const undone = await (await op("rec-update", "books", { op: "restore", ...updated.undo })).json();
+    expect(undone.result).toEqual({ restored: 1, skipped: 1 });
+    all = await rows("rec-update");
+    expect(all.find((b: any) => b.id === "2").onSale).toBeUndefined();
+    expect(all.find((b: any) => b.id === "3").title).toBe("Solaris (2nd ed.)");
+  });
+
+  test("a table not deployed yet is changed in its draft, and the live table is not", async () => {
+    await seed(core, "rec-draft", { books: [{ id: "1" }], draft_authors: [{ id: "a1", name: "Le Guin" }] });
+    const res = await (await op("rec-draft", "authors", { op: "create", records: [{ name: "Banks" }] })).json();
+    expect(res).toMatchObject({ staged: true, result: { created: 1 } });
+    expect(await rows("rec-draft", "draft_authors")).toHaveLength(2);
+    expect((await fetch(`${core.base}/rec-draft/authors`)).status).toBe(404);
+    expect((await op("rec-draft", "ghosts", { op: "count" })).status).toBe(404);
+    expect((await op("rec-draft", "config", { op: "count" })).status).toBe(400);
+  });
+});
+
+/**
+ * A whole-file save is conditional on the revision the writer read. Records are
+ * saved live now, so without this an editor that loaded a table would silently
+ * erase every record the public API wrote before its Save.
+ */
+describe("conditional file writes", () => {
+  const file = (tenant: string, name: string, init: RequestInit = {}) =>
+    fetch(`${core.base}/${tenant}/_admin/files/${name}`, {
+      ...init,
+      headers: { ...adminAuth, "content-type": "application/json", ...(init.headers ?? {}) },
+    });
+  const save = (tenant: string, name: string, body: unknown, ifMatch?: string) =>
+    file(tenant, name, { method: "POST", body: JSON.stringify(body), headers: ifMatch ? { "if-match": ifMatch } : {} });
+
+  test("a read carries the file's revision, and HEAD gives it without the body", async () => {
+    await seed(core, "revs", { posts: [{ id: "1" }] });
+    const read = await file("revs", "posts");
+    const revision = read.headers.get("x-revision");
+    expect(revision).toMatch(/^[0-9a-f]{16}$/);
+    const head = await file("revs", "posts", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("x-revision")).toBe(revision);
+    expect(await head.text()).toBe("");
+    expect((await file("revs", "ghosts", { method: "HEAD" })).status).toBe(404);
+  });
+
+  test("a save names the revision it read, and is refused once someone else has written", async () => {
+    await seed(core, "conflict", { posts: [{ id: "1", title: "first" }] });
+    const loaded = (await file("conflict", "posts")).headers.get("x-revision")!;
+
+    // The public API writes while the editor is open.
+    const created = await fetch(`${core.base}/conflict/posts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "2", title: "from the API" }),
+    });
+    expect(created.status).toBe(201);
+
+    // The editor's save names what it loaded, and is refused with the current revision.
+    const stale = await save("conflict", "posts", [{ id: "1", title: "edited" }], loaded);
+    expect(stale.status).toBe(409);
+    const current = (await stale.json()).revision;
+    expect(current).not.toBe(loaded);
+    const rows = await fetch(`${core.base}/conflict/posts`).then((r) => r.json());
+    expect(rows.map((r: any) => r.title)).toEqual(["first", "from the API"]);
+
+    // Saving against the current revision goes through, and reports the next one.
+    const fresh = await save("conflict", "posts", [{ id: "1", title: "edited" }], current);
+    expect(fresh.status).toBe(201);
+    const next = (await fresh.json()).revision;
+    expect((await file("conflict", "posts")).headers.get("x-revision")).toBe(next);
+  });
+
+  test("'none' means the file must not exist yet, and no If-Match writes unconditionally", async () => {
+    expect((await save("absent", "posts", [{ id: "1" }], "none")).status).toBe(201);
+    expect((await save("absent", "posts", [{ id: "2" }], "none")).status).toBe(409);
+    expect((await save("absent", "posts", [{ id: "3" }])).status).toBe(201);
   });
 });
 
@@ -1598,24 +1775,27 @@ describe("data models", () => {
     await writeFile("whole", "posts", [{ id: "1", a: 1 }]);
     expect(Object.keys((await models("whole")).posts.fields)).toEqual(["id", "a"]);
 
-    // A draft gets a model of its own, and the live one is untouched.
-    await writeFile("whole", "draft_posts", [{ id: "1", b: "x" }]);
+    // A new table's draft gets a model of its own; the live table's is untouched.
+    await writeFile("whole", "draft_notes", [{ id: "1", b: "x" }]);
     let all = await models("whole");
-    expect(Object.keys(all.draft_posts.fields)).toEqual(["id", "b"]);
-    expect(all.draft_posts.resource).toBe("posts");
+    expect(Object.keys(all.draft_notes.fields)).toEqual(["id", "b"]);
+    expect(all.draft_notes.resource).toBe("notes");
     expect(Object.keys(all.posts.fields)).toEqual(["id", "a"]);
 
-    // Deploy promotes the draft's model with it.
+    // Deploy promotes the draft's model with it — and a draft left over a live
+    // table is discarded, its model with it, leaving the live model as it was.
+    await writeFile("whole", "draft_posts", [{ id: "1", stale: true }]);
     await admin("whole", "deploy", { method: "POST" });
     all = await models("whole");
-    expect(Object.keys(all)).toEqual(["posts"]);
-    expect(Object.keys(all.posts.fields)).toEqual(["id", "b"]);
-    expect(await modelFiles("whole")).toEqual(["posts.json"]);
+    expect(Object.keys(all).sort()).toEqual(["notes", "posts"]);
+    expect(Object.keys(all.notes.fields)).toEqual(["id", "b"]);
+    expect(Object.keys(all.posts.fields)).toEqual(["id", "a"]);
+    expect(await modelFiles("whole")).toEqual(["notes.json", "posts.json"]);
 
-    // Removing the resource removes its model.
+    // Removing a table removes its model.
     await admin("whole", "files/posts", { method: "DELETE" });
-    expect(await modelFiles("whole")).toEqual([]);
-    expect(await models("whole")).toEqual({});
+    expect(await modelFiles("whole")).toEqual(["notes.json"]);
+    expect(Object.keys(await models("whole"))).toEqual(["notes"]);
   });
 
   test("a project with no models gets them on first read, and a model its file has outgrown is rebuilt", async () => {
@@ -3626,14 +3806,14 @@ describe("MCP transport", () => {
     expect(created.status).toBe(201);
     expect((await mcp.query("SELECT COUNT(*) AS n FROM posts")).rows).toEqual([{ n: 2 }]);
 
-    // So does an admin file write promoted by deploy.
-    await fetch(`${svc.base}/t/_admin/files/draft_posts`, {
+    // So does a new table promoted by deploy.
+    await fetch(`${svc.base}/t/_admin/files/draft_notes`, {
       method: "POST",
       headers: { ...adminAuth, "content-type": "application/json" },
-      body: JSON.stringify([{ id: "1", title: "promoted" }]),
+      body: JSON.stringify([{ id: "1", text: "promoted" }]),
     });
     await fetch(`${svc.base}/t/_admin/deploy`, { method: "POST", headers: adminAuth });
-    expect((await mcp.query("SELECT title FROM posts")).rows).toEqual([{ title: "promoted" }]);
+    expect((await mcp.query("SELECT text FROM notes")).rows).toEqual([{ text: "promoted" }]);
     mcp.close();
   }, 30_000);
 

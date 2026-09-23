@@ -113,22 +113,33 @@ RULES & GUIDELINES:
    field names and types consistent with it. When the user says a field is required or optional,
    record it with 'set_required_fields'. Required is recorded, not enforced yet: requests that
    leave the field out still succeed. Say so.
-4. SCHEMAS: If the user asks to create or update tables, use the 'stage_schema_drafts' tool.
+4. RECORDS: To add, change or delete records, use 'create_records', 'update_records' and
+   'delete_records'; 'count_records' says how many match. The user's request is the go-ahead:
+   do what they asked. Name records with 'where' in the query filter language — {"title": "Dune"},
+   {"price[gt]": 20}, {"title[contains]": "war"} — and never ask to see records first. You only ever
+   get counts and ids back, never record contents. Changing or deleting more than 20 records needs
+   the user's answer: the tool tells you the count and gives a confirmation; tell the user the number,
+   ask, and only call again with the confirmation after they agree in their next message. Every
+   change can be undone from its card in the chat — say so. You cannot read what records contain:
+   for a question about their contents ("which book costs most?"), give the user the query to run in
+   the Live tab, e.g. GET /books?_sort=price&_direction=desc&_limit=1.
+5. SCHEMAS: If the user asks for new tables, use the 'stage_schema_drafts' tool.
    - Always generate highly realistic seed data (3-5 records).
    - Use singular 'Id' suffixes for foreign keys (e.g., 'userId' in a 'posts' table).
    - Flat structures only. No nested arrays or objects.
-   - This tool ONLY creates or replaces tables. It cannot delete or empty anything.
+   - This tool ONLY creates new tables (or replaces one not deployed yet). It cannot delete
+     or empty anything, and it cannot change a live table's records.
    - NEVER invent a filler table (e.g. 'placeholders', 'resets', 'temp') to satisfy a
      request you have no tool for. Say what you cannot do instead.
-5. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
-6. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
-7. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
-8. INFRASTRUCTURE: Never assume a project's state. If asked to deploy, start, or stop the server, use the respective tools ('deploy_project', 'set_server_status').
-9. DELETING: For any request to delete, clear, reset or empty data, use the 'delete_resources'
-   tool. It only PROPOSES the change — the user must confirm it in the dashboard before
+6. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
+7. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
+8. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
+9. INFRASTRUCTURE: Never assume a project's state. If asked to deploy, start, or stop the server, use the respective tools ('deploy_project', 'set_server_status').
+10. DELETING TABLES: For a request to remove a whole table, or to empty one, use the
+   'delete_resources' tool. It only PROPOSES the change — the user must confirm it in the dashboard before
    anything is removed. Tell them it is waiting for their confirmation. Never say data has
    been deleted, and never deploy in place of deleting.
-10. HONESTY: Only report an action when a tool ran it and reported success. A proposal that
+11. HONESTY: Only report an action when a tool ran it and reported success. A proposal that
    waits for the user's confirmation has not happened yet. If a tool failed, or nothing you
    have can do what was asked, say so plainly. Never claim work you did not do.
 
@@ -149,9 +160,9 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
   {
     name: "stage_schema_drafts",
     description:
-      "Generates or updates JSON database schemas as drafts. Each table becomes a REST resource " +
-      "with GET/POST/PUT/DELETE once the user deploys. Staged only — never live until the user " +
-      "presses Deploy or asks you to deploy.",
+      "Creates NEW tables as drafts, with seed records. Each becomes a REST resource with " +
+      "GET/POST/PUT/DELETE once the user deploys — never live before. A table that is already " +
+      "live is refused: its records are real data, changed with the record tools instead.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -207,9 +218,9 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
   {
     name: "delete_resources",
     description:
-      "Proposes clearing or removing existing tables. Use it for any delete, clear, reset or " +
-      "empty request. NOTHING IS DELETED BY THIS CALL — it returns a proposal the user must " +
-      "confirm in the dashboard, so report it as awaiting their confirmation.",
+      "Proposes emptying or removing existing tables. Use it for any request to delete, clear, " +
+      "reset or empty a whole table. NOTHING IS DELETED BY THIS CALL — it returns a proposal the " +
+      "user must confirm in the dashboard, so report it as awaiting their confirmation.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -224,9 +235,8 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
           type: "STRING",
           enum: ["empty", "remove"],
           description:
-            "'empty' keeps the endpoints and drops every record into a staged draft, so the " +
-            "live API keeps serving until the user deploys; 'remove' deletes the tables and " +
-            "their endpoints outright, immediately.",
+            "'empty' keeps the endpoints and deletes every record, live, as soon as the user " +
+            "confirms; 'remove' takes the tables and their endpoints away at the next deploy.",
         },
       },
       required: ["names", "mode"],
@@ -284,6 +294,76 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
     description:
       "Retrieves the project's tables, its settings (deployed and staged), syntax health, " +
       "server status, rate limit warnings, and recent live logs.",
+  },
+  {
+    name: "create_records",
+    description:
+      "Adds records to an existing table. The server sets each id (unless given), createdAt and " +
+      "updatedAt. Answers with how many were created and their ids — never the records.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        table: { type: "STRING", description: "The existing table, e.g. books." },
+        records: {
+          type: "ARRAY",
+          description: "The records to add, one object each, at most 200 per call.",
+          items: { type: "OBJECT" },
+        },
+      },
+      required: ["table", "records"],
+    },
+  },
+  {
+    name: "update_records",
+    description:
+      "Changes the records of one table that match 'where': 'set' gives fields their new values, " +
+      "'unset' removes fields. Answers with how many matched and changed — never the records. More " +
+      "than 20 records needs the user's confirmation first (the tool explains).",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        table: { type: "STRING", description: "The existing table." },
+        where: {
+          type: "OBJECT",
+          description:
+            "Which records, in the query filter language: {\"id\": \"7\"}, {\"status\": \"pending\"}, " +
+            "{\"price[gt]\": 20}, {\"title[contains]\": \"war\"}. Plain values match exactly.",
+        },
+        all: { type: "BOOLEAN", description: "true to change every record — only when the user asked for all of them." },
+        set: { type: "OBJECT", description: "Fields to set, e.g. {\"status\": \"shipped\"}." },
+        unset: { type: "ARRAY", description: "Fields to remove.", items: { type: "STRING" } },
+        confirmation: { type: "STRING", description: "Only when a previous call asked for one and the user has since agreed." },
+      },
+      required: ["table"],
+    },
+  },
+  {
+    name: "delete_records",
+    description:
+      "Deletes the records of one table that match 'where'. Answers with how many were deleted. " +
+      "More than 20 records needs the user's confirmation first (the tool explains).",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        table: { type: "STRING", description: "The existing table." },
+        where: { type: "OBJECT", description: "Which records, as in update_records." },
+        all: { type: "BOOLEAN", description: "true to delete every record — only when the user asked for all of them." },
+        confirmation: { type: "STRING", description: "Only when a previous call asked for one and the user has since agreed." },
+      },
+      required: ["table"],
+    },
+  },
+  {
+    name: "count_records",
+    description: "Counts the records of one table, or those that match 'where'. Never returns records.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        table: { type: "STRING", description: "The table." },
+        where: { type: "OBJECT", description: "Which records, as in update_records. Leave out to count all." },
+      },
+      required: ["table"],
+    },
   },
   {
     name: "get_data_model",

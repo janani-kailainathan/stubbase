@@ -62,6 +62,13 @@ interface WorkspaceState {
   editing: boolean
   draft: string
   /**
+   * What the edit started from: the file's revision, sent back with the save
+   * so it is refused if the file changed meanwhile, and its text, which is
+   * what Undo puts back. Null for editors that do not guard their saves.
+   */
+  editRevision: string | null
+  editBase: string
+  /**
    * The endpoint pane's Docs / Live tab. A preference, not part
    * of a selection: picking another endpoint keeps it, so someone working in
    * Live stays in Live while they walk the rail. Files and .env never read it.
@@ -151,7 +158,7 @@ interface WorkspaceState {
   toggleData: () => void
   setSystemExpanded: (expanded: boolean) => void
   setNewProjectOpen: (open: boolean) => void
-  startEdit: (initial: string) => void
+  startEdit: (initial: string, revision?: string | null) => void
   changeDraft: (draft: string) => void
   stopEdit: () => void
   addChatEntry: (tenantId: string, entry: ChatEntry) => void
@@ -180,6 +187,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selection: null,
   editing: false,
   draft: '',
+  editRevision: null,
+  editBase: '',
   activeTab: 'live',
   // Pretty is the only Logs view offered for now (LOG_TABS in EditorPane), so it
   // must also be where the pane opens — a hidden view could not be left.
@@ -241,7 +250,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setNewProjectOpen: (open) => set({ newProjectOpen: open }),
 
-  startEdit: (initial) => set({ editing: true, draft: initial }),
+  startEdit: (initial, revision = null) =>
+    set({ editing: true, draft: initial, editBase: initial, editRevision: revision }),
 
   changeDraft: (draft) => set({ draft }),
 

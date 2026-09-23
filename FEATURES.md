@@ -47,6 +47,15 @@ live, the records inside it need no deploy: create, change or delete one and
 the very next request sees it. Your changes are saved as you make them, so
 they are still there when you come back tomorrow.
 
+That goes for the dashboard's editor too: **Save** changes your live API at
+once. If your API changed the resource after you opened it, the save is
+refused rather than overwriting those records — reload, and make your edit on
+top of the latest. For a few seconds after saving you can **Undo**, which puts
+the resource back as it was before your edit.
+
+Removing a resource works like adding one: it stays live, marked in the Files
+list, until you Deploy — and you can **Restore** it before then.
+
 > **Known issue:** entry changes are not currently taking effect immediately —
 > confirmed by testing on 2026-09-03. The behaviour described above is what is
 > intended; we will fix this.
@@ -842,15 +851,27 @@ tells you plainly when you ask for something Stubbase does not do.
   validation and it proposes the `.env` lines. It never fills in secrets or
   URLs — your Google, GitHub, Resend and Twilio keys, webhook addresses — and
   tells you which line to fill in yourself.
-- **Debug.** It reads your recent requests, your settings and any file that
-  does not parse. It sees which secrets are set, never their values.
+- **Add, change and delete records.** Ask it to add a book, mark every pending
+  order shipped, or delete last year's test data, and it does — your request
+  is the go-ahead. It never reads your records to do it: it picks them by a
+  filter such as `price[gt]=20`, and all it sees back is how many changed. A
+  change to more than 20 records waits for you to confirm in the chat first.
+  Every change has an **Undo** on its card, which puts back what it changed
+  and leaves alone anything written since.
+- **Count records**, but not read them. For a question about what your records
+  contain — "which book costs most?" — it gives you the query to run in the
+  Live tab instead.
+- **Debug.** It reads your recent requests (their paths and statuses, never
+  their bodies), your settings and any file that does not parse. It sees which
+  secrets are set, never their values.
 - **Deploy, start and stop** your API, and **propose deleting or emptying**
   tables.
 
-Anything that changes your settings, fills your project from a starter or
-deletes data is a proposal: a card in the chat with a button to confirm it.
-Nothing happens until you click, and a confirmed change is staged like an edit
-of your own — your live API changes when you Deploy.
+Anything that changes your settings, fills your project from a starter, or
+removes or empties a whole table is a proposal: a card in the chat with a
+button to confirm it. Nothing happens until you click. A confirmed settings
+change, starter or table removal then waits for Deploy, like your own; emptying
+a table happens at once. Changes to records happen when you ask for them.
 
 ---
 
@@ -879,8 +900,8 @@ a `SCHEMA_<RESOURCE>` rule or a `HOOK_*` webhook URL is live from the moment
 you write it, and you remove it by clearing the key. Those tables say so in
 their first row.
 
-Settings follow the same rule as your resources: they are saved as a draft and
-go live when you hit **Deploy**.
+Settings follow the same rule as adding or removing a resource: they are saved
+as a draft and go live when you hit **Deploy**.
 
 One table per feature, and it grows as features are added. For the exhaustive
 reference — defaults, exact formats, and how each key is wired in dev, Docker

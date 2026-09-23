@@ -1,14 +1,15 @@
 import { Fragment, Suspense, lazy } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Check, RefreshCw, X } from 'lucide-react'
-import { CORE_PUBLIC_URL } from '@/lib/api'
+import { ApiError, CORE_PUBLIC_URL } from '@/lib/api'
 import type { Endpoint } from '@/lib/endpoints'
 import { JsonHighlight } from '@/lib/json-highlight'
 import { JsonTree } from '@/lib/json-tree'
 import { sampleRecordBody } from '@/lib/playground'
 import { useCurrentProject, usePaneMode } from '@/hooks/projects'
 import { useEndpointGroups } from '@/hooks/endpoints'
-import { useResource, useSaveResource } from '@/hooks/resources'
+import { useResource, useResourceRevision, useSaveResource } from '@/hooks/resources'
 import { useSystemFile } from '@/hooks/system'
 import { useLiveRbac, useRbac, useSaveRbac, useSetUserRole } from '@/hooks/rbac'
 import { RBAC_EXAMPLE, assignableRoles, rbacEnabled } from '@/lib/rbac'
@@ -55,10 +56,41 @@ function parseErrorMessage(text: string, err: unknown): string {
 function ResourceActions({ tenantId, resource }: { tenantId: string; resource: string }) {
   const editing = useWorkspaceStore((s) => s.editing)
   const draft = useWorkspaceStore((s) => s.draft)
+  const editRevision = useWorkspaceStore((s) => s.editRevision)
   const startEdit = useWorkspaceStore((s) => s.startEdit)
   const stopEdit = useWorkspaceStore((s) => s.stopEdit)
   const { data, refetch, isFetching } = useResource(tenantId, resource)
+  const revision = useResourceRevision(tenantId, resource)
   const save = useSaveResource(tenantId, resource)
+
+  // A record save is live at once, so it is guarded twice: refused if the file
+  // changed since this edit began (someone's records would be erased), and
+  // undoable for a few seconds after, by putting back what the edit started
+  // from — itself guarded, so an undo cannot erase what was written since.
+  const undo = (base: unknown[], savedRevision: string | null) =>
+    save.mutate(
+      { records: base, revision: savedRevision },
+      {
+        onSuccess: () => toast.success(`Undone — ${resource}.json is back as it was.`),
+        onError: (e) =>
+          toast.error(
+            e instanceof ApiError && e.status === 409
+              ? `${resource}.json changed again since your save, so it can't be undone automatically.`
+              : `Undo failed: ${e.message}`,
+          ),
+      },
+    )
+
+  // Discards the edit and reopens the editor on the file as it is now — with
+  // the revision that refetch brought, read from the cache rather than from
+  // this render, which still holds the stale one.
+  const queryClient = useQueryClient()
+  const reload = () =>
+    refetch().then((res) => {
+      if (res.error || !res.data) return
+      const fresh = queryClient.getQueryData<{ revision: string | null }>(['resource', tenantId, resource])
+      startEdit(stringify(res.data), fresh?.revision ?? null)
+    })
 
   const onSave = () => {
     // An emptied editor means "no records", not a syntax error to fix first.
@@ -74,13 +106,28 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
       toast.error('A resource file must be a JSON array of records.')
       return
     }
-    save.mutate(parsed, {
-      onSuccess: (res) => {
-        stopEdit()
-        toast.success(`Saved ${resource}.json (${res.records} record${res.records === 1 ? '' : 's'})`)
+    const base = JSON.parse(useWorkspaceStore.getState().editBase || '[]') as unknown[]
+    save.mutate(
+      { records: parsed, revision: editRevision },
+      {
+        onSuccess: (res) => {
+          stopEdit()
+          const saved = `Saved ${resource}.json (${res.records} record${res.records === 1 ? '' : 's'})`
+          toast.success(res.draft ? `${saved} — live when you Deploy.` : `${saved} — live now.`, {
+            action: { label: 'Undo', onClick: () => undo(base, res.revision) },
+          })
+        },
+        onError: (e) => {
+          if (e instanceof ApiError && e.status === 409)
+            toast.error(`${resource}.json changed since you opened it, so your edit was not saved.`, {
+              description: 'Reload to start from the latest records — this discards your edit.',
+              action: { label: 'Reload', onClick: reload },
+              duration: 15_000,
+            })
+          else toast.error(`Save failed: ${e.message}`)
+        },
       },
-      onError: (e) => toast.error(`Save failed: ${e.message}`),
-    })
+    )
   }
 
   useSaveShortcut(editing && !save.isPending, onSave)
@@ -109,7 +156,7 @@ function ResourceActions({ tenantId, resource }: { tenantId: string; resource: s
           Refresh
         </button>
         <button
-          onClick={() => startEdit(stringify(data ?? []))}
+          onClick={() => startEdit(stringify(data ?? []), revision)}
           disabled={data === undefined}
           className="cursor-pointer px-2 py-1 font-mono text-xs text-subtle transition-colors hover:text-primary-accent disabled:opacity-50"
         >

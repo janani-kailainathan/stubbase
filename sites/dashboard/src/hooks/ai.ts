@@ -1,5 +1,5 @@
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
-import { chatWithCoPilot, type ChatTurn } from '@/lib/api'
+import { chatWithCoPilot, undoRecordChange, type ChatTurn } from '@/lib/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 export const aiChatKey = (tenantId: string | undefined) => ['ai-chat', tenantId]
@@ -19,6 +19,15 @@ export function useIsCoPilotThinking(tenantId: string | undefined) {
  * a tool actually did something, so a purely conversational answer costs no
  * refetches.
  */
+/** Undo a record change the Co-Pilot made, from its card in the chat. */
+export function useUndoRecordChange(tenantId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (undoId: string) => undoRecordChange(tenantId!, undoId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resource', tenantId] }),
+  })
+}
+
 export function useCoPilotChat(tenantId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({

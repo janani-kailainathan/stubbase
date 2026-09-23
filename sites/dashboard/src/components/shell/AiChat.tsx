@@ -3,6 +3,10 @@ import {
   ArrowUp,
   Activity,
   CircleStop,
+  Hash,
+  PencilLine,
+  Plus,
+  Undo2,
   Info,
   ListChecks,
   LayoutTemplate,
@@ -16,7 +20,7 @@ import {
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
-import { useCoPilotChat, useIsCoPilotThinking } from '@/hooks/ai'
+import { useCoPilotChat, useIsCoPilotThinking, useUndoRecordChange } from '@/hooks/ai'
 import { toast } from 'sonner'
 import { useAccountSummary } from '@/hooks/account'
 import { OutOfCreditsNotice } from '@/components/shell/CreditNotice'
@@ -144,6 +148,84 @@ function Diagnostics({ result }: { result: Record<string, unknown> }) {
   )
 }
 
+/**
+ * A record change the Co-Pilot made. It already happened — the chat was the
+ * confirmation — so the card says what changed and offers Undo, which puts
+ * back what the change altered and leaves alone anything written since.
+ */
+function RecordChange({
+  name,
+  result,
+  tenantId,
+}: {
+  name: string
+  result: Record<string, unknown>
+  tenantId: string | undefined
+}) {
+  const [undone, setUndone] = useState<string | null>(null)
+  const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
+  const undo = useUndoRecordChange(tenantId)
+  const table = str(result.table) ?? 'table'
+  const n = (key: string) => (typeof result[key] === 'number' ? (result[key] as number) : 0)
+  const plural = (count: number) => `${count} record${count === 1 ? '' : 's'}`
+
+  // A bulk change waiting for the user's answer: nothing happened yet.
+  if (result.needsConfirmation === true)
+    return (
+      <ToolCard icon={TriangleAlert} title={`Waiting for your go-ahead`}>
+        <p className="font-mono text-[10px] text-subtle">
+          This would {name === 'delete_records' ? 'delete' : 'change'} {plural(n('matched'))} in {table}. Nothing has
+          changed yet — reply to confirm.
+        </p>
+      </ToolCard>
+    )
+
+  const [icon, title] =
+    name === 'create_records'
+      ? [Plus, `Added ${plural(n('created'))} to ${table}`]
+      : name === 'update_records'
+        ? [PencilLine, n('matched') === 0 ? `No ${table} records matched` : `Updated ${plural(n('updated'))} in ${table}`]
+        : [Trash2, n('matched') === 0 ? `No ${table} records matched` : `Deleted ${plural(n('deleted'))} from ${table}`]
+  const undoId = str(result.undoId)
+
+  return (
+    <ToolCard icon={icon} title={title}>
+      {result.staged === true && (
+        <p className="font-mono text-[10px] text-faint">{table} is not deployed yet: this goes live with it.</p>
+      )}
+      {undone ? (
+        <p className="font-mono text-[10px] text-subtle">{undone}</p>
+      ) : (
+        undoId && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                undo.mutate(undoId, {
+                  onSuccess: (res) => {
+                    const text =
+                      res.skipped > 0
+                        ? `Undone, except ${plural(res.skipped)} changed since, which ${res.skipped === 1 ? 'was' : 'were'} left as ${res.skipped === 1 ? 'it is' : 'they are'}.`
+                        : 'Undone.'
+                    setUndone(text)
+                    if (tenantId)
+                      addChatEntry(tenantId, { id: crypto.randomUUID(), kind: 'notice', text: `${text} (${table})`, tone: 'done' })
+                  },
+                  onError: (e) => setUndone(`Could not undo: ${e.message}`),
+                })
+              }
+              disabled={undo.isPending}
+              className="flex cursor-pointer items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:text-heading disabled:opacity-50"
+            >
+              <Undo2 className="h-3 w-3" />
+              {undo.isPending ? 'Undoing…' : 'Undo'}
+            </button>
+          </div>
+        )
+      )}
+    </ToolCard>
+  )
+}
+
 /** The Co-Pilot read the shape of the tables — which ones, never their records. */
 function DataModelRead({ result }: { result: Record<string, unknown> }) {
   const tables = Object.keys((result.tables as object) ?? {})
@@ -190,29 +272,28 @@ function ConfirmDeletion({
   const apply = useApplyDeletion(tenantId)
 
   const removing = mode === 'remove'
-  // Emptying goes through the files proxy, so it lands as a draft like every
-  // other edit — the live API keeps serving until Deploy. Removing takes the
-  // file out from under the live plane immediately. Say which, precisely:
-  // "this cannot be undone" on a staged change would be a lie.
+  // Emptying is a change to records, so it is live at once. Removing a table is
+  // a change to structure, so it waits for Deploy and can be restored before
+  // then. Say which, precisely: the two are opposite in both respects.
   const copy = removing
     ? {
-        title: `Delete ${names.length} table${names.length === 1 ? '' : 's'}?`,
-        detail: 'The files and their endpoints are deleted immediately. This cannot be undone.',
-        confirm: 'Yes, delete',
-        busy: 'Deleting…',
-        done: 'Deleted',
-        doneDetail: `${names.join(' · ')} — removed.`,
-        notice: `Deleted ${names.join(', ')}.`,
+        title: `Remove ${names.length} table${names.length === 1 ? '' : 's'}?`,
+        detail:
+          'The tables and their endpoints go when you next Deploy — your API keeps serving them until then, and you can restore them from Files before that.',
+        confirm: 'Yes, remove',
+        busy: 'Removing…',
+        done: 'Marked for removal',
+        doneDetail: `${names.join(' · ')} — removed when you Deploy.`,
+        notice: `Marked ${names.join(', ')} for removal — they go when you Deploy.`,
       }
     : {
         title: `Empty ${names.length} table${names.length === 1 ? '' : 's'}?`,
-        detail:
-          'Every record is dropped into a staged draft. The endpoints stay, and your live API keeps serving until you press Deploy.',
+        detail: 'Every record is deleted now, from your live API too. The tables and their endpoints stay.',
         confirm: 'Yes, empty',
         busy: 'Emptying…',
         done: 'Emptied',
-        doneDetail: `${names.join(' · ')} — emptied in the draft. Deploy to clear the live API.`,
-        notice: `Emptied ${names.join(', ')} in the draft — Deploy to clear the live API.`,
+        doneDetail: `${names.join(' · ')} — every record deleted.`,
+        notice: `Emptied ${names.join(', ')}.`,
       }
 
   const notice = (text: string, tone: 'done' | 'cancelled') => {
@@ -500,6 +581,16 @@ function ToolResult({
       return <DataModelRead result={result} />
     case 'set_required_fields':
       return <RequiredFields result={result} />
+    case 'create_records':
+    case 'update_records':
+    case 'delete_records':
+      return <RecordChange name={name} result={result} tenantId={tenantId} />
+    case 'count_records':
+      return (
+        <ToolCard icon={Hash} title={`Counted ${str(result.table) ?? 'records'}`}>
+          <p className="font-mono text-[10px] text-subtle">{String(result.count ?? 0)} matching</p>
+        </ToolCard>
+      )
     default:
       return <ToolCard icon={Wrench} title={name} />
   }

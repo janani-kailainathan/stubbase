@@ -16,6 +16,7 @@
  *   POST             /<tenant>/_notify/email | sms                  (JWT-protected proxy)
  *   GET|POST|DELETE  /<tenant>/_admin/files/<resource>   (Bearer ADMIN_SECRET)
  *   GET              /<tenant>/_admin/models             (Bearer ADMIN_SECRET, data models)
+ *   POST             /<tenant>/_admin/records/<resource> (Bearer ADMIN_SECRET, record ops by filter)
  *   POST             /<tenant>/_admin/models/<resource>  (Bearer ADMIN_SECRET, set required)
  *   GET              /<tenant>/_admin/system[/<file>]    (Bearer ADMIN_SECRET, read-only)
  *   GET|POST         /<tenant>/_admin/status             (Bearer ADMIN_SECRET)
@@ -290,6 +291,14 @@ const dataDir = (t: string) => join(tenantDir(t), "data");
 const systemDir = (t: string) => join(tenantDir(t), "system");
 const resourceFile = (t: string, r: string) => join(dataDir(t), `${r}.json`);
 const systemFile = (t: string, name: string) => join(systemDir(t), `${name}.json`);
+/**
+ * A file's revision: a short hash of its bytes. `_admin/files` answers reads
+ * with it (x-revision) and refuses a write whose If-Match names another, so an
+ * editor that loaded a table cannot save over records written since.
+ */
+const revisionOf = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
+/** The revision a missing file has, so If-Match can also say "I expect this not to exist yet". */
+const NO_FILE = "none";
 const modelsDir = (t: string) => join(tenantDir(t), "models");
 const modelFile = (t: string, name: string) => join(modelsDir(t), `${name}.json`);
 
@@ -1914,9 +1923,15 @@ async function handleAdmin(
     if (req.method !== "POST") return err(405, "method not allowed");
     if (!(await isDirectory(tenantDir(tenantId)))) return err(404, "tenant not found");
     const promoted: string[] = [];
+    const discarded: string[] = [];
     // Resources stage in data/ and settings in system/, each promoted within its
     // own folder. system/ stages config and rbac and nothing else: a feature's
     // files are written by that feature alone, never through a draft.
+    //
+    // A data draft is a table not live yet. Records of a live table are saved
+    // live, never staged, so a data draft sitting over a live file is a leftover
+    // from before that rule — and promoting it would overwrite every record
+    // written since it was made. It is discarded instead, with its model.
     for (const folder of ["data", "system"] as const) {
       const dir = join(tenantDir(tenantId), folder);
       for (const f of await readdir(dir).catch(() => [] as string[])) {
@@ -1924,6 +1939,12 @@ async function handleAdmin(
         const target = f.slice("draft_".length, -".json".length);
         if (!NAME_RE.test(target) || (folder === "system") !== isSettingsFile(target)) continue;
         const draftPath = join(dir, f);
+        if (folder === "data" && (await Bun.file(join(dir, `${target}.json`)).exists())) {
+          await rm(draftPath, { force: true });
+          await rm(modelFile(tenantId, `draft_${target}`), { force: true });
+          discarded.push(target);
+          continue;
+        }
         await Bun.write(join(dir, `${target}.json`), Bun.file(draftPath));
         // Only after the copy has landed: a failed write must leave the draft
         // alone, or the staged edit is gone with nothing live to show for it.
@@ -1941,7 +1962,7 @@ async function handleAdmin(
       }
     }
     evict(tenantId); // CRITICAL: flush cache so the promoted files go live now
-    return json({ ok: true, tenant: tenantId, promoted });
+    return json({ ok: true, tenant: tenantId, promoted, ...(discarded.length > 0 ? { discarded } : {}) });
   }
 
   // GET|POST /<tenant>/_admin/status — whether the public plane is serving.
@@ -1995,6 +2016,22 @@ async function handleAdmin(
     const rows = await f.json().catch(() => null);
     if (!Array.isArray(rows)) return err(500, "file is not a valid JSON array");
     return json(viewSystemFile(name, rows));
+  }
+
+  // POST /<tenant>/_admin/records/<resource> — create, update, delete or count
+  // records by filter, for the AI Co-Pilot (see "Record operations"). The
+  // owner acting on their own data: no quota, rate, auth or roles, no
+  // metering, no webhooks — and no log entry, like the rest of this plane.
+  if (segments[0] === "records" && segments.length === 2) {
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const resource = segments[1];
+    if (!NAME_RE.test(resource) || isPrivateFile(resource) || isSettingsFile(resource))
+      return err(400, "invalid resource name");
+    const body = await readJsonBody(req);
+    if (body instanceof Response) return body;
+    const op = parseRecordOp(body);
+    if (typeof op === "string") return err(400, op);
+    return runRecordOp(tenantId, resource, op);
   }
 
   // GET  /<tenant>/_admin/models             — every data file's model, rebuilt where stale
@@ -2065,11 +2102,18 @@ async function handleAdmin(
 
   // Read-only, disk is authoritative (write-through) — no evict needed.
   // Exists so the dashboard can read files the public plane hides (config).
-  if (req.method === "GET") {
+  // Both answer with the file's revision; HEAD is the cheap "does it exist,
+  // and at which revision" without reading a big table across the wire.
+  if (req.method === "GET" || req.method === "HEAD") {
     const f = Bun.file(file);
     if (!(await f.exists())) return err(404, "resource file not found");
+    const text = await f.text();
+    const revision = revisionOf(text);
+    if (req.method === "HEAD") return new Response(null, { status: 200, headers: { "x-revision": revision } });
     try {
-      return json(await f.json());
+      const res = json(JSON.parse(text));
+      res.headers.set("x-revision", revision);
+      return res;
     } catch {
       return err(500, "file is not valid JSON");
     }
@@ -2094,14 +2138,33 @@ async function handleAdmin(
     } else if (!Array.isArray(initial)) {
       return err(400, "initial data must be a JSON array");
     }
-    await mkdir(dirname(file), { recursive: true });
-    await Bun.write(file, JSON.stringify(initial, null, 2));
-    // A whole-file write is a whole new table: rebuild its model from it.
-    if (Array.isArray(initial) && hasModel(resource))
-      await writeModel(tenantId, resource, observe(modelResource(resource), initial));
+    // If-Match makes the write conditional on the file being the revision the
+    // writer loaded (`none` for "must not exist yet"). Checked and written in
+    // one turn of the write chain, so a public-plane write cannot land between
+    // the check and the overwrite and be lost.
+    const expected = req.headers.get("if-match");
+    const text = JSON.stringify(initial, null, 2);
+    const written = await onWriteChain(tenantId, async () => {
+      if (expected !== null) {
+        const f = Bun.file(file);
+        const current = (await f.exists()) ? revisionOf(await f.text()) : NO_FILE;
+        if (current !== expected) return { conflict: current };
+      }
+      await mkdir(dirname(file), { recursive: true });
+      await Bun.write(file, text);
+      // A whole-file write is a whole new table: rebuild its model from it.
+      if (Array.isArray(initial) && hasModel(resource))
+        await writeModel(tenantId, resource, observe(modelResource(resource), initial));
+      return { conflict: null };
+    });
+    if (written.conflict !== null)
+      return json(
+        { error: "the file changed since it was read; reload it and make the change again", revision: written.conflict },
+        409,
+      );
     evict(tenantId); // CRITICAL: flush cache; next request lazy-loads fresh disk state
     const records = Array.isArray(initial) ? initial.length : Object.keys(initial).length;
-    return json({ ok: true, tenant: tenantId, resource, records }, 201);
+    return json({ ok: true, tenant: tenantId, resource, records, revision: revisionOf(text) }, 201);
   }
 
   if (req.method === "DELETE") {
@@ -2113,6 +2176,202 @@ async function handleAdmin(
   }
 
   return err(405, "method not allowed");
+}
+
+// ── Record operations ─────────────────────────────────────────────
+// What the AI Co-Pilot changes records with: create a batch, or update, delete
+// or count the records a `where` matches — the same filter language as the
+// public plane's query string, so the model targets records without seeing
+// them. Ids and timestamps are stamped exactly as a public write stamps them;
+// ownership (`userId`) is left as it is unless named. A live table is changed
+// in RAM in one synchronous turn and persisted once, like any write; a table
+// not deployed yet is changed in its draft file. Every change answers with the
+// before-images an undo needs (`undo`), which the Dashboard API keeps and never
+// hands to the model, and `restore` puts them back — guarded, so an undo skips
+// any record written since rather than erasing that write.
+
+type RecordOp =
+  | { op: "create"; records: Record<string, unknown>[] }
+  | { op: "update"; filters: Filter[]; set: Record<string, unknown>; unset: string[] }
+  | { op: "delete"; filters: Filter[] }
+  | { op: "count"; filters: Filter[] }
+  | { op: "restore"; put: Record<string, unknown>[]; remove: string[]; guard: Record<string, string | null> };
+
+const MAX_RECORD_OP_ROWS = 1_000;
+/** Fields only the server writes: never set, unset or overwritten by an operation. */
+const SERVER_FIELDS = new Set(["id", "createdAt", "updatedAt"]);
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** An operation from its JSON, or why it is not one. */
+function parseRecordOp(body: unknown): RecordOp | string {
+  if (!isPlainObject(body)) return "body must be a JSON object";
+  const where = (): Filter[] | string => {
+    if (body.where === undefined) return [];
+    if (!isPlainObject(body.where)) return "'where' must be an object of filters, e.g. { \"status\": \"pending\" }";
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(body.where)) {
+      if (v === null || typeof v === "object") return `'where.${k}' must be a string, number or boolean`;
+      params.append(k, String(v));
+    }
+    const filters = parseFilters(params);
+    return filters instanceof Response ? `unknown filter operator in 'where' — use contains, gt, gte, lt or lte` : filters;
+  };
+  switch (body.op) {
+    case "create": {
+      if (!Array.isArray(body.records) || body.records.length === 0) return "'records' must be a non-empty array";
+      if (body.records.length > MAX_RECORD_OP_ROWS) return `at most ${MAX_RECORD_OP_ROWS} records at once`;
+      if (!body.records.every(isPlainObject)) return "every record must be a JSON object";
+      return { op: "create", records: body.records as Record<string, unknown>[] };
+    }
+    case "update":
+    case "delete":
+    case "count": {
+      const filters = where();
+      if (typeof filters === "string") return filters;
+      // Every record is a deliberate choice, never a missing filter.
+      if (body.op !== "count" && filters.length === 0 && body.all !== true)
+        return "name the records with 'where', or set 'all': true to change every record";
+      if (body.op === "update") {
+        const set = body.set === undefined ? {} : body.set;
+        const unset = body.unset === undefined ? [] : body.unset;
+        if (!isPlainObject(set)) return "'set' must be an object of fields to values";
+        if (!Array.isArray(unset) || !unset.every((f) => typeof f === "string")) return "'unset' must be an array of field names";
+        if (Object.keys(set).length === 0 && unset.length === 0) return "nothing to change: give 'set' or 'unset'";
+        const server = [...Object.keys(set), ...(unset as string[])].find((f) => SERVER_FIELDS.has(f));
+        if (server) return `'${server}' is set by the server and cannot be changed`;
+        return { op: "update", filters, set, unset: unset as string[] };
+      }
+      return { op: body.op, filters };
+    }
+    case "restore": {
+      const put = body.put ?? [];
+      const remove = body.remove ?? [];
+      const guard = body.guard ?? {};
+      if (!Array.isArray(put) || !put.every(isPlainObject)) return "'put' must be an array of records";
+      if (!Array.isArray(remove) || !remove.every((id) => typeof id === "string")) return "'remove' must be an array of ids";
+      if (!isPlainObject(guard)) return "'guard' must be an object of ids to updatedAt";
+      return { op: "restore", put: put as Record<string, unknown>[], remove: remove as string[], guard: guard as Record<string, string | null> };
+    }
+    default:
+      return "'op' must be create, update, delete, count or restore";
+  }
+}
+
+/**
+ * Applies an operation to a table's rows, in place and synchronously. Returns
+ * what happened, and for a change the undo that reverses it: records to put
+ * back, ids to remove, and per id the `updatedAt` this operation left, which
+ * restore requires to still be there.
+ */
+function applyRecordOp(
+  rows: any[],
+  op: RecordOp,
+): { result: Record<string, unknown>; undo?: { put: unknown[]; remove: string[]; guard: Record<string, string | null> } } | string {
+  const idOf = (r: any) => String(r?.id);
+  const matching = (filters: Filter[]) => rows.filter((r) => filters.every((f) => matchesFilter(r, f)));
+  switch (op.op) {
+    case "count":
+      return { result: { count: matching(op.filters).length } };
+    case "create": {
+      const existing = new Set(rows.map(idOf));
+      const made = op.records.map((body) => {
+        const stamps = newTimestamps();
+        return { id: crypto.randomUUID(), ...body, ...stamps };
+      });
+      for (const r of made) {
+        if (existing.has(idOf(r))) return `a record with id '${idOf(r)}' already exists`;
+        existing.add(idOf(r));
+      }
+      rows.push(...made);
+      return {
+        result: { created: made.length, ids: made.slice(0, 50).map(idOf) },
+        undo: { put: [], remove: made.map(idOf), guard: Object.fromEntries(made.map((r) => [idOf(r), r.updatedAt])) },
+      };
+    }
+    case "update": {
+      const targets = matching(op.filters);
+      if (targets.length > MAX_RECORD_OP_ROWS)
+        return `that matches ${targets.length} records; change at most ${MAX_RECORD_OP_ROWS} at once — narrow 'where'`;
+      const before = targets.map((r) => structuredClone(r));
+      const now = new Date().toISOString();
+      for (const r of targets) {
+        for (const [k, v] of Object.entries(op.set)) Object.defineProperty(r, k, { value: v, enumerable: true, writable: true, configurable: true });
+        for (const k of op.unset) delete r[k];
+        r.updatedAt = now;
+      }
+      return {
+        result: { matched: targets.length, updated: targets.length },
+        undo: { put: before, remove: [], guard: Object.fromEntries(targets.map((r) => [idOf(r), now])) },
+      };
+    }
+    case "delete": {
+      const targets = new Set(matching(op.filters));
+      if (targets.size > MAX_RECORD_OP_ROWS)
+        return `that matches ${targets.size} records; delete at most ${MAX_RECORD_OP_ROWS} at once — narrow 'where'`;
+      const removed = rows.filter((r) => targets.has(r));
+      const kept = rows.filter((r) => !targets.has(r));
+      rows.length = 0;
+      rows.push(...kept);
+      return {
+        result: { deleted: removed.length },
+        undo: { put: removed, remove: [], guard: Object.fromEntries(removed.map((r) => [idOf(r), null])) },
+      };
+    }
+    case "restore": {
+      // A record is put back only if it is still as this operation left it —
+      // its updatedAt matches the guard, or for a deleted one, it is still
+      // absent — so an undo never erases a write made after the change.
+      const at = (id: string) => rows.findIndex((r) => idOf(r) === id);
+      const unchanged = (id: string) => {
+        if (!Object.hasOwn(op.guard, id)) return true;
+        const i = at(id);
+        return op.guard[id] === null ? i === -1 : i !== -1 && rows[i]?.updatedAt === op.guard[id];
+      };
+      let restored = 0;
+      let skipped = 0;
+      for (const id of op.remove) {
+        if (!unchanged(id)) { skipped++; continue; }
+        const i = at(id);
+        if (i !== -1) { rows.splice(i, 1); restored++; }
+      }
+      for (const record of op.put) {
+        const id = idOf(record);
+        if (!unchanged(id)) { skipped++; continue; }
+        const i = at(id);
+        if (i === -1) rows.push(record);
+        else rows[i] = record;
+        restored++;
+      }
+      return { result: { restored, skipped } };
+    }
+  }
+}
+
+/** Runs an operation against a live table in RAM, or a new table's draft file. */
+async function runRecordOp(tenantId: string, resource: string, op: RecordOp): Promise<Response> {
+  const state = await getTenant(tenantId);
+  if (state && state.db[resource]) {
+    const outcome = applyRecordOp(state.db[resource], op);
+    if (typeof outcome === "string") return err(409, outcome);
+    if (op.op !== "count") await persist(state, tenantId, resource);
+    return json({ ok: true, tenant: tenantId, resource, staged: false, ...outcome });
+  }
+  // Not live: a new table exists only as its draft until the first deploy.
+  const draft = `draft_${resource}`;
+  const file = resourceFile(tenantId, draft);
+  return onWriteChain(tenantId, async () => {
+    const rows = await Bun.file(file).json().catch(() => null);
+    if (!Array.isArray(rows)) return err(404, "resource not found");
+    const outcome = applyRecordOp(rows, op);
+    if (typeof outcome === "string") return err(409, outcome);
+    if (op.op !== "count") {
+      await Bun.write(file, JSON.stringify(rows, null, 2));
+      await writeModel(tenantId, draft, observe(resource, rows));
+    }
+    return json({ ok: true, tenant: tenantId, resource, staged: true, ...outcome });
+  });
 }
 
 // ── Query processing (GET collections) ────────────────────────────

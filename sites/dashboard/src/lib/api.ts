@@ -73,6 +73,11 @@ export const setUnauthorizedHandler = (fn: () => void) => {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  return (await requestWithHeaders<T>(url, init)).body
+}
+
+/** `request`, keeping the response headers — for the file revision (x-revision). */
+async function requestWithHeaders<T>(url: string, init?: RequestInit): Promise<{ body: T; headers: Headers }> {
   const res = await fetch(url, init)
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
@@ -90,7 +95,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
         : `HTTP ${res.status}`
     throw new ApiError(res.status, message)
   }
-  return body as T
+  return { body: body as T, headers: res.headers }
 }
 
 function appHeaders(hasBody = false): Record<string, string> {
@@ -310,8 +315,10 @@ export interface ProjectRow {
   tenant_id: string
   name: string
   resources: string[]
-  /** True when a save is staged that the live API is not serving yet. */
+  /** True when a change is staged that the live API is not serving yet: a new table, a removal, settings. */
   dirty: boolean
+  /** Live tables marked for removal at the next deploy. Absent from an older Dashboard API. */
+  removing?: string[]
   created_at: string
 }
 
@@ -365,14 +372,23 @@ export const deleteProject = (tenantId: string) =>
 export const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
 /**
- * Editor read path: goes through the authed files proxy, which prefers the
- * draft (draft_<name>.json) over the deployed file — the editor always shows
- * staged state. The Live tab's playground (`runRequest`) hits the public plane.
+ * Editor read path, through the authed files proxy: a live table's records, or
+ * a new table's draft before its first deploy. `revision` identifies exactly
+ * this copy of the file; the editor sends it back with its save (If-Match), so
+ * a save made after the public API wrote to the table is refused rather than
+ * erasing those records. The Live tab's playground (`runRequest`) hits the
+ * public plane.
  */
-export const fetchResource = (tenantId: string, resource: string) =>
-  request<unknown[]>(`${APP_API_URL}/projects/${tenantId}/files/${resource}`, {
-    headers: appHeaders(),
-  })
+export const fetchResource = async (
+  tenantId: string,
+  resource: string,
+): Promise<{ records: unknown[]; revision: string | null }> => {
+  const { body, headers } = await requestWithHeaders<unknown[]>(
+    `${APP_API_URL}/projects/${tenantId}/files/${resource}`,
+    { headers: appHeaders() },
+  )
+  return { records: body, revision: headers.get('x-revision') }
+}
 
 /**
  * The *deployed* file alone — no draft, no fallback — so a resource that was
@@ -385,15 +401,20 @@ export const fetchLiveResource = (tenantId: string, resource: string) =>
   })
 
 /**
- * Create or replace a resource file wholesale. Goes through the Dashboard
- * API's authenticated files proxy so ADMIN_SECRET stays server-side.
+ * Replace a resource file wholesale, through the Dashboard API's authenticated
+ * files proxy so ADMIN_SECRET stays server-side. A live table's records are
+ * written live; a table not deployed yet stays a draft (`draft: true`).
+ *
+ * `ifMatch` is the revision the caller read: the save is refused with a 409
+ * if the file has changed since. Leave it out only for a write that means to
+ * replace whatever is there, such as emptying a table.
  */
-export const saveResourceFile = (tenantId: string, resource: string, data: unknown[]) =>
-  request<{ ok: boolean; records: number }>(
+export const saveResourceFile = (tenantId: string, resource: string, data: unknown[], ifMatch?: string | null) =>
+  request<{ ok: boolean; records: number; draft: boolean; revision: string | null }>(
     `${APP_API_URL}/projects/${tenantId}/files/${resource}`,
     {
       method: 'PUT',
-      headers: appHeaders(true),
+      headers: { ...appHeaders(true), ...(ifMatch ? { 'if-match': ifMatch } : {}) },
       body: JSON.stringify(data),
     },
   )
@@ -469,14 +490,35 @@ export const saveRbac = (tenantId: string, rules: unknown) =>
     body: JSON.stringify(rules),
   })
 
+/**
+ * Remove a table. A live one is only marked (`pendingRemoval`) and goes at the
+ * next deploy; a table never deployed goes at once (`deleted`).
+ */
 export const deleteResourceFile = (tenantId: string, resource: string) =>
-  request<{ ok: boolean; deleted: boolean }>(
+  request<{ ok: boolean; deleted?: boolean; pendingRemoval?: boolean }>(
     `${APP_API_URL}/projects/${tenantId}/files/${resource}`,
     {
       method: 'DELETE',
       headers: appHeaders(),
     },
   )
+
+/**
+ * Undo one record change the Co-Pilot made. Records written since the change
+ * are left alone (`skipped`), so an undo never erases a later write.
+ */
+export const undoRecordChange = (tenantId: string, undoId: string) =>
+  request<{ ok: boolean; table: string; restored: number; skipped: number }>(
+    `${APP_API_URL}/projects/${tenantId}/ai/undo/${encodeURIComponent(undoId)}`,
+    { method: 'POST', headers: appHeaders() },
+  )
+
+/** Take back a table's removal before the deploy that would carry it out. */
+export const restoreResourceFile = (tenantId: string, resource: string) =>
+  request<{ ok: boolean; restored: boolean }>(`${APP_API_URL}/projects/${tenantId}/files/${resource}/restore`, {
+    method: 'POST',
+    headers: appHeaders(),
+  })
 
 /** Promote every draft file over its production equivalent. */
 export const deployProject = (tenantId: string) =>
