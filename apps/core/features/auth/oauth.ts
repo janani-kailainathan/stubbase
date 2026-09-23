@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { err, json } from "../../lib/http.ts";
 import { newTimestamps } from "../../lib/timestamps.ts";
 import { EMAIL_RE, findByEmail, issueTokens, safeUser, type AuthContext } from "./identity.ts";
+import { signupDomainRefusal } from "./email-domains.ts";
 import type { AuthTenant, UserRecord } from "./types.ts";
 
 interface OauthProvider {
@@ -121,6 +122,11 @@ export async function handleOauth<T extends AuthTenant>(
 
   let user = findByEmail(tenant.identity, email);
   if (!user) {
+    // Only where an account would be created. Someone who already has one signs
+    // in whatever their domain: these rules are for who may join, not for
+    // locking out an account the project already accepted.
+    const refused = await signupDomainRefusal(email, cfg);
+    if (refused) return err(403, refused);
     const created: UserRecord = {
       id: crypto.randomUUID(),
       email,

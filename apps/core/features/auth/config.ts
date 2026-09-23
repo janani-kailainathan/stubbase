@@ -1,4 +1,5 @@
 import { NAME_RE } from "../../lib/names.ts";
+import { parseDomainList } from "./email-domains.ts";
 import type { AuthConfig } from "./types.ts";
 
 const DEFAULT_JWT_TTL_SEC = 86_400;
@@ -34,6 +35,14 @@ export function parseAuthConfig(env: Record<string, unknown>): AuthConfig {
     ),
     oauthRedirect: str("AUTH_OAUTH_REDIRECT"),
     resetUrl: linkBase(str("AUTH_RESET_URL")),
+    emailDomainsOnly: parseDomainList(str("AUTH_EMAIL_DOMAINS_ONLY")),
+    emailDomainsAllowed: parseDomainList(str("AUTH_EMAIL_DOMAINS_ALLOWED")),
+    emailDomainsBlocked: parseDomainList(str("AUTH_EMAIL_DOMAINS_BLOCKED")),
+    // Off unless switched on, unlike the dashboard's own sign-up. Refusing an
+    // address decides who may use *someone else's* live API, and a project
+    // that wants throwaway sign-ups — a demo, a workshop — is a fair use of
+    // one. The .env template carries the line, commented, with the reason.
+    blockDisposableEmail: str("AUTH_BLOCK_DISPOSABLE_EMAIL").toLowerCase() === "true",
     google: pair("AUTH_GOOGLE_CLIENT_ID", "AUTH_GOOGLE_SECRET"),
     github: pair("AUTH_GITHUB_CLIENT_ID", "AUTH_GITHUB_SECRET"),
   };

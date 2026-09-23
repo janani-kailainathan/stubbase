@@ -719,6 +719,267 @@ describe("QA chaos headers", () => {
 
 // ── Tenant auth ────────────────────────────────────────────────────
 
+// ── Who may sign up ────────────────────────────────────────────────
+
+/**
+ * The domain rules a project sets on its own sign-up: a gate, a block-list, an
+ * exception list, and the vendored throwaway-provider list. Black-box, against
+ * a real core — the disposable domains used here are real entries in
+ * apps/core/blocked-email-domains.txt, so a refresh that dropped mailinator
+ * would show up as a failure.
+ */
+describe("signup email domains", () => {
+  const signup = (tenant: string, email: string) =>
+    fetch(`${core.base}/${tenant}/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "password123" }),
+    });
+  const reason = async (res: Response) => (await res.json()).error as string;
+
+  test("nothing is refused until the project says so", async () => {
+    await seed(core, "opendoor", { notes: [], config: { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" } });
+    // A throwaway address is an ordinary address to a project that has not
+    // asked for the list: this must never be on by default.
+    expect((await signup("opendoor", "someone@mailinator.com")).status).toBe(201);
+  }, 20_000);
+
+  test("AUTH_BLOCK_DISPOSABLE_EMAIL refuses the vendored list, and its subdomains", async () => {
+    await seed(core, "nothrowaway", {
+      notes: [],
+      config: { AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false", AUTH_BLOCK_DISPOSABLE_EMAIL: "true" },
+    });
+    for (const email of ["a@mailinator.com", "b@yopmail.com", "c@guerrillamail.com", "d@inbox.mailinator.com"]) {
+      const res = await signup("nothrowaway", email);
+      expect({ email, status: res.status }).toEqual({ email, status: 403 });
+      expect(await reason(res)).toContain("permanent address");
+    }
+    expect((await signup("nothrowaway", "real@acme-corp.test")).status).toBe(201);
+    // Refused before anything is written: no account, and no pending sign-up.
+    const users = await systemFile(core, "nothrowaway", "users");
+    expect(users.map((u: any) => u.email)).toEqual(["real@acme-corp.test"]);
+  }, 30_000);
+
+  test("AUTH_EMAIL_DOMAINS_BLOCKED refuses what the project names, subdomains included", async () => {
+    await seed(core, "noblocked", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_EMAIL_DOMAINS_BLOCKED: "rival.test, @spaced.test",
+      },
+    });
+    for (const email of ["a@rival.test", "b@mail.rival.test", "c@spaced.test"]) {
+      const res = await signup("noblocked", email);
+      expect({ email, status: res.status }).toEqual({ email, status: 403 });
+      expect(await reason(res)).toContain("not accepted");
+    }
+    // The vendored list is a separate switch and stays off.
+    expect((await signup("noblocked", "d@mailinator.com")).status).toBe(201);
+  }, 30_000);
+
+  test("AUTH_EMAIL_DOMAINS_ALLOWED is an exception, beating both refusals", async () => {
+    await seed(core, "withexception", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_BLOCK_DISPOSABLE_EMAIL: "true",
+        AUTH_EMAIL_DOMAINS_BLOCKED: "rival.test",
+        AUTH_EMAIL_DOMAINS_ALLOWED: "inbox.mailinator.com, rival.test",
+      },
+    });
+    // More specific than the listed parent, and it wins.
+    expect((await signup("withexception", "a@inbox.mailinator.com")).status).toBe(201);
+    // Same domain on both lists: the exception is what applies.
+    expect((await signup("withexception", "b@rival.test")).status).toBe(201);
+    // …and it is an exception, not a switch: the rest of the list still bites.
+    expect((await signup("withexception", "c@mailinator.com")).status).toBe(403);
+  }, 30_000);
+
+  test("AUTH_EMAIL_DOMAINS_ONLY is a gate: everything else is refused", async () => {
+    await seed(core, "staffonly", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_EMAIL_DOMAINS_ONLY: "acme.test",
+      },
+    });
+    expect((await signup("staffonly", "ada@acme.test")).status).toBe(201);
+    // Subdomains of a gated domain are inside the gate.
+    expect((await signup("staffonly", "sam@mail.acme.test")).status).toBe(201);
+    for (const email of ["nope@gmail.com", "nope@acme.test.evil.test", "nope@notacme.test"]) {
+      const res = await signup("staffonly", email);
+      expect({ email, status: res.status }).toEqual({ email, status: 403 });
+    }
+  }, 30_000);
+
+  test("a refused domain never becomes a pending sign-up, and spends no code", async () => {
+    // Every other test here runs with verification off, which is the shorter
+    // path. On the default path a sign-up writes a row to system/signups.json
+    // and issues a code against an hourly budget, and a refusal must reach
+    // none of that — the check runs before the hash *and* before the throttle.
+    await seed(core, "pendingnone", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_BLOCK_DISPOSABLE_EMAIL: "true",
+        AUTH_EMAIL_DOMAINS_BLOCKED: "rival.test",
+      },
+    });
+    for (const email of ["a@mailinator.com", "b@rival.test"]) {
+      const res = await signup("pendingnone", email);
+      expect({ email, status: res.status }).toEqual({ email, status: 403 });
+    }
+    expect(await Bun.file(join(core.dir, "pendingnone", "system", "signups.json")).exists()).toBe(false);
+
+    // An accepted address still takes the ordinary two-leg route, so the
+    // refusals above did not disturb it.
+    const accepted = await signup("pendingnone", "real@acme-corp.test");
+    expect(accepted.status).toBe(202);
+    const pending = await systemFile(core, "pendingnone", "signups");
+    expect(pending.map((p: any) => p.email)).toEqual(["real@acme-corp.test"]);
+    // Five codes an hour per address, and the refusals took none of them:
+    // this one is the first issue for the only address that got that far.
+    expect(pending[0].issuedAt).toHaveLength(1);
+  }, 30_000);
+
+  test("the domain is read case-insensitively, and a gate still lets an explicit block through", async () => {
+    await seed(core, "mixedcase", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_BLOCK_DISPOSABLE_EMAIL: "true",
+      },
+    });
+    // The core keeps an address as it was typed, so the domain rules have to
+    // do the folding themselves or MAILINATOR.COM walks straight past them.
+    for (const email of ["Ada@MAILINATOR.COM", "Sam@Inbox.Mailinator.Com"]) {
+      const res = await signup("mixedcase", email);
+      expect({ email, status: res.status }).toEqual({ email, status: 403 });
+    }
+
+    // A gate decides who is in scope; an explicit block still applies inside it.
+    await seed(core, "gatedblock", {
+      notes: [],
+      config: {
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_EMAIL_DOMAINS_ONLY: "acme.test",
+        AUTH_EMAIL_DOMAINS_BLOCKED: "contractors.acme.test",
+      },
+    });
+    expect((await signup("gatedblock", "staff@acme.test")).status).toBe(201);
+    expect((await signup("gatedblock", "temp@contractors.acme.test")).status).toBe(403);
+    expect((await signup("gatedblock", "outsider@gmail.com")).status).toBe(403);
+  }, 30_000);
+
+  test("the two vendored copies of the list are identical", async () => {
+    // They cannot be one file — each Dockerfile's build context is its own app
+    // directory — so the core and the Dashboard API each carry one, and the
+    // failure that actually happens is somebody editing or refreshing one.
+    // scripts/refresh-email-domains.ts --check says the same thing on demand;
+    // this is what makes the build say it without anyone remembering to ask.
+    const domainsOf = (text: string) =>
+      text
+        .split("\n")
+        .map((line) => line.trim().toLowerCase())
+        .filter((line) => line && !line.startsWith("#"));
+    const root = join(import.meta.dir, "..");
+    const [core_, app] = await Promise.all([
+      Bun.file(join(root, "apps", "core", "blocked-email-domains.txt")).text(),
+      Bun.file(join(root, "apps", "dashboard-api", "blocked-email-domains.txt")).text(),
+    ]);
+    const [a, b] = [domainsOf(core_), domainsOf(app)];
+    expect(a.length).toBeGreaterThan(50_000);
+    expect({ core: a.length, app: b.length }).toEqual({ core: a.length, app: a.length });
+    expect(a.find((d, i) => d !== b[i]) ?? null).toBeNull();
+    // Sorted, which the core's on-disk binary search depends on outright.
+    expect(a.every((d, i) => i === 0 || a[i - 1]! <= d)).toBe(true);
+    // And nothing in it can refuse a whole registry: the matcher's two-label
+    // floor stops a bare "com" but cannot stop "co.uk".
+    for (const suffix of ["co.uk", "com.au", "edu.pl", "com.br", "co.jp", "ac.uk", "biz.id"])
+      expect({ suffix, listed: a.includes(suffix) }).toEqual({ suffix, listed: false });
+    expect(a.some((d) => !d.includes("."))).toBe(false);
+  }, 20_000);
+
+  test("the rules apply to a provider sign-in, but only where it would make an account", async () => {
+    // Stands in for GitHub; which account it claims to be is the test's to set.
+    let identityEmail = "";
+    const provider = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const { pathname } = new URL(req.url);
+        if (pathname === "/token") return Response.json({ access_token: "gh-access" });
+        if (pathname === "/user") return Response.json({ login: "octo", name: "Octo", email: identityEmail });
+        return new Response("not found", { status: 404 });
+      },
+    });
+    try {
+      const base = `http://127.0.0.1:${provider.port}`;
+      const svc = await boot(`oauth-domains-${Date.now()}`, {
+        OAUTH_GITHUB_AUTH_URL: `${base}/authorize`,
+        OAUTH_GITHUB_TOKEN_URL: `${base}/token`,
+        OAUTH_GITHUB_USER_URL: `${base}/user`,
+        OAUTH_GITHUB_EMAILS_URL: `${base}/emails`,
+      });
+      const config = (extra: Record<string, string>) => ({
+        AUTH_ENABLED: "true",
+        AUTH_EMAIL_VERIFICATION: "false",
+        AUTH_GITHUB_CLIENT_ID: "Iv1.test",
+        AUTH_GITHUB_SECRET: "gh-secret",
+        ...extra,
+      });
+      await seed(svc, "oauthdomains", {
+        notes: [],
+        config: config({ AUTH_BLOCK_DISPOSABLE_EMAIL: "true" }),
+      });
+      const signIn = async () => {
+        const started = await fetch(`${svc.base}/oauthdomains/auth/github`, { redirect: "manual" });
+        const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+        return fetch(`${svc.base}/oauthdomains/auth/github/callback?code=any&state=${encodeURIComponent(state)}`, {
+          redirect: "manual",
+        });
+      };
+
+      identityEmail = "throwaway@mailinator.com";
+      const refused = await signIn();
+      expect(refused.status).toBe(403);
+      expect((await refused.json()).error).toContain("permanent address");
+      // Refused before the table was even created, let alone written to.
+      expect(
+        await Bun.file(join(svc.dir, "oauthdomains", "system", "users.json")).exists(),
+      ).toBe(false);
+
+      identityEmail = "already@acme-corp.test";
+      expect((await signIn()).status).toBe(200);
+      expect(await systemFile(svc, "oauthdomains", "users")).toHaveLength(1);
+
+      // An account made while the rules allowed it keeps signing in after they
+      // change: the rules decide who may join, not who may come back. Written
+      // through the admin plane, which is how a settings change really lands —
+      // and what evicts the tenant so the new config is read.
+      const rewritten = await fetch(`${svc.base}/oauthdomains/_admin/files/config`, {
+        method: "POST",
+        headers: { ...adminAuth, "content-type": "application/json" },
+        body: JSON.stringify(config({ AUTH_EMAIL_DOMAINS_BLOCKED: "acme-corp.test" })),
+      });
+      expect(rewritten.ok).toBe(true);
+      expect((await signIn()).status).toBe(200);
+      expect(await systemFile(svc, "oauthdomains", "users")).toHaveLength(1);
+
+      // …while a newcomer on that same domain is refused.
+      identityEmail = "newcomer@acme-corp.test";
+      expect((await signIn()).status).toBe(403);
+      expect(await systemFile(svc, "oauthdomains", "users")).toHaveLength(1);
+    } finally {
+      provider.stop(true);
+    }
+  }, 40_000);
+});
+
 describe("tenant auth", () => {
   test("signup and login never leak passwordHash", async () => {
     const created = await signupAs("secure", "leak@test.co");

@@ -329,6 +329,10 @@ describe("project provisioning", () => {
     "AUTH_REFRESH_TTL_SECONDS",
     "AUTH_OAUTH_REDIRECT",
     "AUTH_RESET_URL",
+    "AUTH_EMAIL_DOMAINS_ONLY",
+    "AUTH_EMAIL_DOMAINS_ALLOWED",
+    "AUTH_EMAIL_DOMAINS_BLOCKED",
+    "AUTH_BLOCK_DISPOSABLE_EMAIL",
     "RBAC_ENABLED",
     "AUTH_GOOGLE_CLIENT_ID",
     "AUTH_GOOGLE_SECRET",
@@ -391,7 +395,7 @@ describe("project provisioning", () => {
     });
 
     const numbers = headings.map((h) => h.number);
-    expect(numbers).toEqual(["1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.5.1", "1.5.2", "2", "2.1", "2.2", "3", "4", "5"]);
+    expect(numbers).toEqual(["1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.5.1", "1.5.2", "1.6", "2", "2.1", "2.2", "3", "4", "5"]);
     expect(contents.map((c) => c.number)).toEqual(numbers);
     // Each heading reads as its contents entry does (a heading may add a note, e.g. "(needs AUTH_ENABLED=true)").
     headings.forEach((h, i) => expect({ n: h.number, starts: h.title.startsWith(contents[i].title) }).toEqual({ n: h.number, starts: true }));

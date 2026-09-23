@@ -30,6 +30,14 @@ export interface AuthConfig {
   oauthRedirect: string;
   /** Frontend page a reset email links to with `#email=…&code=…`. Empty: the email carries the code alone. */
   resetUrl: string;
+  /** AUTH_EMAIL_DOMAINS_ONLY — when non-empty, the only domains that may sign up. A gate, not an exception list. */
+  emailDomainsOnly: Set<string>;
+  /** AUTH_EMAIL_DOMAINS_ALLOWED — domains that beat every refusal below. The escape hatch for a false positive. */
+  emailDomainsAllowed: Set<string>;
+  /** AUTH_EMAIL_DOMAINS_BLOCKED — domains always refused at sign-up. */
+  emailDomainsBlocked: Set<string>;
+  /** AUTH_BLOCK_DISPOSABLE_EMAIL — refuse the vendored throwaway-provider list. Off unless "true": see email-domains.ts. */
+  blockDisposableEmail: boolean;
   google?: OauthCredentials;
   github?: OauthCredentials;
 }

@@ -606,6 +606,70 @@ back to reading everything and changing only their own records — but
 If something in the file is wrong — a `defaultRole` that isn't one of the roles,
 a misspelt action — Save tells you what and where, and nothing changes.
 
+#### 1.4.6 Who may sign up
+
+Anyone with a working email address can open an account on your API. If that
+isn't what you want, you can say which addresses are accepted.
+
+These rules apply to `POST /auth/signup` and to Google and GitHub login alike,
+and **only where an account would be created**. Someone who already has one
+keeps signing in whatever their address — a rule you add later never locks out
+a user you have already accepted.
+
+##### To accept only your own domain, add to your `.env`:
+
+```env
+AUTH_ENABLED=true
+AUTH_EMAIL_DOMAINS_ONLY=your-company.com
+```
+
+Every other address is refused with a `403`. Useful for an internal tool or a
+staging project. List several, comma-separated and no spaces, and a domain
+covers its subdomains, so `your-company.com` also accepts
+`ada@mail.your-company.com`.
+
+##### To refuse particular domains:
+
+```env
+AUTH_ENABLED=true
+AUTH_EMAIL_DOMAINS_BLOCKED=rival.com,spam-source.test
+```
+
+Everyone else is still welcome. Subdomains go with the domain, so `rival.com`
+also refuses `mail.rival.com`.
+
+##### To refuse throwaway addresses:
+
+```env
+AUTH_ENABLED=true
+AUTH_BLOCK_DISPOSABLE_EMAIL=true
+```
+
+Refuses mailinator, guerrillamail, 10minutemail and around 75,000 other
+throwaway providers. Off unless you switch it on — a demo API or a workshop
+project is a perfectly good reason to let people use one.
+
+##### To let a domain through whatever else says:
+
+```env
+AUTH_EMAIL_DOMAINS_ALLOWED=partner.com
+```
+
+An exception, not a gate: it beats both `AUTH_EMAIL_DOMAINS_BLOCKED` and
+`AUTH_BLOCK_DISPOSABLE_EMAIL`, and it accepts nobody on its own. Use it when
+the throwaway list catches a provider your users really use — the list is a
+community one and occasionally sweeps in a real address.
+
+| Set | And a sign-up from | Is |
+|---|---|---|
+| nothing | anywhere | accepted |
+| `AUTH_EMAIL_DOMAINS_ONLY=acme.com` | `ada@acme.com` | accepted |
+| `AUTH_EMAIL_DOMAINS_ONLY=acme.com` | `ada@gmail.com` | refused |
+| `AUTH_BLOCK_DISPOSABLE_EMAIL=true` | `ada@mailinator.com` | refused |
+| `AUTH_BLOCK_DISPOSABLE_EMAIL=true` + `AUTH_EMAIL_DOMAINS_ALLOWED=mailinator.com` | `ada@mailinator.com` | accepted |
+
+See [3.1.6](#316-who-may-sign-up) for the full table of keys.
+
 ### 1.5 Atomic operations
 
 _To be written — placeholder._
@@ -822,3 +886,14 @@ Feature: [1.4.5 Roles and permissions](#145-roles-and-permissions)
 | Key | Example | What it does |
 |---|---|---|
 | `RBAC_ENABLED` | `true` | **The switch.** Checks every request against the roles in your project's `rbac.json`, and lets you create that file in the **system** folder. Needs `AUTH_ENABLED=true` as well. Switched off, your roles are kept but not applied. |
+
+#### 3.1.6 Who may sign up
+
+Feature: [1.4.6 Who may sign up](#146-who-may-sign-up)
+
+| Key | Example | What it does |
+|---|---|---|
+| `AUTH_EMAIL_DOMAINS_ONLY` | `your-company.com` | **A gate.** Only these domains may open an account; every other address is refused with a `403`. Comma-separated, no spaces; a domain covers its subdomains. Needs `AUTH_ENABLED=true`. |
+| `AUTH_EMAIL_DOMAINS_BLOCKED` | `rival.com` | Domains always refused, subdomains included. Everyone else is still accepted. |
+| `AUTH_BLOCK_DISPOSABLE_EMAIL` | `true` | Refuses around 75,000 throwaway providers. Off unless set. |
+| `AUTH_EMAIL_DOMAINS_ALLOWED` | `partner.com` | **An exception**, not a gate: beats the two rows above and accepts nobody on its own. |

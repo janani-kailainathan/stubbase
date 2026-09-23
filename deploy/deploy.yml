@@ -110,7 +110,7 @@
         owner: stubbase
         group: stubbase
         mode: "0644"
-      loop: [server-core.ts, package.json]
+      loop: [server-core.ts, package.json, blocked-email-domains.txt]
       notify: Restart stubbase-core
 
     # The core's shared lib and its feature modules (features/auth, …) are

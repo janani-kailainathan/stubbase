@@ -5,6 +5,7 @@
  */
 import { err, json } from "../../lib/http.ts";
 import { newTimestamps } from "../../lib/timestamps.ts";
+import { signupDomainRefusal } from "./email-domains.ts";
 import {
   ARGON,
   DUMMY_HASH,
@@ -28,6 +29,10 @@ export async function signup<T extends AuthTenant>(ctx: AuthContext<T>, body: Fi
 
   const { identity } = ctx.tenant;
   const { emailVerification } = ctx.tenant.config.auth;
+  // Before the hash and before the throttle, so a domain this project does not
+  // accept costs it neither an argon2 run nor a slot in the hourly budget.
+  const refused = await signupDomainRefusal(email, ctx.tenant.config.auth);
+  if (refused) return err(403, refused);
   if (findByEmail(identity, email)) return err(409, "email already registered");
   // Before the hash, so a throttled address costs no argon2 run; startSignup checks again.
   if (emailVerification && signupThrottled(identity, email))
