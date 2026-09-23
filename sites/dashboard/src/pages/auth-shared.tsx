@@ -37,6 +37,8 @@ export const OAUTH_MESSAGES: Record<string, string> = {
   invalid_state: 'That sign-in link expired. Please try again.',
   provider_rejected: 'Your provider did not confirm a verified email address.',
   disposable_email: 'That email provider is not accepted. Please use a permanent address.',
+  free_signups_full:
+    "Free sign-ups are full right now — only paid plans are open. We're sorry for the inconvenience, and we'll open free accounts again soon.",
 }
 
 export const oauthMessage = (code: string | null) =>

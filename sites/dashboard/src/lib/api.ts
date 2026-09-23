@@ -43,11 +43,14 @@ export const LANDING_URL: string = import.meta.env.VITE_LANDING_URL ?? 'https://
 
 export class ApiError extends Error {
   status: number
+  /** The server's machine-readable reason, when it gives one (e.g. `free_signups_full`). */
+  code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -93,7 +96,11 @@ async function requestWithHeaders<T>(url: string, init?: RequestInit): Promise<{
       body && typeof body === 'object' && 'error' in body
         ? String((body as { error: unknown }).error)
         : `HTTP ${res.status}`
-    throw new ApiError(res.status, message)
+    const code =
+      body && typeof body === 'object' && typeof (body as { code?: unknown }).code === 'string'
+        ? (body as { code: string }).code
+        : undefined
+    throw new ApiError(res.status, message, code)
   }
   return { body: body as T, headers: res.headers }
 }

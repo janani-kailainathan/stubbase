@@ -1154,6 +1154,120 @@ describe("disposable email domains", () => {
   }, 30_000);
 });
 
+/**
+ * At most DASHBOARD_FREE_ACCOUNT_CAP active Free accounts. A refused address is
+ * written to a local file — not a waitlist — and everyone who already has an
+ * account keeps signing in.
+ */
+describe("free account cap", () => {
+  let capped: Service;
+  const refusedFile = () => join(capped.dir, "free-signups-refused.jsonl");
+  const refused = async () =>
+    (await Bun.file(refusedFile()).exists())
+      ? (await Bun.file(refusedFile()).text()).trim().split("\n").map((l) => JSON.parse(l))
+      : [];
+  const startSignup = (email: string) =>
+    fetch(`${capped.base}/auth/signup`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+  const verify = async (email: string, verificationId: string) =>
+    fetch(`${capped.base}/auth/signup/verify`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ verificationId, code: await loggedSignupCode(capped, email) }),
+    });
+
+  beforeAll(async () => {
+    capped = await startApp(ROOT, "free-cap", { CORE_API_URL: core.base, DASHBOARD_FREE_ACCOUNT_CAP: "2" });
+    running.push(capped);
+  }, 30_000);
+
+  test("past the cap a new sign-up is refused with the message, sends nothing, and is noted once", async () => {
+    const first = await signupOn(capped, `cap-a-${Date.now()}@test.co`);
+    await signupOn(capped, `cap-b-${Date.now()}@test.co`);
+
+    const email = `cap-late-${Date.now()}@test.co`;
+    const res = await startSignup(email);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe("free_signups_full");
+    expect(body.error).toContain("only paid plans are open");
+    expect(body.error).toContain("sorry for the inconvenience");
+    // No code was sent, and no pending sign-up waits for one.
+    expect(capped.output.join("")).not.toContain(`sign-up verification code for ${email}`);
+    expect(
+      readDbOf(capped, (db) => db.query("SELECT COUNT(*) AS n FROM signup_verifications WHERE email = ?").get(email)),
+    ).toEqual({ n: 0 });
+
+    // Noted in the local file, once however often they try.
+    await startSignup(email);
+    let noted: any[] = [];
+    for (let i = 0; i < 40 && noted.length === 0; i++) {
+      noted = (await refused()).filter((r: any) => r.email === email);
+      if (noted.length === 0) await Bun.sleep(50);
+    }
+    expect(noted).toHaveLength(1);
+    expect(noted[0]).toMatchObject({ via: "password" });
+
+    // Someone who already has an account signs in as ever.
+    const login = await fetch(`${capped.base}/auth/login`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ email: first.email, password: PASSWORD }),
+    });
+    expect(login.status).toBe(200);
+  }, 30_000);
+
+  test("a paid account takes no free place, and a deleted one gives its place back", async () => {
+    const accounts = readDbOf(capped, (db) =>
+      db.query("SELECT email FROM users WHERE deleted_at IS NULL AND plan = 'free' ORDER BY id").all(),
+    ) as { email: string }[];
+    expect(accounts).toHaveLength(2);
+
+    setPlanOn(capped, accounts[0].email, "pro");
+    const third = await signupOn(capped, `cap-after-pro-${Date.now()}@test.co`);
+    expect((await startSignup(`cap-full-again-${Date.now()}@test.co`)).status).toBe(403);
+
+    const gone = await fetch(`${capped.base}/auth/delete-account`, {
+      method: "POST",
+      headers: jsonHeaders(third.token),
+      body: JSON.stringify({ password: PASSWORD }),
+    });
+    expect(gone.status).toBe(200);
+    await signupOn(capped, `cap-after-delete-${Date.now()}@test.co`);
+  }, 30_000);
+
+  test("the last place goes to one sign-up: a code verified after it is refused", async () => {
+    // Free a place, then let two sign-ups through the early check for it.
+    const accounts = readDbOf(capped, (db) =>
+      db.query("SELECT email FROM users WHERE deleted_at IS NULL AND plan = 'free' ORDER BY id").all(),
+    ) as { email: string }[];
+    setPlanOn(capped, accounts[0].email, "pro");
+    const a = `cap-race-a-${Date.now()}@test.co`;
+    const b = `cap-race-b-${Date.now()}@test.co`;
+    const idA = (await (await startSignup(a)).json()).verificationId;
+    const idB = (await (await startSignup(b)).json()).verificationId;
+    expect(idA).toBeString();
+    expect(idB).toBeString();
+
+    expect((await verify(a, idA)).status).toBe(201);
+    const late = await verify(b, idB);
+    expect(late.status).toBe(403);
+    expect((await late.json()).code).toBe("free_signups_full");
+    expect(readDbOf(capped, (db) => db.query("SELECT COUNT(*) AS n FROM users WHERE email = ?").get(b))).toEqual({
+      n: 0,
+    });
+  }, 30_000);
+
+  test("a malformed cap stops the boot rather than guessing", async () => {
+    await expect(
+      startApp(ROOT, `free-cap-bad-${Date.now()}`, { CORE_API_URL: core.base, DASHBOARD_FREE_ACCOUNT_CAP: "lots" }),
+    ).rejects.toThrow("never reported a port");
+  }, 30_000);
+});
+
 describe("OAuth sign-in", () => {
   let provider: ReturnType<typeof Bun.serve> | undefined;
   let oauthApp: Service;
@@ -1607,6 +1721,42 @@ describe("OAuth sign-in", () => {
     // is the existing row and not the domain.
     const fresh = await signIn("github", `newcomer-${Date.now()}@legacy-throwaway.test`);
     expect(fragment(fresh)).toBe("error=disposable_email");
+  }, 30_000);
+
+  test("past the free cap a provider cannot open an account, but an existing one signs in", async () => {
+    const capApp = await startApp(ROOT, `oauth-cap-${Date.now()}`, {
+      CORE_API_URL: core.base,
+      DASHBOARD_URL: SPA,
+      DASHBOARD_FREE_ACCOUNT_CAP: "1",
+      DASHBOARD_GITHUB_CLIENT_ID: "github-client-id",
+      DASHBOARD_GITHUB_SECRET: "github-secret",
+      OAUTH_GITHUB_AUTH_URL: `${providerBase}/authorize/github`,
+      OAUTH_GITHUB_TOKEN_URL: `${providerBase}/token`,
+      OAUTH_GITHUB_USER_URL: `${providerBase}/user`,
+      OAUTH_GITHUB_EMAILS_URL: `${providerBase}/user/emails`,
+    });
+    running.push(capApp);
+    const signInOn = async (email: string) => {
+      identity = { email, verified: true };
+      const state = await mintState("github", capApp);
+      return fetch(`${capApp.base}/auth/github/callback?code=stub&state=${encodeURIComponent(state)}`, {
+        redirect: "manual",
+      });
+    };
+
+    const first = `oauth-cap-first-${Date.now()}@test.co`;
+    expect(new URLSearchParams(fragment(await signInOn(first))).get("token")).toBeString();
+
+    const late = `oauth-cap-late-${Date.now()}@test.co`;
+    const refusedRes = await signInOn(late);
+    expect(fragment(refusedRes)).toBe("error=free_signups_full");
+    expect(new URL(refusedRes.headers.get("location")!).pathname).toBe("/login");
+    const noted = await Bun.file(join(capApp.dir, "free-signups-refused.jsonl")).text();
+    expect(noted).toContain(`"email":"${late}"`);
+    expect(noted).toContain(`"via":"github"`);
+
+    // The account that took the place keeps signing in.
+    expect(new URLSearchParams(fragment(await signInOn(first))).get("token")).toBeString();
   }, 30_000);
 
   test("an OAuth session token is stored hashed, like every other session", async () => {

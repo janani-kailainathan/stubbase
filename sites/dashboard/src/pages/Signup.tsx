@@ -50,6 +50,9 @@ export default function Signup() {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [pending, setPending] = useState<PendingSignup | null>(readPending)
+  // The server's own words when free sign-ups are full — kept on the page
+  // rather than in a toast, since it is the answer to "can I sign up?".
+  const [full, setFull] = useState<string | null>(null)
 
   if (user) return <Navigate to="/" replace />
 
@@ -66,7 +69,8 @@ export default function Signup() {
       track(await signup(email, password, name || undefined))
       setPassword('')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Signup failed')
+      if (error instanceof ApiError && error.code === 'free_signups_full') setFull(error.message)
+      else toast.error(error instanceof Error ? error.message : 'Signup failed')
     } finally {
       setSubmitting(false)
     }
@@ -99,6 +103,14 @@ export default function Signup() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-8">
+        {full && (
+          <div role="status" className="mb-6 rounded-md border border-warning-soft-border bg-warning-soft-weak px-4 py-3">
+            <p className="text-sm text-warning-ink">{full}</p>
+            <a href={`${LANDING_URL}/pricing`} className="mt-2 inline-block text-sm text-primary-accent hover:text-primary-ink">
+              See plans
+            </a>
+          </div>
+        )}
         <OAuthButtons />
         <form className="flex flex-col gap-5" onSubmit={submit}>
           <div className="flex flex-col gap-1.5">

@@ -123,6 +123,8 @@ export async function startApp(
     DASHBOARD_GITHUB_CLIENT_ID: "",
     DASHBOARD_GITHUB_SECRET: "",
     DASHBOARD_RESEND_API_KEY: "",
+    // No cap unless a test asks for one: suites create accounts freely.
+    DASHBOARD_FREE_ACCOUNT_CAP: "0",
     DASHBOARD_EMAIL_LOG_CODES: "true",
     ...env,
   });

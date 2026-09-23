@@ -710,6 +710,13 @@ code from your inbox.
   of yours is refused by mistake, get in touch — it can be unblocked the same
   day. Already have an account? You keep signing in, whatever your address.
 
+**Free accounts can fill up.** While Stubbase is young there is a limit on how
+many free accounts are open at once. When it is reached, signing up — with an
+email address, Google or GitHub — says so: *"Free sign-ups are full right now —
+only paid plans are open. We're sorry for the inconvenience, and we'll open
+free accounts again soon."* If you already have an account, nothing changes:
+you sign in as always.
+
 ### 2.2 Password reset
 
 Forgot your password? Choose **Forgot password?** on the login page, enter your

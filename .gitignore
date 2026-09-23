@@ -1,6 +1,8 @@
 node_modules/
 *.sqlite
 *.sqlite-*
+# Addresses refused by the free account cap (DASHBOARD_FREE_WAITLIST_FILE) — personal data.
+free-signups-refused.jsonl
 .DS_Store
 tenants/*
 !tenants/demo/

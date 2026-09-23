@@ -46,7 +46,8 @@
  */
 import { Database } from "bun:sqlite";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { join } from "node:path";
+import { appendFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   addUsage,
   AIError,
@@ -787,6 +788,67 @@ const EMAIL_LINEAGE_KEY = createHash("sha256").update(`account-email:${ADMIN_SEC
 const emailLineageHash = (email: string) =>
   createHmac("sha256", EMAIL_LINEAGE_KEY).update(email.trim().toLowerCase()).digest("base64url");
 
+// ── Free account cap ──────────────────────────────────────────────
+//
+// At most DASHBOARD_FREE_ACCOUNT_CAP active Free accounts (0 = no cap), so a
+// launch cannot outgrow the box. Counted as accounts not deleted and not on a
+// paid plan — an unknown plan string is Free here as everywhere — so deleting
+// an account, or moving it to Pro, frees a place. Checked where an account
+// would be created and nowhere else: someone who has an account always signs
+// in. The authoritative check is inside createOrReviveUser, in the same
+// synchronous turn as the INSERT, so two sign-ups cannot both take the last
+// place; /auth/signup checks early too, so a full server sends no email.
+//
+// A refused address is written to a local file (DASHBOARD_FREE_WAITLIST_FILE,
+// one JSON object per line), so the owner knows who wanted in. It is not a
+// waitlist: nobody is told they are on one, and nothing reads it back.
+
+const FREE_ACCOUNT_CAP = (() => {
+  const raw = (process.env.DASHBOARD_FREE_ACCOUNT_CAP ?? "1000").trim();
+  const n = Number(raw);
+  if (!/^\d{1,9}$/.test(raw) || !Number.isSafeInteger(n)) {
+    console.error("[app] DASHBOARD_FREE_ACCOUNT_CAP must be a whole number (0 = no cap)");
+    process.exit(1);
+  }
+  return n;
+})();
+const FREE_WAITLIST_FILE =
+  process.env.DASHBOARD_FREE_WAITLIST_FILE ?? join(dirname(DB_PATH), "free-signups-refused.jsonl");
+const FREE_FULL_CODE = "free_signups_full";
+const FREE_FULL_MESSAGE =
+  "Free sign-ups are full right now — only paid plans are open. We're sorry for the " +
+  "inconvenience, and we'll open free accounts again soon.";
+
+/** Thrown by createOrReviveUser when the cap is reached. */
+class FreeSignupsFull extends Error {}
+
+function freeSignupsFull(): boolean {
+  if (FREE_ACCOUNT_CAP === 0) return false;
+  const paid = Object.values(PLANS)
+    .filter((p) => p.id !== DEFAULT_PLAN)
+    .map((p) => p.id);
+  const row = db
+    .query(
+      `SELECT COUNT(*) AS n FROM users
+       WHERE deleted_at IS NULL AND plan NOT IN (${paid.map(() => "?").join(", ")})`,
+    )
+    .get(...paid) as { n: number };
+  return row.n >= FREE_ACCOUNT_CAP;
+}
+
+/** Records an address refused by the cap, once. Best-effort: never fails the request. */
+async function noteRefusedFreeSignup(email: string, via: string) {
+  try {
+    const file = Bun.file(FREE_WAITLIST_FILE);
+    if ((await file.exists()) && (await file.text()).includes(`"email":${JSON.stringify(email)}`)) return;
+    await appendFile(FREE_WAITLIST_FILE, `${JSON.stringify({ email, via, at: new Date().toISOString() })}\n`);
+  } catch (e) {
+    console.error(`[app] could not record a refused free sign-up: ${e}`);
+  }
+}
+
+const freeSignupsFullResponse = () => json({ error: FREE_FULL_MESSAGE, code: FREE_FULL_CODE }, 403);
+
 /**
  * Make the account, or bring back the one this address already had.
  *
@@ -811,6 +873,8 @@ function createOrReviveUser(
   name: string | null,
   credential: { passwordHash?: string | null; oauthProvider?: string | null },
 ): void {
+  // Every new account starts on Free, so every new account takes a place.
+  if (freeSignupsFull()) throw new FreeSignupsFull();
   const passwordHash = credential.passwordHash ?? null;
   const oauthProvider = credential.oauthProvider ?? null;
   const dormant = db
@@ -1054,6 +1118,11 @@ async function signup(req: Request): Promise<Response> {
     return err(503, "email sign-up is not available: this server has no email provider configured");
   // Before the hash, so a taken address costs no 19 MiB argon2 run…
   if (userExists(email)) return err(409, "email already registered");
+  // …and a full server sends no code for an account it could not create.
+  if (freeSignupsFull()) {
+    void noteRefusedFreeSignup(email, "password");
+    return freeSignupsFullResponse();
+  }
 
   const hash = await Bun.password.hash(password, ARGON);
 
@@ -1131,7 +1200,12 @@ async function verifySignup(req: Request): Promise<Response> {
   db.query("DELETE FROM signup_verifications WHERE email = ?").run(row.email);
   try {
     createOrReviveUser(row.email, row.name, { passwordHash: row.password_hash });
-  } catch {
+  } catch (e) {
+    // The last free place went while this code was in flight.
+    if (e instanceof FreeSignupsFull) {
+      void noteRefusedFreeSignup(row.email, "password");
+      return freeSignupsFullResponse();
+    }
     // An OAuth sign-in created the account while this code was in flight.
     return err(409, "email already registered");
   }
@@ -1809,7 +1883,11 @@ function signInWithIdentity(req: Request, identity: OauthIdentity, provider: Oau
     if (disposableEmail(email)) return oauthFailed("disposable_email");
     try {
       createOrReviveUser(email, identity.name, { oauthProvider: provider });
-    } catch {
+    } catch (e) {
+      if (e instanceof FreeSignupsFull) {
+        void noteRefusedFreeSignup(email, provider);
+        return oauthFailed(FREE_FULL_CODE);
+      }
       // Two callbacks for one address can race; UNIQUE(email), or a revive that
       // found the row already taken back, settles it and the loser just reads
       // the row the winner left behind.
