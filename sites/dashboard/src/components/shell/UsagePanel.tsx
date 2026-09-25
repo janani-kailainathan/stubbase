@@ -1,4 +1,5 @@
-import { Activity } from 'lucide-react'
+import { Activity, Sparkles } from 'lucide-react'
+import { useAccountSummary } from '@/hooks/account'
 import { useUsage } from '@/hooks/usage'
 import type { UsageDay } from '@/lib/api'
 
@@ -125,6 +126,41 @@ function QuotaBar({ used, limit }: { used: number; limit: number }) {
   )
 }
 
+/** A UTC date as "Oct 1", for a grant's expiry. */
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/**
+ * The AI Co-Pilot's balance. The account's, like the quota bar's `used`, and
+ * labelled so — it is not this project's. Read from /auth/account, the same
+ * query the chat box shows, which every Co-Pilot turn refetches; the hover
+ * lists the grants it is made of, in the order they will be spent.
+ */
+function AiCreditsRow() {
+  const { data: account } = useAccountSummary()
+  const credits = account?.aiCredits
+  if (!credits) return null
+  const empty = credits.balance === 0
+  const breakdown = credits.grants
+    .map((g) => `${g.remaining.toLocaleString()} ${g.name.toLowerCase()} · until ${shortDate(g.expiresAt)}`)
+    .join('\n')
+
+  return (
+    <div
+      className="flex items-center justify-between gap-2 font-mono text-[10px]"
+      title={breakdown || 'No AI credits left'}
+    >
+      <span className="flex min-w-0 items-center gap-1.5 truncate text-faint">
+        <Sparkles className="h-3 w-3 shrink-0 text-primary-accent" />
+        AI credits
+      </span>
+      <span className={`shrink-0 ${empty ? 'text-warning-ink' : 'text-heading'}`}>
+        {credits.balance.toLocaleString()}
+      </span>
+    </div>
+  )
+}
+
 export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
   const { data, isLoading, error } = useUsage(tenantId)
   const series = toSeries(data?.daily ?? [])
@@ -140,7 +176,6 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
         <span className="flex-1 text-xs font-semibold tracking-wide text-subtle uppercase">
           Usage
         </span>
-        <span className="font-mono text-[10px] text-faint">this month</span>
       </div>
 
       {isLoading && <p className="font-mono text-xs text-faint">Loading…</p>}
@@ -155,14 +190,13 @@ export function UsagePanel({ tenantId }: { tenantId: string | undefined }) {
           {data.limit > 0 && (
             <QuotaBar used={data.account?.requests ?? data.month.requests} limit={data.limit} />
           )}
+          <AiCreditsRow />
           {hasTraffic ? (
             <RequestsChart series={series} />
           ) : (
-            <p className="font-mono text-[10px] text-faint">
-              {trafficToday
-                ? "Today's traffic joins the chart tomorrow."
-                : 'No traffic yet — call your API to see it here.'}
-            </p>
+            trafficToday && (
+              <p className="font-mono text-[10px] text-faint">Today's traffic joins the chart tomorrow.</p>
+            )
           )}
         </div>
       )}

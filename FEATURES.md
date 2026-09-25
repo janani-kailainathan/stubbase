@@ -820,8 +820,8 @@ The AI Co-Pilot is on every plan. Each reply uses credits for the work it did:
 one credit per 1,000 tokens the model read and wrote, counted across every step
 of the reply and rounded up. A reply that designs a small table costs a few
 credits; one that seeds hundreds of rows costs more. After each reply the
-dashboard tells you what it used and what is left, and the number under the
-chat box always shows your balance.
+dashboard tells you what it used and what is left, and the Usage panel on the
+right shows your balance.
 
 - **Every new account gets 100 gift credits**, valid for 3 months from sign-up.
   You get them once — deleting your account and signing up again does not give

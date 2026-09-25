@@ -752,7 +752,7 @@ export function AiChat({ tenantId }: { tenantId: string | undefined }) {
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary-accent" />
           <span className="font-mono text-xs text-subtle">
-            Working&hellip; this can take a few seconds.
+            Working&hellip;
           </span>
         </div>
       )}
@@ -834,11 +834,6 @@ export function AiComposer({ tenantId }: { tenantId: string | undefined }) {
           <ArrowUp className="h-4 w-4" />
         </button>
       </div>
-      {credits && entitled && (
-        <p className="mt-1.5 font-mono text-[10px] text-faint">
-          {credits.balance.toLocaleString()} AI credit{credits.balance === 1 ? '' : 's'} left
-        </p>
-      )}
     </div>
   )
 }
