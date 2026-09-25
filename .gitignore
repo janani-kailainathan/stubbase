@@ -13,6 +13,8 @@ tenants/*
 sites/*/.env.local
 deploy/inventory.ini
 deploy/inventory.local.ini
+# Production deploy secrets (STUBBASE_*). deploy.env.example is the committed template.
+deploy/deploy.env
 
 # Per-developer tooling: the vendored skill install and local settings.
 .claude/

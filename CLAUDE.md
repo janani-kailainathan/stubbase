@@ -46,7 +46,7 @@ bun run scripts/build.ts --skip-tests  # escape hatch; test goals report SKIPPED
 
 # deploy / syntax-check  (run the top-level build first — dist/ is gitignored)
 cd deploy && ansible-playbook --syntax-check -i inventory.ini.example deploy.yml
-STUBBASE_ADMIN_SECRET=... ansible-playbook -i inventory.ini deploy.yml
+set -a; source deploy.env; set +a && ansible-playbook -i inventory.ini deploy.yml   # deploy.env: gitignored STUBBASE_* settings, see deploy.env.example
 ```
 
 `scripts/build.ts` is the gate; Ansible only ships whatever `dist/` it finds, and **not deploying after a failed build is the operator's call** — the script deliberately leaves a previous `dist/` in place. The backends have no build step, so their reactor modules exist purely to run the zero-dependency check and the regression suite: that makes this script the only thing between a broken `server-core.ts` and production.

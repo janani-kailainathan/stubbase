@@ -248,12 +248,16 @@ ADMIN_SECRET=dev PORT=3001 CORE_API_URL=http://127.0.0.1:3000 bun run apps/dashb
 Prereqs: a fresh Ubuntu VPS, DNS records for `stubbase.dev`, `app.`, `api.`, `api.app.` (A records) and `www.` (CNAME to the apex, redirected by Caddy) pointing at it, and freshly built frontends (`sites/*/dist/` is gitignored — see [BUILD.md](BUILD.md#production-builds--deploy)).
 
 ```bash
-cd deploy
-cp inventory.ini.example inventory.ini    # set your VPS IP
-STUBBASE_ADMIN_SECRET="$(openssl rand -hex 32)" ansible-playbook -i inventory.ini deploy.yml
+cp deploy/deploy.env.example deploy/deploy.env   # fill it in (gitignored, keep private)
+cp deploy/inventory.ini.example deploy/inventory.ini   # set your VPS IP
+set -a; source deploy/deploy.env; set +a         # exports every STUBBASE_* setting
+bun run scripts/build.ts                          # PUBLIC_GOOGLE_CLIENT_ID reaches the landing build
+cd deploy && ansible-playbook -i inventory.ini deploy.yml
 ```
 
-The playbook installs Caddy (official apt repo) and Bun (native, `/usr/local/bin/bun`), creates the `stubbase` user and directory layout, deploys code and static sites, writes `/etc/stubbase/stubbase.env` (0600) with the admin secret, installs/starts the two sandboxed systemd units, and validates the Caddyfile before reloading Caddy. Re-run the same command to deploy updates — it's idempotent.
+`deploy/deploy.env` holds every setting the playbook reads — the admin secret, the Agent Platform (Vertex AI) key, the OAuth apps, Resend. Generate `STUBBASE_ADMIN_SECRET` once (`openssl rand -hex 32`) and **keep it the same on every deploy**: it signs project logins and keys reset codes and deleted-account links, so a new value signs everyone out.
+
+The playbook installs Caddy (official apt repo) and Bun (native, `/usr/local/bin/bun`), creates the `stubbase` user and directory layout, deploys code and static sites, writes `/etc/stubbase/stubbase.env` (0600) with the admin secret, installs/starts the two sandboxed systemd units, and validates the Caddyfile before reloading Caddy. Re-run the same commands to deploy updates — it's idempotent.
 
 Production layout:
 
