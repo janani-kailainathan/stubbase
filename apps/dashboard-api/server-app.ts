@@ -3265,9 +3265,23 @@ async function toolStageSchemaDrafts(
       // Without this the model invents a plausible-looking base path (/api/…)
       // and tells the user to call a URL that does not exist.
       apiBase: `${PUBLIC_API_BASE}/${tenantId}`,
+      ...(await deployHint(tenantId)),
       note: "Staged as drafts. They are not reachable on the public API until the project is deployed.",
     },
   };
+}
+
+/**
+ * What a tool whose change waits for a deploy hands the model: that it does,
+ * and what the dashboard's button reads right now — Deploy while the API is
+ * stopped, Redeploy while it is live, as TopBar labels it — so the reply names
+ * the control the user actually sees rather than one of the agent's tools.
+ * New tables, table removals and settings wait for a deploy; records and
+ * required fields never do, and their tools carry no hint.
+ */
+async function deployHint(tenantId: string): Promise<{ needsDeploy: true; deployButton: "Deploy" | "Redeploy" }> {
+  const live = (await projectStatus(tenantId)) === "active";
+  return { needsDeploy: true, deployButton: live ? "Redeploy" : "Deploy" };
 }
 
 /**
@@ -3296,24 +3310,53 @@ async function toolSetServerStatus(
       note:
         status === "active"
           ? "The public API is serving traffic again."
-          : "Every public endpoint now answers 503.",
+          : "Every public endpoint now answers 503. The user can start it again with the Deploy " +
+            "button, or by asking you.",
     },
   };
 }
 
-/** deploy_project — promote every staged draft to production. */
-async function toolDeployProject(tenantId: string): Promise<ToolOutcome> {
+/**
+ * deploy_project — what the dashboard's Deploy button does: promote every
+ * staged change, then start the API if it was not serving. Promoting alone
+ * would leave a stopped project answering 503 after a "deployed" reply, and
+ * "deploy" must mean one thing whoever asks for it. `started` is what tells the
+ * model which reply to give: a first deploy, which brought the API up, or a
+ * redeploy of one that was already live.
+ */
+async function toolDeployProject(user: User, tenantId: string): Promise<ToolOutcome> {
+  // A deploy that brought the API up, or did not go through, is when the
+  // project's health is worth showing unasked; a routine redeploy is not.
   const out = await promoteDrafts(tenantId);
-  if ("error" in out) return { result: { error: out.error } };
+  if ("error" in out) return { result: { error: out.error, diagnostics: await diagnosticsOf(user, tenantId) } };
+  const started = (await projectStatus(tenantId)) !== "active";
+  if (started) {
+    const failure = await applyProjectStatus(tenantId, "active");
+    // The drafts are live either way; say so, and that the API did not start.
+    if (failure)
+      return {
+        changed: true,
+        result: {
+          promoted: out.promoted,
+          error: `deployed, but the API could not be started: ${failure}`,
+          diagnostics: await diagnosticsOf(user, tenantId),
+        },
+      };
+  }
   return {
     changed: true,
     result: {
       promoted: out.promoted,
+      ...(out.removed?.length ? { removed: out.removed } : {}),
+      started,
+      ...(started ? { diagnostics: await diagnosticsOf(user, tenantId) } : {}),
       apiBase: `${PUBLIC_API_BASE}/${tenantId}`,
-      note:
-        out.promoted.length === 0
-          ? "Nothing was staged, so nothing changed."
-          : "Drafts are live and the RAM cache was flushed.",
+      note: started
+        ? "Deployed, and the API was started: it is live now. Tell the user so, and that they can " +
+          "stop it with the Stop API button or by asking you."
+        : out.promoted.length === 0 && !out.removed?.length
+          ? "Nothing was staged, so nothing changed. The API is live."
+          : "Redeployed. Tell the user it is redeployed — nothing more is needed.",
     },
   };
 }
@@ -3369,6 +3412,8 @@ async function toolDeleteResources(
     result: {
       pendingConfirmation: { mode, names },
       ...(unknown.length > 0 ? { ignoredUnknown: unknown } : {}),
+      // Emptying is live on the user's click; removing waits for a deploy too.
+      ...(mode === "remove" ? await deployHint(tenantId) : {}),
       note:
         "NOTHING HAS BEEN DELETED YET. This is a proposal shown to the user as a " +
         "confirmation prompt in the dashboard. Tell them it is waiting for their " +
@@ -3446,7 +3491,7 @@ function settingRefusal(key: string, value: string): string | null {
 }
 
 /** change_settings — validates a proposal and hands it to the user; changes nothing. */
-function toolChangeSettings(args: Record<string, unknown>): ToolOutcome {
+async function toolChangeSettings(args: Record<string, unknown>, tenantId: string): Promise<ToolOutcome> {
   const raw = Array.isArray(args.settings) ? args.settings.slice(0, AI_MAX_SETTINGS) : [];
   if (raw.length === 0)
     return { result: { error: "no settings were supplied; name each setting and its new value" } };
@@ -3473,6 +3518,7 @@ function toolChangeSettings(args: Record<string, unknown>): ToolOutcome {
     result: {
       pendingConfirmation: { kind: "settings", set },
       ...(refused.length > 0 ? { refused } : {}),
+      ...(await deployHint(tenantId)),
       note:
         "NOTHING HAS CHANGED YET. The user is shown these settings to confirm in the dashboard; " +
         "once confirmed they are staged, and they go live when the project is deployed. " +
@@ -3482,7 +3528,7 @@ function toolChangeSettings(args: Record<string, unknown>): ToolOutcome {
 }
 
 /** use_starter — proposes filling an empty project from a starter; changes nothing. */
-function toolUseStarter(args: Record<string, unknown>, user: User, tenantId: string): ToolOutcome {
+async function toolUseStarter(args: Record<string, unknown>, user: User, tenantId: string): Promise<ToolOutcome> {
   const starter = STARTER_CATALOGUE.find((s) => s.id === args.id);
   if (!starter)
     return {
@@ -3504,6 +3550,7 @@ function toolUseStarter(args: Record<string, unknown>, user: User, tenantId: str
   return {
     result: {
       pendingConfirmation: { kind: "starter", id: starter.id, title: starter.title, tables: starter.tables },
+      ...(await deployHint(tenantId)),
       note:
         "NOTHING HAS CHANGED YET. The user is shown this starter to confirm in the dashboard; " +
         "once confirmed its tables are staged as drafts, and they go live when the project is " +
@@ -3814,7 +3861,17 @@ async function toolSetRequiredFields(args: Record<string, unknown>, tenantId: st
 }
 
 /** get_diagnostics — tables, settings, syntax health, server status and recent traffic. */
-async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOutcome> {
+/**
+ * get_diagnostics. The model reads it whenever it needs to, but the dashboard
+ * shows it only when `userAsked` — a status card on every ordinary answer
+ * (and on every deploy) reads as something having gone wrong. A deploy that
+ * started the API or failed attaches its own copy, which is always shown.
+ */
+async function toolGetDiagnostics(args: Record<string, unknown>, user: User, tenantId: string): Promise<ToolOutcome> {
+  return { result: { ...(await diagnosticsOf(user, tenantId)), ...(args.userAsked === true ? { shown: true } : {}) } };
+}
+
+async function diagnosticsOf(user: User, tenantId: string): Promise<Record<string, unknown>> {
   const project = ownedProject(tenantId, user.id)!;
   const [{ syntaxErrors, checked }, status, logs, deployed, staged] = await Promise.all([
     collectSyntaxErrors(tenantId, project),
@@ -3853,7 +3910,6 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
     warnings.push("The engine returned 5xx for a recent request.");
 
   return {
-    result: {
       status,
       resources: parseResources(project.resources),
       apiBase: `${PUBLIC_API_BASE}/${tenantId}`,
@@ -3871,7 +3927,6 @@ async function toolGetDiagnostics(user: User, tenantId: string): Promise<ToolOut
       ...(recent.length === 0
         ? { note: "No requests have hit this project's public API recently." }
         : {}),
-    },
   };
 }
 
@@ -3883,15 +3938,15 @@ async function runTool(call: FunctionCall, user: User, tenantId: string, turnId:
       case "set_server_status":
         return await toolSetServerStatus(call.args, tenantId);
       case "deploy_project":
-        return await toolDeployProject(tenantId);
+        return await toolDeployProject(user, tenantId);
       case "delete_resources":
         return await toolDeleteResources(call.args, user, tenantId);
       case "change_settings":
-        return toolChangeSettings(call.args);
+        return await toolChangeSettings(call.args, tenantId);
       case "use_starter":
-        return toolUseStarter(call.args, user, tenantId);
+        return await toolUseStarter(call.args, user, tenantId);
       case "get_diagnostics":
-        return await toolGetDiagnostics(user, tenantId);
+        return await toolGetDiagnostics(call.args, user, tenantId);
       case "get_data_model":
         return await toolGetDataModel(tenantId);
       case "create_records":

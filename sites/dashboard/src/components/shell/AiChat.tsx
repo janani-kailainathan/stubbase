@@ -97,7 +97,8 @@ function StagedTables({ result }: { result: Record<string, unknown> }) {
       ))}
       <Warnings warnings={result.warnings} />
       <p className="font-mono text-[10px] text-faint">
-        Staged as drafts — press Deploy to publish them to your live API.
+        Staged as drafts — press {str(result.deployButton) ?? 'Deploy'} to put them live, or ask
+        the Co-Pilot to deploy.
       </p>
     </ToolCard>
   )
@@ -105,8 +106,11 @@ function StagedTables({ result }: { result: Record<string, unknown> }) {
 
 function Deployed({ result }: { result: Record<string, unknown> }) {
   const promoted = list(result.promoted).filter((p): p is string => typeof p === 'string')
+  // A deploy that brought a stopped API up is a different event from a
+  // redeploy, and the title says which — as the Deploy button's toast does.
+  const started = result.started === true
   return (
-    <ToolCard icon={Rocket} title="Deployed to production">
+    <ToolCard icon={Rocket} title={started ? 'Deployed — API is live' : 'Redeployed'}>
       {promoted.length > 0 ? (
         <p className="font-mono text-[10px] text-subtle">{promoted.join(' · ')} are now live.</p>
       ) : (
@@ -562,7 +566,7 @@ function ToolResult({
   const failure = str(result.error)
   if (failure)
     return (
-      <ToolCard icon={TriangleAlert} title={`${name} failed`}>
+      <ToolCard icon={TriangleAlert} title={`${toolLabel(name)} failed`}>
         <p className="font-mono text-[10px] text-danger-ink/90">{failure}</p>
         <Warnings warnings={result.warnings} />
       </ToolCard>
@@ -592,9 +596,32 @@ function ToolResult({
         </ToolCard>
       )
     default:
-      return <ToolCard icon={Wrench} title={name} />
+      return <ToolCard icon={Wrench} title={toolLabel(name)} />
   }
 }
+
+/**
+ * What a tool is called on screen. Tool names are the agent's vocabulary, not
+ * the user's — the persona forbids the model saying them, and a card must not
+ * either. Only the titles a card cannot otherwise give (a failure, a tool this
+ * build has no card for) come from here.
+ */
+const TOOL_LABELS: Record<string, string> = {
+  stage_schema_drafts: 'Staging tables',
+  set_server_status: 'Starting or stopping the API',
+  deploy_project: 'Deploy',
+  delete_resources: 'Removing tables',
+  change_settings: 'Changing settings',
+  use_starter: 'Using a starter',
+  get_diagnostics: 'Reading diagnostics',
+  get_data_model: 'Reading the data model',
+  set_required_fields: 'Setting required fields',
+  create_records: 'Adding records',
+  update_records: 'Updating records',
+  delete_records: 'Deleting records',
+  count_records: 'Counting records',
+}
+const toolLabel = (name: string) => (Object.hasOwn(TOOL_LABELS, name) ? TOOL_LABELS[name] : 'Co-Pilot action')
 
 // ── Turns ─────────────────────────────────────────────────────────
 
@@ -604,53 +631,100 @@ const textOf = (parts: ChatPart[]) =>
     .join('')
     .trim()
 
-function Turn({ turn, tenantId }: { turn: ChatTurn; tenantId: string | undefined }) {
-  if (turn.role === 'user') {
-    const text = textOf(turn.parts)
-    if (!text) return null
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg bg-primary px-4 py-2 font-mono text-xs break-words whitespace-pre-wrap text-primary-foreground">
-          {text}
-        </div>
-      </div>
-    )
-  }
-
-  // Tool turns are authored by the server, one part per tool that ran.
-  if (turn.role === 'function') {
-    const responses = turn.parts
-      .map((p) => p.functionResponse)
-      .filter((r): r is NonNullable<typeof r> => Boolean(r?.name))
-    if (responses.length === 0) return null
-    return (
-      <div className="w-full max-w-[85%] space-y-1.5">
-        {responses.map((r, i) => (
-          <ToolResult
-            key={`${r.name}-${i}`}
-            name={r.name}
-            result={r.response?.result ?? {}}
-            tenantId={tenantId}
-          />
-        ))}
-      </div>
-    )
-  }
-
-  // A model turn that only asked for tools has no prose of its own — the tool
-  // cards that follow it are the visible outcome, so render nothing here.
+function UserTurn({ turn }: { turn: ChatTurn }) {
   const text = textOf(turn.parts)
   if (!text) return null
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-lg border border-border bg-card px-4 py-2.5 font-mono text-xs leading-relaxed break-words text-emphasis">
-        <Markdown text={text} />
+    <div className="flex justify-end">
+      <div className="max-w-[80%] rounded-lg bg-primary px-4 py-2 font-mono text-xs break-words whitespace-pre-wrap text-primary-foreground">
+        {text}
       </div>
     </div>
   )
 }
 
-function Entry({ entry, tenantId }: { entry: ChatEntry; tenantId: string | undefined }) {
+/** Cards about the project's state rather than a change to it; they close a reply. */
+const STATUS_TOOLS = new Set(['get_diagnostics', 'deploy_project', 'set_server_status'])
+
+/**
+ * Everything the Co-Pilot sent back for one message, in reading order rather
+ * than the order it happened: what it says first, then the cards for what it
+ * changed (tables, records, proposals — whose buttons belong right under the
+ * sentence asking for them), then the state of the project. The agent often
+ * reads diagnostics before it acts, and in running order that card put the
+ * API's status above the answer to the question. The turns themselves, and the
+ * history sent back to the server, keep their real order.
+ */
+function Reply({ entries, tenantId }: { entries: ChatEntry[]; tenantId: string | undefined }) {
+  const texts: { key: string; text: string }[] = []
+  const cards: { key: string; name: string; result: Record<string, unknown> }[] = []
+  for (const entry of entries) {
+    if (entry.kind !== 'turn') continue
+    if (entry.turn.role === 'model') {
+      // A model turn that only asked for tools has no prose of its own.
+      const text = textOf(entry.turn.parts)
+      if (text) texts.push({ key: entry.id, text })
+      continue
+    }
+    // Tool turns are authored by the server, one part per tool that ran.
+    entry.turn.parts.forEach((p, i) => {
+      const r = p.functionResponse
+      if (!r?.name) return
+      const result = r.response?.result ?? {}
+      const key = `${entry.id}-${i}`
+      // Diagnostics the agent read for itself stay out of sight: a status card
+      // on an ordinary answer reads as something having gone wrong. It shows
+      // when the user asked for it (`shown`), or when a deploy attached it —
+      // one that brought the API up, or one that failed.
+      if (r.name === 'get_diagnostics') {
+        if (result.shown === true) cards.push({ key, name: r.name, result })
+        return
+      }
+      cards.push({ key, name: r.name, result })
+      const attached = result.diagnostics
+      if (r.name === 'deploy_project' && attached && typeof attached === 'object')
+        cards.push({ key: `${key}-diagnostics`, name: 'get_diagnostics', result: attached as Record<string, unknown> })
+    })
+  }
+  const ordered = [
+    ...cards.filter((c) => !STATUS_TOOLS.has(c.name)),
+    ...cards.filter((c) => STATUS_TOOLS.has(c.name)),
+  ]
+  return (
+    <>
+      {texts.map(({ key, text }) => (
+        <div key={key} className="flex justify-start">
+          <div className="max-w-[85%] rounded-lg border border-border bg-card px-4 py-2.5 font-mono text-xs leading-relaxed break-words text-emphasis">
+            <Markdown text={text} />
+          </div>
+        </div>
+      ))}
+      {ordered.length > 0 && (
+        <div className="w-full max-w-[85%] space-y-1.5">
+          {ordered.map((c) => (
+            <ToolResult key={c.key} name={c.name} result={c.result} tenantId={tenantId} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** A reply is every model and tool turn between two user messages (or notices, or errors). */
+const isReplyEntry = (e: ChatEntry) => e.kind === 'turn' && e.turn.role !== 'user'
+
+function groupEntries(entries: ChatEntry[]): ({ kind: 'entry'; entry: ChatEntry } | { kind: 'reply'; entries: ChatEntry[] })[] {
+  const blocks: ({ kind: 'entry'; entry: ChatEntry } | { kind: 'reply'; entries: ChatEntry[] })[] = []
+  for (const entry of entries) {
+    const last = blocks[blocks.length - 1]
+    if (!isReplyEntry(entry)) blocks.push({ kind: 'entry', entry })
+    else if (last?.kind === 'reply') last.entries.push(entry)
+    else blocks.push({ kind: 'reply', entries: [entry] })
+  }
+  return blocks
+}
+
+function Entry({ entry }: { entry: ChatEntry }) {
   if (entry.kind === 'error')
     return (
       <div className="flex justify-start">
@@ -672,7 +746,7 @@ function Entry({ entry, tenantId }: { entry: ChatEntry; tenantId: string | undef
       </div>
     )
 
-  return <Turn turn={entry.turn} tenantId={tenantId} />
+  return entry.turn.role === 'user' ? <UserTurn turn={entry.turn} /> : null
 }
 
 /**
@@ -745,9 +819,13 @@ export function AiChat({ tenantId }: { tenantId: string | undefined }) {
 
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-code-bg p-4">
-      {entries.map((e) => (
-        <Entry key={e.id} entry={e} tenantId={tenantId} />
-      ))}
+      {groupEntries(entries).map((b) =>
+        b.kind === 'reply' ? (
+          <Reply key={b.entries[0].id} entries={b.entries} tenantId={tenantId} />
+        ) : (
+          <Entry key={b.entry.id} entry={b.entry} />
+        ),
+      )}
       {isThinking && (
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary-accent" />

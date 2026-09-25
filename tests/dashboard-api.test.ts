@@ -2842,6 +2842,81 @@ describe("AI Co-Pilot agent loop", () => {
     expect(none.error).toContain("record tools");
   }, 30_000);
 
+  // ── Deploying ──
+
+  const statusOf = async (token: string, tenantId: string) =>
+    (await fetch(`${aiApp.base}/projects/${tenantId}/status`, { headers: as(token) }).then((r) => r.json())).status;
+
+  test("a deploy from the chat does what the Deploy button does: it starts a stopped API, and says so", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Chat deploy", {}, aiApp);
+    await toolResult(owner.token, tenantId, "stage_schema_drafts", {
+      tables: [{ name: "notes", records: [{ id: "n1", text: "hi" }] }],
+    });
+    expect(await statusOf(owner.token, tenantId)).toBe("stopped");
+
+    // First deploy: promoted, and the API brought up — without it the reply
+    // would say "deployed" over an API still answering 503.
+    const first = await toolResult(owner.token, tenantId, "deploy_project", {});
+    expect(first.promoted).toContain("notes");
+    expect(first.started).toBe(true);
+    expect(first.note).toContain("Stop API");
+    // Bringing the API up is when its health is worth showing unasked.
+    expect(first.diagnostics.status).toBe("active");
+    expect(await statusOf(owner.token, tenantId)).toBe("active");
+    expect(await (await coreFile(tenantId, "notes")).json()).toEqual([{ id: "n1", text: "hi" }]);
+
+    // A redeploy of a live API starts nothing and says only that.
+    const again = await toolResult(owner.token, tenantId, "deploy_project", {});
+    expect(again.started).toBe(false);
+    expect(again.note).not.toContain("Stop API");
+    expect(again.diagnostics).toBeUndefined();
+    expect(await statusOf(owner.token, tenantId)).toBe("active");
+  }, 30_000);
+
+  test("what waits for a deploy says so, naming the button on screen; records never do", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Needs deploy", { books: [{ id: "1", title: "Dune" }] }, aiApp);
+
+    // Stopped: the button reads Deploy.
+    const staged = await toolResult(owner.token, tenantId, "stage_schema_drafts", {
+      tables: [{ name: "tags", records: [{ id: "t1", name: "sf" }] }],
+    });
+    expect(staged).toMatchObject({ needsDeploy: true, deployButton: "Deploy" });
+
+    await toolResult(owner.token, tenantId, "deploy_project", {});
+
+    // Live: the button reads Redeploy, for every change that waits for one.
+    const settings = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: [{ key: "QA_MODE", value: "true" }],
+    });
+    expect(settings).toMatchObject({ needsDeploy: true, deployButton: "Redeploy" });
+    const removal = await toolResult(owner.token, tenantId, "delete_resources", { names: ["tags"], mode: "remove" });
+    expect(removal).toMatchObject({ needsDeploy: true, deployButton: "Redeploy" });
+
+    // Emptying a table is live on the user's click, and records are live at once.
+    const emptying = await toolResult(owner.token, tenantId, "delete_resources", { names: ["tags"], mode: "empty" });
+    expect(emptying.needsDeploy).toBeUndefined();
+    const created = await toolResult(owner.token, tenantId, "create_records", {
+      table: "books",
+      records: [{ title: "Solaris" }],
+    });
+    expect(created.created).toBe(1);
+    expect(created.needsDeploy).toBeUndefined();
+  }, 30_000);
+
+  test("diagnostics the agent reads for itself are not shown; ones the user asked for are", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Diag shown", { posts: [] }, aiApp);
+    const own = await toolResult(owner.token, tenantId, "get_diagnostics", {});
+    expect(own.status).toBe("stopped");
+    expect(own.shown).toBeUndefined();
+    const asked = await toolResult(owner.token, tenantId, "get_diagnostics", { userAsked: true });
+    expect(asked.shown).toBe(true);
+    // Only a real true: a model's "yes" is not the user asking.
+    expect((await toolResult(owner.token, tenantId, "get_diagnostics", { userAsked: "yes" })).shown).toBeUndefined();
+  }, 30_000);
+
   // ── Record tools ──
 
   /** The confirmation the last tool result in a request handed the model, as a model would read it. */

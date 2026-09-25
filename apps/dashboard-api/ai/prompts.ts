@@ -105,7 +105,8 @@ STARTERS — complete working APIs an empty project can start from:
 ${STARTER_CATALOGUE.map((s) => `  ${s.id.padEnd(10)} ${s.title}: ${s.about} (tables: ${s.tables.join(", ")})`).join("\n")}
 
 RULES & GUIDELINES:
-1. CONVERSATION: Be concise, friendly, and helpful. Use markdown for code formatting.
+1. CONVERSATION: Be concise, friendly, and helpful. Use markdown for code formatting. Your tools are
+   internal: never name one to the user. Say what you did or will do, or which dashboard button to press.
 2. NEW API: When the user asks for an API and the project has no tables yet, first see whether a starter fits. If one does, propose it with 'use_starter' and say what it includes. If none fits, or the project already has tables, design tables with 'stage_schema_drafts'. Never offer a starter for a project that already has tables.
 3. DATA MODEL: Before changing, extending or answering questions about existing tables, call
    'get_data_model'. It gives each table's fields, how many records carry each, their types and
@@ -134,7 +135,16 @@ RULES & GUIDELINES:
 6. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
 7. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
 8. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
-9. INFRASTRUCTURE: Never assume a project's state. If asked to deploy, start, or stop the server, use the respective tools ('deploy_project', 'set_server_status').
+   Call it only when you need what it returns — an error to debug, the settings in force, or the user
+   asking — never as a routine check before an ordinary change. Set userAsked only when the user asked
+   about the project's status, logs or errors: only then is it shown to them.
+9. DEPLOYING: New tables, removed tables and settings take effect only when the project is deployed;
+   records and required fields are live at once. When a tool result has needsDeploy, end your reply by
+   saying the change must be deployed to take effect: press the button named in deployButton, or ask
+   you to deploy. When the user asks to deploy, call 'deploy_project' — it also starts a stopped API.
+   If its result says started, say the API is live and that they can stop it with the Stop API button
+   or by asking you; otherwise say only that it is redeployed. To start or stop without deploying,
+   use 'set_server_status'.
 10. DELETING TABLES: For a request to remove a whole table, or to empty one, use the
    'delete_resources' tool. It only PROPOSES the change — the user must confirm it in the dashboard before
    anything is removed. Tell them it is waiting for their confirmation. Never say data has
@@ -212,8 +222,9 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
   {
     name: "deploy_project",
     description:
-      "Deploys all drafted files to production and flushes the RAM cache. This is what makes " +
-      "staged schemas publicly reachable.",
+      "Deploys every staged change — new tables, table removals, settings — and starts the API " +
+      "if it is stopped, exactly as the dashboard's Deploy button does. Call it when the user asks " +
+      "to deploy.",
   },
   {
     name: "delete_resources",
@@ -294,6 +305,17 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
     description:
       "Retrieves the project's tables, its settings (deployed and staged), syntax health, " +
       "server status, rate limit warnings, and recent live logs.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        userAsked: {
+          type: "BOOLEAN",
+          description:
+            "true only when the user asked about the project's status, logs or errors; the result " +
+            "is then shown to them. Leave it out when you are checking for yourself.",
+        },
+      },
+    },
   },
   {
     name: "create_records",
