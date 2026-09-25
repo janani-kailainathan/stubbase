@@ -832,8 +832,10 @@ chat box always shows your balance.
   months. They are not on sale yet.
 
 Credits are used in the order they expire, so this month's Pro credits and your
-gift go before a pack you paid for. A reply that fails still uses the credits
-for the work the model did before it failed. When you have none left, the chat
+gift go before a pack you paid for. A reply that fails is free: if the AI model
+is busy or something goes wrong, you are told so and nothing is taken — and
+when the model is only briefly busy, the Co-Pilot waits a moment and tries
+again before telling you. When you have none left, the chat
 box says so and stays disabled until you get more; your API itself is not
 affected. The Co-Pilot answers one message at a time for your account.
 

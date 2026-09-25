@@ -116,7 +116,7 @@ export async function generateTurn(
   for (let attempt = 1; attempt <= 2; attempt++) {
     let parts: ChatPart[];
     try {
-      const result = await callOnce(post, body);
+      const result = await callRetryingBusy(post, body);
       usage = addUsage(usage, result.usage);
       parts = result.parts;
     } catch (e) {
@@ -145,12 +145,41 @@ export async function generateTurn(
   throw lastError!;
 }
 
+/**
+ * Waits before each retry of a busy provider. Google answers 503 "currently
+ * experiencing high demand" in bursts, and 429 when a quota is momentarily
+ * spent; both usually clear within seconds, so a turn waits a little rather
+ * than failing. AI_BUSY_RETRY_MS scales the waits (tests make them short).
+ */
+const BUSY_RETRY_BASE_MS = (() => {
+  const n = Number(process.env.AI_BUSY_RETRY_MS ?? 1000);
+  return Number.isFinite(n) && n >= 0 && n <= 30_000 ? n : 1000;
+})();
+const BUSY_RETRY_DELAYS_MS = [BUSY_RETRY_BASE_MS, 3 * BUSY_RETRY_BASE_MS];
+
+async function callRetryingBusy(
+  post: (body: unknown) => Promise<Response>,
+  body: unknown,
+): Promise<{ parts: ChatPart[]; usage: TokenUsage }> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callOnce(post, body);
+    } catch (e) {
+      if (!(e instanceof AIError) || e.kind !== "busy" || attempt >= BUSY_RETRY_DELAYS_MS.length) throw e;
+      console.warn(`[ai] provider busy, retrying in ${BUSY_RETRY_DELAYS_MS[attempt]}ms`);
+      await Bun.sleep(BUSY_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 async function callOnce(
   post: (body: unknown) => Promise<Response>,
   body: unknown,
 ): Promise<{ parts: ChatPart[]; usage: TokenUsage }> {
   const res = await post(body);
   const raw = await res.text();
+  if (res.status === 503 || res.status === 429)
+    throw new AIError("busy", `AI provider is busy (${res.status})`, raw.slice(0, 500));
   if (!res.ok)
     throw new AIError("upstream", `AI provider returned ${res.status}`, raw.slice(0, 500));
 

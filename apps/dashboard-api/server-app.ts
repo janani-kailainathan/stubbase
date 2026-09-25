@@ -3932,9 +3932,10 @@ const aiTurnsInFlight = new Set<number>();
  * confused agent still ends the request with a sentence for the user instead of
  * spending provider calls in a circle.
  *
- * Every round's tokens are added up and the turn is charged once, when it ends
- * — however it ends, a provider failure included, since the provider billed
- * what it read. The reply carries `creditsCharged` and `creditsRemaining`.
+ * Every round's tokens are added up and the turn is charged once, when it
+ * ends in an answer. A turn that fails is free, whatever it cost upstream:
+ * the user got nothing, and a provider's bad minute is not theirs to pay for.
+ * The reply carries `creditsCharged` and `creditsRemaining`.
  */
 async function aiChat(req: Request, user: User, tenantId: string): Promise<Response> {
   if (!ownedProject(tenantId, user.id)) return err(404, "project not found");
@@ -3969,17 +3970,22 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
   // come from a later one — the user's answer — and never from the same turn.
   const turnId = crypto.randomUUID();
   let usage = NO_USAGE;
-  /** Charges the turn and reports it; every way out of the loop goes through here. */
-  const settle = () => {
-    const creditsCharged = Math.ceil(usage.totalTokens / TOKENS_PER_CREDIT);
+  /**
+   * Reports the turn, and charges it when it answered; every way out of the
+   * loop goes through here. The tokens are logged either way — a failed turn
+   * is free to the user, not to the platform, and the log is where it shows.
+   */
+  const settle = (answered: boolean) => {
+    const creditsCharged = answered ? Math.ceil(usage.totalTokens / TOKENS_PER_CREDIT) : 0;
     if (creditsCharged > 0) spendCredits(user, creditsCharged);
     console.log(
       `[ai] turn for account ${user.id}: ${usage.totalTokens} tokens ` +
-        `(${usage.promptTokens} in, ${usage.outputTokens} out), ${creditsCharged} credits`,
+        `(${usage.promptTokens} in, ${usage.outputTokens} out), ` +
+        (answered ? `${creditsCharged} credits` : "failed, not charged"),
     );
     return { creditsCharged, creditsRemaining: creditBalance(user) };
   };
-  const failed = (status: number, error: string) => json({ error, ...settle() }, status);
+  const failed = (status: number, error: string) => json({ error, ...settle(false) }, status);
 
   try {
     const messages: ChatTurn[] = [...history];
@@ -4000,12 +4006,17 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
         if (e instanceof AIError) {
           usage = addUsage(usage, e.usage);
           console.warn(`[ai] ${e.kind}: ${e.message}${e.detail ? ` — ${e.detail}` : ""}`);
+          if (e.kind === "busy")
+            return failed(
+              503,
+              "The AI model is busy right now (Google reports high demand). Please try again in a moment — this turn was not charged.",
+            );
           if (e.kind === "timeout")
-            return failed(504, "The AI Co-Pilot took too long to respond, please try again.");
-          return failed(502, "The AI Co-Pilot could not answer, please try again.");
+            return failed(504, "The AI Co-Pilot took too long to respond. Please try again — this turn was not charged.");
+          return failed(502, "The AI Co-Pilot could not answer. Please try again — this turn was not charged.");
         }
         console.error("[ai] unexpected failure:", e);
-        return failed(502, "The AI Co-Pilot could not answer, please try again.");
+        return failed(502, "The AI Co-Pilot could not answer. Please try again — this turn was not charged.");
       }
 
       usage = addUsage(usage, reply.usage);
@@ -4021,7 +4032,7 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
           messages,
           toolsUsed,
           changed,
-          ...settle(),
+          ...settle(true),
         });
 
       const parts: ChatPart[] = [];
@@ -4041,7 +4052,7 @@ async function aiChat(req: Request, user: User, tenantId: string): Promise<Respo
     }
 
     // Unreachable: the tool-less final round cannot ask for a tool.
-    return failed(502, "The AI Co-Pilot could not finish its work, please try again.");
+    return failed(502, "The AI Co-Pilot could not finish its work. Please try again — this turn was not charged.");
   } finally {
     aiTurnsInFlight.delete(user.id);
   }

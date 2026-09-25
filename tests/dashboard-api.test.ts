@@ -2393,6 +2393,7 @@ describe("AI Co-Pilot agent loop", () => {
   let script: (
     | any[]
     | { parts: any[] | null; usage?: Record<string, number>; delayMs?: number }
+    | { status: number }
     | ((body: any) => any[])
   )[] = [];
 
@@ -2404,6 +2405,12 @@ describe("AI Co-Pilot agent loop", () => {
         seen.push(body);
         if (script.length > 0) {
           const next = script.shift()!;
+          // A provider that is refusing, as Google does under load.
+          if (!Array.isArray(next) && typeof next === "object" && "status" in next)
+            return Response.json(
+              { error: { code: next.status, message: "This model is currently experiencing high demand.", status: "UNAVAILABLE" } },
+              { status: next.status },
+            );
           // A function answers from what it was sent, as a model reads its context.
           const item = typeof next === "function" ? { parts: next(body) } : Array.isArray(next) ? { parts: next } : next;
           if (item.delayMs) await Bun.sleep(item.delayMs);
@@ -2445,6 +2452,7 @@ describe("AI Co-Pilot agent loop", () => {
       GOOGLE_AI_API_KEY: "test-key",
       AI_BASE_URL: `http://127.0.0.1:${provider.port}`,
       AI_MODEL_NAME: "models/stub",
+      AI_BUSY_RETRY_MS: "10", // the busy-provider retries, without the real seconds of waiting
     });
     running.push(aiApp);
   }, 30_000);
@@ -3068,10 +3076,11 @@ describe("AI Co-Pilot agent loop", () => {
     ]);
   }, 30_000);
 
-  test("a failed turn still charges the tokens the provider billed", async () => {
+  test("a failed turn is free, however much it cost upstream", async () => {
     seen = [];
-    // Two empty turns — the first attempt and its one retry — each billed.
+    // A tool round that worked, then two empty turns — the attempt and its retry.
     script = [
+      { parts: [{ functionCall: { name: "get_diagnostics", args: {} } }], usage: { totalTokenCount: 1_500 } },
       { parts: [], usage: { totalTokenCount: 1_200 } },
       { parts: [], usage: { totalTokenCount: 1_200 } },
     ];
@@ -3080,17 +3089,46 @@ describe("AI Co-Pilot agent loop", () => {
 
     const res = await chat(owner.token, tenantId);
     expect(res.status).toBe(502);
-    expect(await res.json()).toMatchObject({ creditsCharged: 3, creditsRemaining: 97 });
-    expect(seen.length).toBe(2);
+    const body = await res.json();
+    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
+    expect(body.error).toContain("not charged");
+    expect(seen.length).toBe(3);
 
-    // A reply with no content at all (a safety block) is not retried, and the
-    // prompt it read is still charged.
+    // A reply with no content at all (a safety block) is not retried, and is free too.
     seen = [];
     script = [{ parts: null, usage: { totalTokenCount: 900 } }];
     const blocked = await chat(owner.token, tenantId);
     expect(blocked.status).toBe(502);
-    expect(await blocked.json()).toMatchObject({ creditsCharged: 1, creditsRemaining: 96 });
+    expect(await blocked.json()).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
     expect(seen.length).toBe(1);
+  }, 30_000);
+
+  test("a busy provider is retried, and the turn carries on", async () => {
+    seen = [];
+    script = [{ status: 503 }, { status: 429 }, { parts: [{ text: "Here you go." }], usage: { totalTokenCount: 1_000 } }];
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Busy then fine", {}, aiApp);
+
+    const res = await chat(owner.token, tenantId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ text: "Here you go.", creditsCharged: 1 });
+    expect(seen.length).toBe(3);
+  }, 30_000);
+
+  test("still busy after the retries: a message that says so, and nothing charged", async () => {
+    seen = [];
+    script = [{ status: 503 }, { status: 503 }, { status: 503 }];
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Busy", {}, aiApp);
+
+    const res = await chat(owner.token, tenantId);
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toContain("busy right now");
+    expect(body.error).toContain("not charged");
+    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
+    // The call and its two retries — and no more.
+    expect(seen.length).toBe(3);
   }, 30_000);
 
   test("a turn that costs more than is left stops the balance at zero, and the next is refused", async () => {

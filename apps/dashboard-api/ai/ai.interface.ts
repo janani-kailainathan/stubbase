@@ -92,6 +92,7 @@ export type AIErrorKind =
   | "unconfigured" // no API key / provider disabled
   | "upstream" // provider returned a non-2xx or unusable envelope
   | "timeout" // provider took too long
+  | "busy" // provider is overloaded or rate-limiting (503/429), still after retries
   | "invalid_json"; // model produced something we could not parse
 
 /**

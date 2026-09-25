@@ -88,6 +88,7 @@ docker-compose service `core` · systemd `deploy/files/stubbase-core.service`
 | `GOOGLE_AI_API_KEY` | *(unset = AI disabled)* | Google AI Studio key, used when the provider is `google`. Server-side only — it must never reach a browser. Without it the route answers `503`; the service still boots. |
 | `AI_MODEL_NAME` | `gemini-3.1-flash-lite` on Vertex, `models/gemini-3.5-flash-lite` on AI Studio | Model string (Vertex drops a `models/` prefix). **Must support function calling** — the Co-Pilot is an agent, and a model without tools (the Gemma family) can only talk about acting. Validated at boot; a malformed value **exits**, since it becomes a URL path segment. |
 | `AI_TIMEOUT_MS` | `60000` | Per-call timeout (1s–300s). One chat turn can make several calls when tools run. |
+| `AI_BUSY_RETRY_MS` | `1000` | When the provider answers 503 or 429 (Google's "currently experiencing high demand"), a call is retried twice: after this many milliseconds, then three times as long. Still busy, the turn fails with a message saying so, and is not charged — no failed turn is. `0`–`30000`; tests set it low. |
 | `AI_BASE_URL` | The provider's own endpoint | Override only to point at a mock in dev/tests. On Vertex it replaces `https://<location>-aiplatform.googleapis.com/v1`. |
 | `PLATFORM_TENANTS` | `public` | Comma-separated tenants the platform serves itself. Counted for usage but never given a request allowance — see §2b. |
 
