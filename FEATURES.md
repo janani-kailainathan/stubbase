@@ -823,9 +823,10 @@ credits; one that seeds hundreds of rows costs more. After each reply the
 dashboard tells you what it used and what is left, and the Usage panel on the
 right shows your balance.
 
-- **Every new account gets 100 gift credits**, valid for 3 months from sign-up.
-  You get them once — deleting your account and signing up again does not give
-  you more.
+- **Every new account gets 1,000 gift credits**, valid for 3 months from
+  sign-up. You get them once per email inbox — deleting your account and signing
+  up again does not give you more, and neither does signing up again with a
+  `+tag` on your address (or, for Gmail, with dots moved around).
 - **Pro adds 5,000 credits every month.** They are there from the 1st and do
   not carry over into the next month.
 - **Credit packs** add 5,000, 20,000 or 60,000 credits on any plan and last 12

@@ -965,6 +965,18 @@ describe("delete account", () => {
     expect(readDb((db) => db.query("SELECT COUNT(*) AS n FROM ai_credits WHERE user_id = ?").get(account.id))).toEqual({ n: 0 });
   }, 30_000);
 
+  test("coming back under a +tag makes a new account, but not a new gift", async () => {
+    const account = await signup();
+    expect((await remove(account.token, PASSWORD)).status).toBe(200);
+
+    const [local, domain] = account.email.split("@");
+    const back = await signupOn(app, `${local}+again@${domain}`);
+    // A different address, so not the old row — but the same inbox, which had its gift.
+    expect(back.id).not.toBe(account.id);
+    const { account: summary } = await (await fetch(`${app.base}/auth/account`, { headers: as(back.token) })).json();
+    expect(summary.aiCredits).toMatchObject({ balance: 0, grants: [] });
+  }, 30_000);
+
   test("the deleted row keeps no readable trace of the address", async () => {
     const account = await signup();
     expect((await remove(account.token, PASSWORD)).status).toBe(200);
@@ -1149,7 +1161,7 @@ describe("disposable email domains", () => {
     expect(n).toBeGreaterThan(50_000);
     // The fingerprint was replaced, not appended to, so the next boot is quiet again.
     expect(
-      readDbOf(first, (db) => db.query("SELECT COUNT(*) AS n FROM app_meta").get()),
+      readDbOf(first, (db) => db.query("SELECT COUNT(*) AS n FROM app_meta WHERE key = 'blocked_email_domains'").get()),
     ).toEqual({ n: 1 });
   }, 30_000);
 });

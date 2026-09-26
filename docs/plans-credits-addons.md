@@ -40,7 +40,7 @@ Sources: `docs/plan.txt` and `docs/request package plan.txt`, both reviewed on
 | Price | $0 | $29/mo | $0 / $15 / $29 |
 | Requests/month | 10,000 | 250,000 | 5,000 / 50,000 / 250,000 |
 | Rate (per account) | 5/s, burst 20 | 50/s, burst 150 | 5 / 20 / 50 per second |
-| AI credits | 100 gift credits, expire 3 months after sign-up, never refresh | 1,000 per calendar month, no rollover | Co-Pilot on Pro + AI only |
+| AI credits | 1,000 gift credits, expire 3 months after sign-up, never refresh | 1,000 per calendar month, no rollover | Co-Pilot on Pro + AI only |
 | Request add-ons | Not available | Available | Any plan |
 | AI credit packs | Available | Available | n/a |
 | Project features | All | All | All |
@@ -75,7 +75,7 @@ charged once, when it ends: all its rounds' tokens are added up, divided by
 
 | Source | Credits | Expires | Who |
 | --- | --- | --- | --- |
-| Welcome gift | 100 | 3 months after sign-up | New Free accounts, once per account. A revived account (deleted, then signed up again) does not get another. |
+| Welcome gift | 1,000 | 3 months after sign-up | New Free accounts, once per inbox (a +tag, or a dot in a Gmail address, is the same inbox). A revived account (deleted, then signed up again) does not get another. |
 | Pro monthly grant | 5,000 | End of the calendar month (UTC) | Pro |
 | Starter pack | 5,000 | 365 days after grant | Any plan, $9.99 |
 | Builder pack | 20,000 | 365 days after grant | Any plan, $34.99 |
@@ -202,7 +202,7 @@ updates CLAUDE.md, ENVIRONMENT.md and FEATURES.md where they describe it.
   pack sizes and prices from that.
 
 **Tests**
-- A new Free account has 100 credits, and has none 3 months later.
+- A new Free account has 1,000 credits, and has none 3 months later.
 - A revived account gets no second gift.
 - Pro gets 5,000 a month, and last month's leftover is gone.
 - Spending order is soonest-expiring first.

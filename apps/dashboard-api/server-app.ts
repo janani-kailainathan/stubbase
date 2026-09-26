@@ -258,6 +258,12 @@ db.exec(`
   -- against this is what makes both idempotent. Packs stack, so they are not in it.
   CREATE UNIQUE INDEX IF NOT EXISTS ai_credits_once ON ai_credits(user_id, source)
     WHERE source = 'gift' OR source LIKE 'monthly:%';
+  -- Every inbox that has had the sign-up gift, as an HMAC of its canonical
+  -- address (see giftInboxHash), so alice+1@ and alice+2@ cannot each claim
+  -- one. Kept after the account is deleted, like deleted_email_hash.
+  CREATE TABLE IF NOT EXISTS ai_gift_inboxes (
+    inbox_hash TEXT PRIMARY KEY
+  ) WITHOUT ROWID;
   -- Throwaway mail providers, refused at sign-up. Loaded from the vendored
   -- blocked-email-domains.txt (see loadBlockedEmailDomains), which is why it
   -- lives in SQLite rather than a Set: 75,000 domains cost about 9 MB held in
@@ -267,8 +273,9 @@ db.exec(`
     domain TEXT PRIMARY KEY
   ) WITHOUT ROWID;
   -- Small key/value scratch for things that describe the database itself
-  -- rather than an account: currently the fingerprint of the domain list
-  -- that was loaded, so a boot can tell whether the file has changed.
+  -- rather than an account: the fingerprint of the domain list that was
+  -- loaded, so a boot can tell whether the file has changed, and whether the
+  -- gift inboxes have been backfilled.
   CREATE TABLE IF NOT EXISTS app_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -559,9 +566,10 @@ const limitOf = (allowance: ReturnType<typeof allowanceOf>, used: number) =>
 // costing the same as "rename a field".
 //
 // Credits come from three places, all in the ai_credits table:
-//   - a gift of GIFT_CREDITS, once per account at sign-up, lasting
+//   - a gift of GIFT_CREDITS, once per inbox at sign-up, lasting
 //     GIFT_VALID_MONTHS. A revived account does not get another: its lineage
 //     already had one, and a gift per sign-up would be a gift per deletion.
+//     Nor does a second address for the same inbox (see giftInboxHash).
 //   - a plan's monthlyAiCredits, as a 'monthly:YYYY-MM' row made on first use
 //     in the month and gone at its end. Counted only while the plan still
 //     grants them, so a downgrade mid-month does not keep Pro's credits.
@@ -582,7 +590,7 @@ const AI_PACKS: Record<AiPackId, { id: AiPackId; name: string; credits: number }
 };
 
 const TOKENS_PER_CREDIT = 1_000;
-const GIFT_CREDITS = 100;
+const GIFT_CREDITS = 1_000;
 const GIFT_VALID_MONTHS = 3;
 const AI_PACK_VALID_MONTHS = 12;
 
@@ -788,6 +796,56 @@ const EMAIL_LINEAGE_KEY = createHash("sha256").update(`account-email:${ADMIN_SEC
 const emailLineageHash = (email: string) =>
   createHmac("sha256", EMAIL_LINEAGE_KEY).update(email.trim().toLowerCase()).digest("base64url");
 
+// ── One gift per inbox ────────────────────────────────────────────
+//
+// Verification proves someone reads the mail sent to an address, not that the
+// address is a different person: most providers deliver alice+anything@ to
+// alice@, and Gmail ignores the dots as well, so one inbox can verify as many
+// addresses as it likes. The sign-up gift is therefore given once per
+// *canonical* inbox — the address with its +tag dropped, and for Gmail its
+// dots — recorded in ai_gift_inboxes, which outlives the account.
+//
+// Only the gift uses this. Accounts, sign-in and the deletion lineage all stay
+// on the exact address: a provider that does not do plus-addressing may give
+// a+b@ and a@ to two different people, and linking or refusing on the canonical
+// form would hand one of them the other's account. Wrongly merging two such
+// people here costs the second of them a gift, and nothing else.
+
+const GIFT_INBOX_KEY = createHash("sha256").update(`gift-inbox:${ADMIN_SECRET}`).digest();
+const DOTLESS_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+
+/** The inbox an address delivers to, as far as can be told from the address alone. */
+function canonicalInbox(email: string): string {
+  const address = email.trim().toLowerCase();
+  const at = address.lastIndexOf("@");
+  let local = address.slice(0, at);
+  let domain = address.slice(at + 1);
+  const plus = local.indexOf("+");
+  if (plus > 0) local = local.slice(0, plus);
+  if (DOTLESS_DOMAINS.has(domain)) {
+    local = local.replaceAll(".", "") || local;
+    domain = "gmail.com";
+  }
+  return `${local}@${domain}`;
+}
+
+const giftInboxHash = (email: string) =>
+  createHmac("sha256", GIFT_INBOX_KEY).update(canonicalInbox(email)).digest("base64url");
+
+// Accounts made before the table existed each had their gift, so their inboxes
+// are claimed once, on the first boot that has the table. Accounts already
+// deleted by then left only their exact-address lineage hash behind, so their
+// inboxes cannot be recovered; returning by that exact address still revives
+// the row and gets nothing.
+if (!db.query("SELECT 1 FROM app_meta WHERE key = 'ai_gift_inboxes_backfilled'").get()) {
+  const claim = db.query("INSERT OR IGNORE INTO ai_gift_inboxes (inbox_hash) VALUES (?)");
+  db.transaction(() => {
+    for (const { email } of db.query("SELECT email FROM users WHERE deleted_at IS NULL").all() as { email: string }[])
+      claim.run(giftInboxHash(email));
+    db.query("INSERT INTO app_meta (key, value) VALUES ('ai_gift_inboxes_backfilled', datetime('now'))").run();
+  })();
+}
+
 // ── Free account cap ──────────────────────────────────────────────
 //
 // At most DASHBOARD_FREE_ACCOUNT_CAP active Free accounts (0 = no cap), so a
@@ -884,8 +942,13 @@ function createOrReviveUser(
     const { lastInsertRowid } = db
       .query("INSERT INTO users (email, name, password_hash, oauth_provider) VALUES (?, ?, ?, ?)")
       .run(email, name, passwordHash, oauthProvider);
-    // The one gift the account's lineage ever gets: a revived row, below, has had it.
-    db.query("INSERT OR IGNORE INTO ai_credits (user_id, source) VALUES (?, 'gift')").run(lastInsertRowid);
+    // The one gift the account's lineage ever gets: a revived row, below, has had
+    // it. And only if its inbox has not had one under another address.
+    const { changes } = db
+      .query("INSERT OR IGNORE INTO ai_gift_inboxes (inbox_hash) VALUES (?)")
+      .run(giftInboxHash(email));
+    if (changes > 0)
+      db.query("INSERT OR IGNORE INTO ai_credits (user_id, source) VALUES (?, 'gift')").run(lastInsertRowid);
     return;
   }
   const { changes } = db
@@ -898,6 +961,8 @@ function createOrReviveUser(
     )
     .run(email, name, passwordHash, oauthProvider, dormant.id);
   if (changes === 0) throw new Error("email already registered");
+  // Its lineage had the gift, perhaps before its inbox was recorded.
+  db.query("INSERT OR IGNORE INTO ai_gift_inboxes (inbox_hash) VALUES (?)").run(giftInboxHash(email));
 }
 
 // Verified against when the email doesn't exist, so login latency doesn't

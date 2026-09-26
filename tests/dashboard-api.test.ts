@@ -2249,12 +2249,12 @@ describe("AI credits", () => {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + monthsAhead, 1)).toISOString().slice(0, 7);
   };
 
-  test("a new account starts with 100 gift credits, valid for three months", async () => {
+  test("a new account starts with 1,000 gift credits, valid for three months", async () => {
     const owner = await signup();
     const summary = await credits(owner.token);
-    expect(summary).toMatchObject({ balance: 100, monthly: 0 });
+    expect(summary).toMatchObject({ balance: 1_000, monthly: 0 });
     expect(summary.grants).toEqual([
-      { name: "Gift credits", credits: 100, remaining: 100, expiresAt: expect.stringMatching(/Z$/) },
+      { name: "Gift credits", credits: 1_000, remaining: 1_000, expiresAt: expect.stringMatching(/Z$/) },
     ]);
     // Three months on from today (the day of the month can roll a little at a month's end).
     expect([yearMonth(3), yearMonth(4)]).toContain(summary.grants[0].expiresAt.slice(0, 7));
@@ -2274,7 +2274,7 @@ describe("AI credits", () => {
       );
     backdate(early.email, ["-3 months", "+1 minutes"]); // a minute to go
     backdate(late.email, ["-3 months", "-1 minutes"]); // a minute gone
-    expect((await credits(early.token)).balance).toBe(100);
+    expect((await credits(early.token)).balance).toBe(1_000);
     expect(await credits(late.token)).toMatchObject({ balance: 0, grants: [] });
   }, 30_000);
 
@@ -2284,24 +2284,24 @@ describe("AI credits", () => {
     grant(owner.email, `monthly:${yearMonth(-1)}`); // last month's, never spent
 
     const summary = await credits(owner.token);
-    expect(summary).toMatchObject({ balance: 5_100, monthly: 5_000 });
+    expect(summary).toMatchObject({ balance: 6_000, monthly: 5_000 });
     // This month's credits end first, so they are listed — and spent — before the gift.
     expect(summary.grants).toEqual([
       expect.objectContaining({ name: "Pro monthly credits", credits: 5_000, remaining: 5_000, expiresAt: `${yearMonth(1)}-01T00:00:00Z` }),
-      expect.objectContaining({ name: "Gift credits", remaining: 100 }),
+      expect.objectContaining({ name: "Gift credits", remaining: 1_000 }),
     ]);
     // Reading the balance again does not grant the month twice.
-    expect((await credits(owner.token)).balance).toBe(5_100);
+    expect((await credits(owner.token)).balance).toBe(6_000);
   }, 30_000);
 
   test("a downgrade drops the month's plan credits but keeps the gift and packs", async () => {
     const owner = await signup();
     setPlan(owner.email, "pro");
     grant(owner.email, "credits_5k");
-    expect((await credits(owner.token)).balance).toBe(5_000 + 100 + 5_000);
+    expect((await credits(owner.token)).balance).toBe(5_000 + 1_000 + 5_000);
 
     setPlan(owner.email, "free");
-    expect(await credits(owner.token)).toMatchObject({ balance: 100 + 5_000, monthly: 0 });
+    expect(await credits(owner.token)).toMatchObject({ balance: 1_000 + 5_000, monthly: 0 });
   }, 30_000);
 
   test("credit packs stack on any plan and last twelve months; anything unsold adds nothing", async () => {
@@ -2314,9 +2314,38 @@ describe("AI credits", () => {
     grant(owner.email, "monthly:2020-01"); // a plan grant long gone
 
     const summary = await credits(owner.token);
-    expect(summary.balance).toBe(100 + 5_000 + 60_000);
+    expect(summary.balance).toBe(1_000 + 5_000 + 60_000);
     // Spent soonest-expiring first: the pack with a minute left goes before the gift.
     expect(summary.grants.map((g: any) => g.name)).toEqual(["Scale pack", "Gift credits", "Starter pack"]);
+  }, 30_000);
+
+  test("one inbox gets one gift, however many +tags it signs up under", async () => {
+    const local = `inbox${Date.now()}`;
+    const first = await signupOn(app, `${local}@test.co`);
+    const tagged = await signupOn(app, `${local}+second@test.co`);
+    const third = await signupOn(app, `${local}+third+more@test.co`);
+    expect((await credits(first.token)).balance).toBe(1_000);
+    // Separate accounts — only the gift is per inbox.
+    expect(new Set([first.id, tagged.id, third.id]).size).toBe(3);
+    expect(await credits(tagged.token)).toMatchObject({ balance: 0, grants: [] });
+    expect(await credits(third.token)).toMatchObject({ balance: 0, grants: [] });
+
+    // Another inbox on the same domain still gets its own.
+    expect((await credits((await signupOn(app, `other${local}@test.co`)).token)).balance).toBe(1_000);
+  }, 30_000);
+
+  test("Gmail's dots name one inbox, and nobody else's do", async () => {
+    const n = Date.now();
+    const dotted = await signupOn(app, `gift.${n}@gmail.com`);
+    const plain = await signupOn(app, `gift${n}+x@googlemail.com`);
+    expect((await credits(dotted.token)).balance).toBe(1_000);
+    expect((await credits(plain.token)).balance).toBe(0);
+
+    // Elsewhere a dot is part of the name: two people, two gifts.
+    const a = await signupOn(app, `gift.${n}@test.co`);
+    const b = await signupOn(app, `gift${n}@test.co`);
+    expect((await credits(a.token)).balance).toBe(1_000);
+    expect((await credits(b.token)).balance).toBe(1_000);
   }, 30_000);
 });
 
@@ -3240,22 +3269,22 @@ describe("AI Co-Pilot agent loop", () => {
       // No total: the parts are summed, thinking tokens included.
       { parts: [{ text: "All quiet." }], usage: { promptTokenCount: 400, candidatesTokenCount: 200, thoughtsTokenCount: 100 } },
     ];
-    const owner = await signupOnPaidPlan(aiApp); // Pro: 5,000 this month + the 100 gift
+    const owner = await signupOnPaidPlan(aiApp); // Pro: 5,000 this month + the 1,000 gift
     const { tenantId } = await createProject(owner.token, "Charged", {}, aiApp);
 
     const res = await chat(owner.token, tenantId);
     expect(res.status).toBe(200);
     const body = await res.json();
     // 1,500 + 700 = 2,200 tokens is 3 credits, not 2 and not one per round.
-    expect(body).toMatchObject({ creditsCharged: 3, creditsRemaining: 5_097 });
+    expect(body).toMatchObject({ creditsCharged: 3, creditsRemaining: 5_997 });
     expect(seen.length).toBe(2);
 
     // Spent soonest-expiring first: this month's credits, not the gift.
     const { balance, grants } = await credits(owner.token);
-    expect(balance).toBe(5_097);
+    expect(balance).toBe(5_997);
     expect(grants).toEqual([
       expect.objectContaining({ name: "Pro monthly credits", credits: 5_000, remaining: 4_997 }),
-      expect.objectContaining({ name: "Gift credits", credits: 100, remaining: 100 }),
+      expect.objectContaining({ name: "Gift credits", credits: 1_000, remaining: 1_000 }),
     ]);
   }, 30_000);
 
@@ -3273,7 +3302,7 @@ describe("AI Co-Pilot agent loop", () => {
     const res = await chat(owner.token, tenantId);
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
+    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 1_000 });
     expect(body.error).toContain("not charged");
     expect(seen.length).toBe(3);
 
@@ -3282,7 +3311,7 @@ describe("AI Co-Pilot agent loop", () => {
     script = [{ parts: null, usage: { totalTokenCount: 900 } }];
     const blocked = await chat(owner.token, tenantId);
     expect(blocked.status).toBe(502);
-    expect(await blocked.json()).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
+    expect(await blocked.json()).toMatchObject({ creditsCharged: 0, creditsRemaining: 1_000 });
     expect(seen.length).toBe(1);
   }, 30_000);
 
@@ -3309,7 +3338,7 @@ describe("AI Co-Pilot agent loop", () => {
     const body = await res.json();
     expect(body.error).toContain("busy right now");
     expect(body.error).toContain("not charged");
-    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 100 });
+    expect(body).toMatchObject({ creditsCharged: 0, creditsRemaining: 1_000 });
     // The call and its two retries — and no more.
     expect(seen.length).toBe(3);
   }, 30_000);
@@ -3317,10 +3346,10 @@ describe("AI Co-Pilot agent loop", () => {
   test("a turn that costs more than is left stops the balance at zero, and the next is refused", async () => {
     seen = [];
     script = [{ parts: [{ text: "Done." }], usage: { totalTokenCount: 5_000 } }];
-    const owner = await signup(aiApp); // the 100 gift
+    const owner = await signup(aiApp); // the 1,000 gift
     const { tenantId } = await createProject(owner.token, "Overrun", {}, aiApp);
     writeDbOf(aiApp, (db) =>
-      db.query("UPDATE ai_credits SET used = 99 WHERE user_id = ? AND source = 'gift'").run(owner.id),
+      db.query("UPDATE ai_credits SET used = 999 WHERE user_id = ? AND source = 'gift'").run(owner.id),
     );
 
     const res = await chat(owner.token, tenantId);
