@@ -1,5 +1,5 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users } from 'lucide-astro';
 // The handwritten accent in the hero headline. Latin only, and imported here so
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
@@ -8,13 +8,30 @@ import { APP_URL, CORE_URL } from '../lib/urls';
 import { NAV_GROUPS } from '../lib/nav';
 
 const publicResources = [
-  { path: '/posts', count: '100 posts' },
-  { path: '/comments', count: '500 comments' },
-  { path: '/albums', count: '100 albums' },
-  { path: '/photos', count: '5000 photos' },
-  { path: '/todos', count: '200 todos' },
-  { path: '/users', count: '10 users' },
+  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper, tint: 'var(--syntax-fn)' },
+  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare, tint: 'var(--syntax-bool)' },
+  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3, tint: 'var(--syntax-num)' },
+  { path: '/photos', count: 5000, noun: 'photos', Icon: Image, tint: 'var(--syntax-fn)' },
+  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks, tint: 'var(--primary)' },
+  { path: '/users', count: 10, noun: 'users', Icon: Users, tint: 'var(--syntax-num)' },
 ];
+
+// Real records from the `public` demo project, verbatim. Its seed
+// (scripts/seed-public-tenant.ts) is deterministic, so these are exactly what
+// the links above return; reseeding with a new seed means updating them.
+const sampleRecords: { path: string; record: Record<string, string | number | boolean> }[] = [
+  { path: '/users/1', record: { id: 1, name: 'Ivy Rossi', username: 'ivyrossi', company: 'Rossi Collective', active: true } },
+  { path: '/todos/1', record: { id: 1, userId: 1, title: 'dashboard handoff payload mock sandbox', completed: true } },
+  { path: '/comments/1', record: { id: 1, postId: 1, email: 'omarweber@example.com', body: 'Endpoint cursor record api schema payload.' } },
+  { path: '/albums/1', record: { id: 1, userId: 1, title: 'endpoint api latency mock' } },
+  { path: '/users/2', record: { id: 2, name: 'Yuki Okafor', username: 'yukiokafor', company: 'Okafor Works', active: false } },
+  { path: '/photos/1', record: { id: 1, albumId: 1, title: 'draft latency response endpoint', thumbnailUrl: 'https://picsum.photos/seed/stubbase-1/150/150' } },
+  { path: '/todos/2', record: { id: 2, userId: 1, title: 'payload billing billing handoff billing draft', completed: false } },
+  { path: '/posts/1', record: { id: 1, userId: 1, title: 'latency fixture prototype fixture cursor shipping' } },
+];
+// Two rows drifting opposite ways. Each is repeated four times and slides by
+// half its width, so the loop is seamless and a half still spans a wide screen.
+const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
 
 const capabilities = [
   {
@@ -670,55 +687,77 @@ const pipeline = [
     </div>
   </section>
 
+  {/*
+    Free Resources, after xmind's "Join millions who think with Xmind": a row
+    of big numbers, then a wall of cards drifting past. Xmind's cards are
+    testimonials; these are real records from the demo project, labelled with
+    the request that returns them, so nothing here reads as a quote.
+  */}
   <section id="free-resources">
-    <div class="mx-auto max-w-4xl px-6 py-20">
-      <div class="mb-12 text-center">
-        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Free Resources</h2>
-        <p class="text-muted-foreground">
+    <div class="mx-auto max-w-6xl px-6 pt-24 pb-12">
+      <div class="reveal mx-auto mb-10 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free Resources</h2>
+        <p class="font-medium text-muted-foreground">
           Stubbase comes with a set of 6 common resources for quick frontend prototyping.<br />
           No account required.
         </p>
+        <p class="mt-6 inline-flex max-w-full items-center gap-3 rounded-2xl border border-border-c bg-card py-2 pr-4 pl-2">
+          <span class="shrink-0 rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold tracking-wide whitespace-nowrap text-subtle uppercase">Base URL</span>
+          <code class="truncate font-mono text-sm text-emphasis">{CORE_URL}/public</code>
+        </p>
       </div>
 
-      <div class="mx-auto max-w-2xl">
-        <div class="overflow-hidden rounded-xl border border-border-c bg-card shadow-sm">
-          <div
-            class="flex items-center justify-between border-b border-border-c bg-chrome-deep px-6 py-4"
-          >
-            <span class="text-xs font-semibold tracking-wide text-subtle uppercase">Base URL</span>
-            <code class="font-mono text-sm text-emphasis">{CORE_URL}/public</code>
-          </div>
-
-          {
-            publicResources.map((resource, i) => (
-              <div
-                class={`group flex items-center justify-between px-6 py-4 transition-colors hover:bg-muted-hover ${i < publicResources.length - 1 ? 'border-b border-border-c' : ''}`}
-              >
-                <a
-                  href={`${CORE_URL}/public${resource.path}`}
-                  class="font-mono text-sm text-primary-ink underline-offset-4 hover:text-primary-ink-hover hover:underline"
-                >
-                  {resource.path}
-                </a>
-                <span class="text-sm text-muted-foreground transition-colors group-hover:text-emphasis">
-                  {resource.count}
+      <ul class="free-stats reveal grid grid-cols-2 gap-y-10 lg:grid-cols-3 lg:gap-y-14">
+        {
+          publicResources.map(({ path, count, noun, Icon, tint }) => (
+            <li class="free-stat relative flex justify-center">
+              <a href={`${CORE_URL}/public${path}`} class="group flex flex-col items-center text-center" style={`--tint: ${tint}`}>
+                <span class="flex items-center gap-3">
+                  <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint) sm:h-12 sm:w-12">
+                    <Icon class="h-5 w-5 sm:h-6 sm:w-6" />
+                  </span>
+                  <span class="text-4xl font-bold tracking-tight text-foreground tabular-nums sm:text-5xl">
+                    {count.toLocaleString('en-US')}
+                  </span>
                 </span>
-              </div>
-            ))
-          }
-        </div>
-
-        <div class="mt-8 rounded-lg border border-primary-soft-border bg-primary-soft p-4 text-center">
-          <p class="text-sm text-primary-ink">
-            <strong>Need custom fields?</strong> Edit these APIs in the{' '}
-            <a href={APP_URL} class="font-semibold underline hover:text-primary-ink-hover">
-              Stubbase Dashboard
-            </a>{' '}
-            to add delays, errors, or your own data.
-          </p>
-        </div>
-      </div>
+                <span class="mt-2 font-mono text-sm text-primary-ink underline-offset-4 group-hover:text-primary-ink-hover group-hover:underline">
+                  {path}
+                </span>
+                <span class="sr-only">{count} {noun}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
     </div>
+
+    <div role="group" aria-label="Sample records from the demo project" class="free-marquee reveal space-y-4 pb-10">
+      {
+        recordRows.map((row, r) => (
+          <div class="free-track flex w-max gap-4" data-direction={r === 0 ? 'left' : 'right'}>
+            {[...row, ...row, ...row, ...row].map(({ path, record }, i) => (
+              <article aria-hidden={i >= row.length ? 'true' : undefined} class="w-72 shrink-0 rounded-2xl border border-border-c bg-card p-4 sm:w-80">
+                <p class="mb-3 flex items-center justify-between border-b border-border-c pb-3 font-mono text-xs">
+                  <span><span class="text-subtle">GET</span> <span class="text-foreground">/public{path}</span></span>
+                  <span class="font-semibold text-primary-ink">200</span>
+                </p>
+                <pre class="font-mono text-[11px] leading-5 text-code-fg"><span class="text-syntax-punct">{'{'}</span>{Object.entries(record).map(([key, value]) => (
+  <span class="block truncate pl-3"><span class="text-syntax-str">"{key}"</span><span class="text-syntax-punct">: </span>{typeof value === 'string' ? <span class="text-syntax-fn">"{value}"</span> : typeof value === 'boolean' ? <span class="text-syntax-bool">{String(value)}</span> : <span class="text-syntax-num">{value}</span>}</span>
+))}<span class="text-syntax-punct">{'}'}</span></pre>
+              </article>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+
+    <p class="reveal mx-auto max-w-2xl px-6 pb-24 text-center text-sm text-muted-foreground">
+      <strong class="font-semibold text-foreground">Need custom fields?</strong> Edit these APIs in the{' '}
+      <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
+        Stubbase Dashboard
+      </a>{' '}
+      to add delays, errors, or your own data.
+    </p>
   </section>
 
   {/*
@@ -1060,6 +1099,49 @@ const pipeline = [
     }
   }
 
+  /* Free Resources: soft vertical rules between the numbers, fading at both
+     ends like xmind's, drawn only where a column has a neighbour. */
+  .free-stat + .free-stat::before {
+    content: '';
+    position: absolute;
+    top: 10%;
+    bottom: 10%;
+    left: 0;
+    width: 1px;
+    background: linear-gradient(transparent, var(--border-strong), transparent);
+  }
+  .free-stats .free-stat:nth-child(2n + 1)::before {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .free-stats .free-stat:nth-child(2n + 1)::before {
+      display: block;
+    }
+    .free-stats .free-stat:nth-child(3n + 1)::before {
+      display: none;
+    }
+  }
+
+  /* The record wall drifts, row against row, fading out at the edges. */
+  .free-marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+  .free-track {
+    animation: free-drift 60s linear infinite;
+  }
+  .free-track[data-direction='right'] {
+    animation-direction: reverse;
+  }
+  .free-marquee:hover .free-track {
+    animation-play-state: paused;
+  }
+  @keyframes free-drift {
+    to {
+      transform: translateX(calc(-50% - 0.5rem));
+    }
+  }
+
   /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
      no script; a browser without view timelines shows them as they are. */
   @supports (animation-timeline: view()) {
@@ -1071,6 +1153,12 @@ const pipeline = [
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .free-track {
+      animation: none;
+    }
+    .free-marquee {
+      overflow-x: auto;
+    }
     .try-badge,
     .reveal,
     .hero-rise,
