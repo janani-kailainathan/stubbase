@@ -4,6 +4,7 @@
 // to render its <main>.
 import BaseLayout from './BaseLayout.astro';
 import Nav from '../components/Nav.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 import Footer from '../components/Footer.astro';
 
 interface Props {
@@ -22,11 +23,13 @@ interface Props {
     | 'contact';
   /** Closing call to action, rendered as the footer's cap. */
   cta?: { title: string; body: string; label: string; href: string };
+  /** Header style. `floating` is the rounded, detached bar the new Home at /home tries out. */
+  nav?: 'default' | 'floating';
   ogType?: 'website' | 'article';
   publishedTime?: string;
 }
 
-const { title, description, schema = [], active, cta, ogType, publishedTime } = Astro.props;
+const { title, description, schema = [], active, cta, nav = 'default', ogType, publishedTime } = Astro.props;
 ---
 
 <BaseLayout
@@ -36,7 +39,7 @@ const { title, description, schema = [], active, cta, ogType, publishedTime } = 
   ogType={ogType}
   publishedTime={publishedTime}
 >
-  <Nav active={active} />
+  {nav === 'floating' ? <FloatingNav active={active} /> : <Nav active={active} />}
   <main>
     <slot />
   </main>

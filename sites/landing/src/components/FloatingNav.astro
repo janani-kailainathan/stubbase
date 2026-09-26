@@ -1,0 +1,354 @@
+---
+// Floating header for the new Home at /home: a rounded bar detached from the
+// page edges, with icon-tile mega-menus that open on hover. Nav.astro is still
+// the header on every other page.
+//
+// No client JS, the same budget as Nav.astro (see CLAUDE.md). The desktop menus
+// open on :hover and keyboard focus rather than on a <details> click, so moving
+// the pointer across the triggers works like a menubar; keyboard users Tab onto
+// a trigger and straight into its links. The page behind is blurred by a scrim
+// that CSS reveals through `:has()`. The mobile menu is still a native
+// <details>, since a touch screen has no hover.
+import {
+  ChevronDown,
+  Menu,
+  X,
+  FileJson,
+  Rocket,
+  Code,
+  Bug,
+  Bot,
+  Coffee,
+  GraduationCap,
+  Sparkles,
+  KeyRound,
+  Zap,
+  Server,
+  Flame,
+  BookOpen,
+  Compass,
+  History,
+  CircleHelp,
+  Mail,
+  ArrowRight,
+} from 'lucide-astro';
+import ThemeToggle from './ThemeToggle.astro';
+import { APP_URL } from '../lib/urls';
+import { NAV_GROUPS, USE_CASES, ROLES, RESOURCE_LINKS, type NavLink } from '../lib/nav';
+
+interface Props {
+  active?:
+    | 'use-cases'
+    | 'roles'
+    | 'features'
+    | 'compare'
+    | 'pricing'
+    | 'quick-start'
+    | 'faqs'
+    | 'contact';
+}
+
+const { active } = Astro.props;
+
+// Icons are presentation, so they live here rather than in nav.ts. A link added
+// there without an entry here still renders, with the fallback arrow.
+const ICONS: Record<string, typeof ArrowRight> = {
+  '/use-cases/mock-apis': FileJson,
+  '/use-cases/mvp-backend': Rocket,
+  '/roles/frontend-developer': Code,
+  '/roles/qa-engineer': Bug,
+  '/roles/ai-engineer': Bot,
+  '/roles/indie-hacker': Coffee,
+  '/roles/student': GraduationCap,
+  '/features/ai-rest-api-generation': Sparkles,
+  '/features/google-github-social-login': KeyRound,
+  '/features/instant-api-deployments': Zap,
+  '/compare/stubbase-vs-json-server': Server,
+  '/compare/stubbase-vs-firebase': Flame,
+  '/quick-start': BookOpen,
+  '/guides': Compass,
+  '/changelog': History,
+  '/faqs': CircleHelp,
+  '/contact': Mail,
+};
+const iconFor = (link: NavLink) => ICONS[link.href] ?? ArrowRight;
+
+const group = (key: string) => NAV_GROUPS.find((g) => g.key === key)!;
+
+interface Menu {
+  label: string;
+  active: boolean;
+  /** Panel width; the grid inside is always two columns. */
+  width: string;
+  sections: { label?: string; links: NavLink[] }[];
+}
+
+const MENUS: Menu[] = [
+  {
+    label: 'Features',
+    active: active === 'features',
+    width: 'w-[42rem]',
+    sections: [{ links: group('features').links }],
+  },
+  {
+    // Solutions keeps its two taxonomies side by side, as in Nav.astro: a
+    // visitor knows either the job they are doing or the job they hold.
+    label: 'Solutions',
+    active: active === 'use-cases' || active === 'roles',
+    width: 'w-[42rem]',
+    sections: [
+      { label: USE_CASES.label, links: USE_CASES.links },
+      { label: ROLES.label, links: ROLES.links },
+    ],
+  },
+  {
+    label: 'Compare',
+    active: active === 'compare',
+    width: 'w-[38rem]',
+    sections: [{ links: group('compare').links }],
+  },
+  {
+    label: 'Resources',
+    active: active === 'quick-start' || active === 'faqs' || active === 'contact',
+    width: 'w-[40rem]',
+    sections: [{ links: RESOURCE_LINKS }],
+  },
+];
+
+const trigger =
+  'flex h-9 cursor-default items-center gap-1 rounded-lg px-3 text-sm font-medium transition-colors';
+---
+
+<header class="floating-nav pointer-events-none sticky top-0 z-50 px-4 pt-3 sm:px-6 lg:pt-5">
+  {/* Soft blur under the bar, so content scrolling past the gap above it fades out rather than cutting off. */}
+  <div class="nav-fade absolute inset-x-0 top-0 h-full backdrop-blur-sm" aria-hidden="true"></div>
+  {/* Blurs the page while a menu is open; revealed by CSS below, never by script. */}
+  <div class="nav-scrim fixed inset-0 -z-10 bg-background/40 backdrop-blur-sm" aria-hidden="true"></div>
+
+  <nav
+    class="nav-bar pointer-events-auto relative mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border border-border-c bg-card/90 pr-2 pl-4 backdrop-blur-md"
+    aria-label="Main"
+  >
+    <div class="flex h-full items-center gap-6">
+      <a href="/" class="flex shrink-0 items-center">
+        <img src="/stubbase-logo-text-dark.svg" alt="Stubbase" class="h-6" data-wordmark="dark" />
+        <img src="/stubbase-logo-text-light.svg" alt="Stubbase" class="h-6" data-wordmark="light" />
+      </a>
+
+      <ul class="hidden h-full items-center gap-0.5 lg:flex">
+        {
+          MENUS.map((menu) => (
+            <li class="nav-menu group flex h-full items-center">
+              <button
+                type="button"
+                aria-haspopup="true"
+                class={`${trigger} ${menu.active ? 'text-foreground' : 'text-muted-foreground'} group-hover:bg-muted group-hover:text-foreground group-has-[:focus-visible]:bg-muted group-has-[:focus-visible]:text-foreground`}
+              >
+                {menu.label}
+                <ChevronDown class="h-3.5 w-3.5 transition-transform duration-200 group-hover:rotate-180 group-has-[:focus-visible]:rotate-180" />
+              </button>
+
+              {/* The panel hangs from the bar (the nearest positioned box), and its
+                  padding-top bridges the gap, so the pointer never leaves the menu
+                  on its way down to a link. */}
+              <div class={`nav-panel absolute top-full left-1/2 ${menu.width} max-w-[calc(100vw-3rem)] -translate-x-1/2 pt-2`}>
+                <div class="rounded-2xl border border-border-c bg-card p-3">
+                  <div class={`grid gap-x-2 ${menu.sections.length > 1 ? 'grid-cols-2' : ''}`}>
+                    {menu.sections.map((section) => (
+                      <div>
+                        {section.label && (
+                          <p class="px-3 pt-2 pb-1 text-xs font-semibold tracking-wide text-subtle uppercase">
+                            {section.label}
+                          </p>
+                        )}
+                        <ul class={menu.sections.length > 1 ? 'grid' : 'grid grid-cols-2 gap-x-2'}>
+                          {section.links.map((link) => {
+                            const Icon = iconFor(link);
+                            return (
+                              <li>
+                                <a
+                                  href={link.href}
+                                  class="group/item flex gap-3 rounded-xl p-3 transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                                >
+                                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary-soft-border bg-primary-soft text-primary-accent transition-colors group-hover/item:text-primary-accent-hover">
+                                    <Icon class="h-5 w-5" />
+                                  </span>
+                                  <span class="min-w-0">
+                                    <span class="block text-sm font-semibold text-foreground">
+                                      {link.label}
+                                    </span>
+                                    {link.blurb && (
+                                      <span class="mt-0.5 block text-xs leading-relaxed text-subtle">
+                                        {link.blurb}
+                                      </span>
+                                    )}
+                                  </span>
+                                </a>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </li>
+          ))
+        }
+        <li class="flex h-full items-center">
+          <a
+            href="/pricing"
+            aria-current={active === 'pricing' ? 'page' : undefined}
+            class={`${trigger} cursor-pointer ${active === 'pricing' ? 'text-foreground' : 'text-muted-foreground'} hover:bg-muted hover:text-foreground`}
+          >
+            Pricing
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+      <ThemeToggle class="max-sm:hidden" />
+      {/* Both auth states ship; the `.signed-in` stamp picks one (see global.css). */}
+      <span data-auth="anon">
+        <a
+          href={`${APP_URL}/login`}
+          class="hidden h-9 items-center rounded-lg px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:flex"
+        >
+          Login
+        </a>
+        <a
+          href={APP_URL}
+          class="flex h-9 items-center rounded-lg bg-primary px-3 text-xs font-semibold whitespace-nowrap text-primary-foreground transition-colors hover:bg-primary-hover sm:text-sm"
+        >
+          Generate API (Free)
+        </a>
+      </span>
+      <span data-auth="user">
+        <a
+          href={APP_URL}
+          class="flex h-9 items-center rounded-lg bg-primary px-3 text-xs font-semibold whitespace-nowrap text-primary-foreground transition-colors hover:bg-primary-hover sm:text-sm"
+        >
+          Open Dashboard
+        </a>
+      </span>
+
+      <details class="group/mobile lg:hidden">
+        <summary
+          class="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden"
+          aria-label="Menu"
+        >
+          <Menu class="h-5 w-5 group-open/mobile:hidden" />
+          <X class="hidden h-5 w-5 group-open/mobile:block" />
+        </summary>
+        <div
+          class="absolute inset-x-0 top-full mt-2 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-2xl border border-border-c bg-card p-3"
+        >
+          {
+            MENUS.map((menu) => (
+              <div class="mb-2">
+                <p class="px-3 pt-2 pb-1 text-xs font-semibold tracking-wide text-subtle uppercase">
+                  {menu.label}
+                </p>
+                {menu.sections.flatMap((section) => section.links).map((link) => {
+                  const Icon = iconFor(link);
+                  return (
+                    <a
+                      href={link.href}
+                      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Icon class="h-4 w-4 shrink-0 text-primary-accent" />
+                      {link.label}
+                    </a>
+                  );
+                })}
+              </div>
+            ))
+          }
+          <div class="flex items-center justify-between border-t border-border-c px-1 pt-2">
+            <a
+              href="/pricing"
+              class="rounded-lg px-2 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Pricing
+            </a>
+            <span data-auth="anon">
+              <a
+                href={`${APP_URL}/login`}
+                class="rounded-lg px-2 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:hidden"
+              >
+                Login
+              </a>
+            </span>
+            <ThemeToggle class="sm:hidden" />
+          </div>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+
+<style>
+  /* Only the band above the bar is blurred, fading out towards it. */
+  .nav-fade {
+    mask-image: linear-gradient(to bottom, black 40%, transparent);
+  }
+
+  /* Closed: hidden and inert. `visibility` waits out the fade before it hides,
+     so a pointer crossing from one trigger to the next never sees a flicker. */
+  .nav-panel,
+  .nav-scrim {
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity 150ms ease,
+      transform 150ms ease,
+      visibility 0s linear 150ms;
+  }
+  /* `transform`, not `translate`: Tailwind's -translate-x-1/2 centring owns the
+     `translate` property, and setting it here would throw the panel off-centre. */
+  .nav-panel {
+    transform: translateY(-4px);
+  }
+  .nav-scrim {
+    pointer-events: none;
+  }
+
+  /* Open on hover only where hover is real, so a tap on a tablet in landscape
+     does not leave a menu stuck open; keyboard focus opens it everywhere. */
+  @media (hover: hover) {
+    .nav-menu:hover .nav-panel {
+      visibility: visible;
+      opacity: 1;
+      transform: none;
+      transition-delay: 0s;
+    }
+    .floating-nav:has(.nav-menu:hover) .nav-scrim {
+      visibility: visible;
+      opacity: 1;
+      transition-delay: 0s;
+    }
+  }
+  .nav-menu:has(:focus-visible) .nav-panel {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    transition-delay: 0s;
+  }
+  /* Two selectors, not one `:has(a, b)`: a list inside :has() is unforgiving,
+     and the browser dropped the whole combined rule. */
+  .floating-nav:has(.nav-menu :focus-visible) .nav-scrim,
+  .floating-nav:has(details[open]) .nav-scrim {
+    visibility: visible;
+    opacity: 1;
+    transition-delay: 0s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-panel,
+    .nav-scrim {
+      transition: none;
+    }
+  }
+</style>

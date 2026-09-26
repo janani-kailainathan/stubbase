@@ -102,8 +102,16 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'compare',
     label: 'Compare',
     links: [
-      { href: '/compare/stubbase-vs-json-server', label: 'vs. JSON Server' },
-      { href: '/compare/stubbase-vs-firebase', label: 'vs. Firebase' },
+      {
+        href: '/compare/stubbase-vs-json-server',
+        label: 'vs. JSON Server',
+        blurb: 'The same JSON-file workflow, deployed and persistent instead of local.',
+      },
+      {
+        href: '/compare/stubbase-vs-firebase',
+        label: 'vs. Firebase',
+        blurb: 'A zero-config REST API against a NoSQL document store.',
+      },
     ],
   },
 ];
@@ -118,11 +126,11 @@ export const MENU_GROUPS: NavGroup[] = NAV_GROUPS.filter(
 
 /** Flat pages that sit alongside the grouped spokes. */
 export const RESOURCE_LINKS: NavLink[] = [
-  { href: '/quick-start', label: 'API Reference' },
-  { href: '/guides', label: 'Guides' },
-  { href: '/changelog', label: 'Changelog' },
-  { href: '/faqs', label: 'FAQs' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/quick-start', label: 'API Reference', blurb: 'Call a live API in one line, then make it slow or fail.' },
+  { href: '/guides', label: 'Guides', blurb: 'Step-by-step setups, from OAuth keys onwards.' },
+  { href: '/changelog', label: 'Changelog', blurb: 'What shipped, newest first.' },
+  { href: '/faqs', label: 'FAQs', blurb: 'Quick answers to common questions.' },
+  { href: '/contact', label: 'Contact', blurb: 'Enterprise volumes, support, or anything else.' },
 ];
 
 export const LEGAL_LINKS: NavLink[] = [
