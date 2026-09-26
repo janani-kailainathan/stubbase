@@ -4,15 +4,18 @@ import Layout from '../layouts/Layout.astro';
 import { APP_URL } from '../lib/urls';
 
 /**
- * `comingSoon` is the launch state, not a permanent one: the paid tiers are
- * shown in full — priced, spec'd, struck through — because someone should
- * arrive at launch already knowing what the paid product will be, and a page
- * that hides its plans until billing exists teaches them nothing. Free is
- * genuinely live and keeps a working call to action.
+ * `comingSoon` strikes an item's price through, badges it "Not active yet" and
+ * swaps its call to action for an inert element. Every item is shown as live
+ * now; set it back on any item that has to come off sale.
  *
- * Flip `comingSoon` to false per tier when the gateway is wired; nothing else
- * on this page needs to change.
+ * `BILLING_LIVE` is the other half, and the one that matters to a crawler: the
+ * Offer JSON-LD says PreOrder for every paid item until it is true. The page
+ * shows the prices as live ahead of the payment gateway; the structured data
+ * must not claim they are purchasable until they are. Flip it when checkout
+ * is wired.
  */
+const BILLING_LIVE = false;
+
 /**
  * A spec line is one short fact. When it needs a qualifier, the qualifier goes
  * in `hint`, shown from a small "?" on hover or focus, so the list stays one
@@ -57,7 +60,7 @@ const tiers: {
   },
   {
     name: 'Pro',
-    comingSoon: true,
+    comingSoon: false,
     price: '$29',
     period: '/mo',
     tagline: 'For production MVPs and CI/CD',
@@ -102,13 +105,12 @@ const tiers: {
  * Request packs, sold to Pro only: a Free account that needs more requests
  * needs Pro. A pack is a one-time purchase of a pool of requests, drawn on once
  * the month's plan allowance is used up and valid for 12 months. The per-second
- * limit stays the plan's. `comingSoon` for the paid tiers' reason: priced in
- * full, nothing to buy until billing opens. Keep the sizes in step with ADDONS
+ * limit stays the plan's. Keep the sizes in step with ADDONS
  * (apps/dashboard-api/server-app.ts).
  */
 const addons = [
-  { name: '+250,000 requests', price: '$9.99', perThousand: '$0.04', comingSoon: true },
-  { name: '+1,000,000 requests', price: '$24.99', perThousand: '$0.025', comingSoon: true },
+  { name: '+250,000 requests', price: '$9.99', perThousand: '$0.04', comingSoon: false },
+  { name: '+1,000,000 requests', price: '$24.99', perThousand: '$0.025', comingSoon: false },
 ];
 
 /**
@@ -118,9 +120,9 @@ const addons = [
  * purchase, valid for 12 months, spent after a plan's own credits.
  */
 const creditPacks = [
-  { name: 'Starter', credits: '5,000 credits', price: '$9.99', comingSoon: true },
-  { name: 'Builder', credits: '20,000 credits', price: '$34.99', comingSoon: true },
-  { name: 'Scale', credits: '60,000 credits', price: '$99.99', comingSoon: true },
+  { name: 'Starter', credits: '5,000 credits', price: '$9.99', comingSoon: false },
+  { name: 'Builder', credits: '20,000 credits', price: '$34.99', comingSoon: false },
+  { name: 'Scale', credits: '60,000 credits', price: '$99.99', comingSoon: false },
 ];
 
 const ctaClass = {
@@ -131,6 +133,11 @@ const ctaClass = {
   muted:
     'rounded-md border border-border-strong bg-muted py-3 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted-strong',
 } as const;
+
+// Something that cannot be bought yet is a PreOrder, not InStock. The prices
+// are real and worth publishing; claiming they are purchasable is not.
+const availability = (preOrder: boolean) =>
+  preOrder ? 'https://schema.org/PreOrder' : 'https://schema.org/InStock';
 
 const offerSchema = {
   '@context': 'https://schema.org',
@@ -146,23 +153,8 @@ const offerSchema = {
       description: tier.tagline,
       price: tier.price.replace('$', ''),
       priceCurrency: 'USD',
-      // A tier that cannot be bought yet is a PreOrder, not InStock. The prices
-      // are real and worth publishing; claiming they are purchasable is not.
-      availability: tier.comingSoon
-        ? 'https://schema.org/PreOrder'
-        : 'https://schema.org/InStock',
+      availability: availability(tier.price !== '$0' && !BILLING_LIVE),
       url: new URL('/pricing', Astro.site).toString(),
-    })),
-    ...addons.map((addon) => ({
-      '@type': 'Offer',
-      name: `Request add-on: ${addon.name}`,
-      description: 'One-time request pack for Pro, valid 12 months',
-      price: addon.price.replace('$', ''),
-      priceCurrency: 'USD',
-      availability: addon.comingSoon
-        ? 'https://schema.org/PreOrder'
-        : 'https://schema.org/InStock',
-      url: new URL('/pricing#add-ons', Astro.site).toString(),
     })),
     ...creditPacks.map((pack) => ({
       '@type': 'Offer',
@@ -170,10 +162,17 @@ const offerSchema = {
       description: 'One-time AI Co-Pilot credits for any plan, valid 12 months',
       price: pack.price.replace('$', ''),
       priceCurrency: 'USD',
-      availability: pack.comingSoon
-        ? 'https://schema.org/PreOrder'
-        : 'https://schema.org/InStock',
+      availability: availability(!BILLING_LIVE),
       url: new URL('/pricing#ai-credits', Astro.site).toString(),
+    })),
+    ...addons.map((addon) => ({
+      '@type': 'Offer',
+      name: `Request add-on: ${addon.name}`,
+      description: 'One-time request pack for Pro, valid 12 months',
+      price: addon.price.replace('$', ''),
+      priceCurrency: 'USD',
+      availability: availability(!BILLING_LIVE),
+      url: new URL('/pricing#add-ons', Astro.site).toString(),
     })),
   ],
 };
@@ -202,9 +201,7 @@ const offerSchema = {
       <div class="mb-10 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Feature Tiers</h2>
         <p class="leading-relaxed text-muted-foreground">
-          Plans differ in how many requests you can make, never in what your API can do. Free
-          is live today; Pro is what billing will look like once it opens, priced here so there
-          are no surprises later.
+          Plans differ in how many requests you can make, never in what your API can do.
         </p>
       </div>
 
@@ -299,54 +296,6 @@ const offerSchema = {
     </div>
   </section>
 
-  <section id="add-ons">
-    <div class="mx-auto max-w-4xl px-6 pb-20">
-      <div class="mb-10 text-center">
-        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Pro</h2>
-        <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
-          Need more requests than Pro includes? Buy a request pack once and it is there when a
-          month runs past your plan's allowance. Packs stack, last 12 months, and raise your
-          requests only; your per-second limit stays your plan's.
-        </p>
-      </div>
-
-      <div class="grid gap-6 md:grid-cols-2">
-        {
-          addons.map((addon) => (
-            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
-              <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
-                {addon.name}
-                {addon.comingSoon && (
-                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
-                    Not active yet
-                  </span>
-                )}
-              </h3>
-              <p class="mb-6 text-sm font-medium text-muted-foreground">
-                {addon.perThousand} per 1,000 requests &middot; valid 12 months
-              </p>
-              <p class="mb-6 text-4xl font-extrabold text-foreground">
-                <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
-                  {addon.price}
-                </span>
-                <span class="text-base font-medium text-subtle"> once</span>
-              </p>
-              {/* Inert for the tiers' reason: there is nothing to buy yet. */}
-              {addon.comingSoon && (
-                <p
-                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
-                  aria-disabled="true"
-                >
-                  Not available yet
-                </p>
-              )}
-            </article>
-          ))
-        }
-      </div>
-    </div>
-  </section>
-
   <section id="ai-credits">
     <div class="mx-auto max-w-6xl px-6 pb-20">
       <div class="mb-10 text-center">
@@ -383,6 +332,54 @@ const offerSchema = {
                 <span class="text-base font-medium text-subtle"> once</span>
               </p>
               {pack.comingSoon && (
+                <p
+                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  aria-disabled="true"
+                >
+                  Not available yet
+                </p>
+              )}
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section id="add-ons">
+    <div class="mx-auto max-w-4xl px-6 pb-20">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Pro</h2>
+        <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
+          Need more requests than Pro includes? Buy a request pack once and it is there when a
+          month runs past your plan's allowance. Packs stack, last 12 months, and raise your
+          requests only; your per-second limit stays your plan's.
+        </p>
+      </div>
+
+      <div class="grid gap-6 md:grid-cols-2">
+        {
+          addons.map((addon) => (
+            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
+              <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
+                {addon.name}
+                {addon.comingSoon && (
+                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                    Not active yet
+                  </span>
+                )}
+              </h3>
+              <p class="mb-6 text-sm font-medium text-muted-foreground">
+                {addon.perThousand} per 1,000 requests &middot; valid 12 months
+              </p>
+              <p class="mb-6 text-4xl font-extrabold text-foreground">
+                <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
+                  {addon.price}
+                </span>
+                <span class="text-base font-medium text-subtle"> once</span>
+              </p>
+              {/* Inert for the tiers' reason: there is nothing to buy yet. */}
+              {addon.comingSoon && (
                 <p
                   class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
                   aria-disabled="true"
