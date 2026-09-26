@@ -1,0 +1,203 @@
+---
+// Footer for the new Home at /home, after xmind.com's: the closing call to
+// action as a centred card in a sketched frame, then the site map on a ground
+// of its own. Footer.astro is still the footer on every other page.
+//
+// The CTA stays the footer's, as CLAUDE.md asks: a page passes `cta` to Layout
+// and never builds its own. This one takes an optional second button and a
+// line of microcopy, which the default footer ignores.
+import { ArrowRight } from 'lucide-astro';
+import ThemeToggle from './ThemeToggle.astro';
+import { USE_CASES, ROLES, NAV_GROUPS, RESOURCE_LINKS, LEGAL_LINKS } from '../lib/nav';
+import type { FooterCta } from '../lib/cta';
+
+interface Props {
+  cta?: FooterCta;
+}
+
+const { cta } = Astro.props;
+
+// By name, not position, for the reason Footer.astro gives.
+const features = NAV_GROUPS.find((group) => group.key === 'features')!;
+const compare = NAV_GROUPS.find((group) => group.key === 'compare')!;
+
+const columns = [
+  { heading: 'Use cases', links: USE_CASES.links },
+  { heading: 'Roles', links: ROLES.links },
+  { heading: 'Features', links: features.links },
+  { heading: 'Compare', links: compare.links },
+  { heading: 'Resources', links: RESOURCE_LINKS },
+  {
+    heading: 'Pricing',
+    links: [
+      { href: '/pricing', label: 'Plans' },
+      // Enterprise has no list price; it is "Let's talk" on /pricing too.
+      { href: '/contact', label: 'Enterprise' },
+    ],
+  },
+];
+---
+
+<footer>
+  {
+    cta && (
+      <div class="mx-auto max-w-6xl px-6 pt-10 pb-24">
+        <div class="framed-cta reveal-footer relative px-6 py-14 text-center sm:px-10 sm:py-16">
+          {/* The sketched frame: four hairlines that run past the corners. */}
+          <span class="frame-line frame-top" aria-hidden="true" />
+          <span class="frame-line frame-bottom" aria-hidden="true" />
+          <span class="frame-line frame-left" aria-hidden="true" />
+          <span class="frame-line frame-right" aria-hidden="true" />
+
+          <span class="relative mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-soft-border bg-primary-soft">
+            <img src="/stubbase-logo.svg" alt="" class="h-8 w-8" />
+            <svg class="absolute -top-3 -right-3 h-5 w-5 text-primary-accent" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M5 13 L8 9 M10 11 L15 8 M8 6 L9 1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </span>
+
+          <h2 class="mx-auto max-w-2xl text-2xl font-bold tracking-tight text-balance text-foreground sm:text-3xl">
+            {cta.title}
+          </h2>
+          <p class="mx-auto mt-3 max-w-xl font-medium leading-relaxed text-muted-foreground">{cta.body}</p>
+
+          <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a href={cta.href} class="group rounded-2xl bg-muted-hover p-1">
+              <span class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground transition-colors group-hover:bg-primary-hover">
+                {cta.label}
+                <ArrowRight class="h-4 w-4" />
+              </span>
+            </a>
+            {
+              cta.secondary && (
+                <a href={cta.secondary.href} class="group rounded-2xl bg-muted-hover p-1">
+                  <span class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 font-semibold text-foreground transition-colors group-hover:bg-muted">
+                    {cta.secondary.label}
+                  </span>
+                </a>
+              )
+            }
+          </div>
+          {cta.note && <p class="mt-4 text-sm text-subtle">{cta.note}</p>}
+        </div>
+      </div>
+    )
+  }
+
+  {/* The site map sits on a ground of its own, full bleed, as xmind's does. */}
+  <div class="bg-card">
+    <div class="mx-auto max-w-7xl px-6 pt-14 pb-10">
+      <div class="mb-12 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <a href="/" class="flex items-center self-start">
+          <img src="/stubbase-logo-text-dark.svg" alt="Stubbase" class="h-7 w-auto" data-wordmark="dark" />
+          <img src="/stubbase-logo-text-light.svg" alt="Stubbase" class="h-7 w-auto" data-wordmark="light" />
+        </a>
+        <p class="max-w-md text-sm leading-relaxed text-subtle sm:text-right">
+          A zero-config, instant backend engine. Persistent, relational REST APIs from JSON or AI,
+          for frontend development and deterministic QA testing.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-6">
+        {
+          columns.map((column) => (
+            <nav aria-label={column.heading}>
+              <p class="mb-4 font-semibold text-foreground">{column.heading}</p>
+              <ul class="space-y-3">
+                {column.links.map((link) => (
+                  <li>
+                    <a href={link.href} class="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))
+        }
+      </div>
+
+      {/* Space, not a rule, sets this line apart (see CLAUDE.md). */}
+      <div class="mt-16 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          <span>© 2026 Stubbase</span>
+          <nav class="flex gap-x-5" aria-label="Legal">
+            {
+              LEGAL_LINKS.map((link) => (
+                <a href={link.href} class="transition-colors hover:text-foreground">
+                  {link.label}
+                </a>
+              ))
+            }
+          </nav>
+        </div>
+        <ThemeToggle class="rounded-lg border border-border-c" />
+      </div>
+    </div>
+  </div>
+</footer>
+
+<style>
+  /* Each hairline fades out at both ends, so the frame looks drawn rather than
+     ruled, and runs past the corner it meets. */
+  .frame-line {
+    position: absolute;
+    pointer-events: none;
+  }
+  /* On a phone the lines run a little less far, so they stay inside the page's
+     gutter instead of widening it. */
+  .frame-top,
+  .frame-bottom {
+    left: -1rem;
+    right: -1rem;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border-strong) 6%, var(--border-strong) 94%, transparent);
+  }
+  @media (min-width: 640px) {
+    .frame-top,
+    .frame-bottom {
+      left: -1.75rem;
+      right: -1.75rem;
+    }
+  }
+  .frame-top {
+    top: 0;
+  }
+  .frame-bottom {
+    bottom: 0;
+  }
+  .frame-left,
+  .frame-right {
+    top: -1rem;
+    bottom: -1rem;
+    width: 1px;
+    background: linear-gradient(transparent, var(--border-strong) 8%, var(--border-strong) 92%, transparent);
+  }
+  .frame-left {
+    left: 0;
+  }
+  .frame-right {
+    right: 0;
+  }
+
+  /* Rises in with the page's other blocks; see home.astro's .reveal. */
+  @supports (animation-timeline: view()) {
+    .reveal-footer {
+      animation: footer-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+  @keyframes footer-in {
+    from {
+      opacity: 0;
+      filter: blur(8px);
+      translate: 0 12px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-footer {
+      animation: none;
+    }
+  }
+</style>

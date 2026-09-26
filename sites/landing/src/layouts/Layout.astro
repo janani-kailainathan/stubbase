@@ -6,6 +6,8 @@ import BaseLayout from './BaseLayout.astro';
 import Nav from '../components/Nav.astro';
 import FloatingNav from '../components/FloatingNav.astro';
 import Footer from '../components/Footer.astro';
+import FramedFooter from '../components/FramedFooter.astro';
+import type { FooterCta } from '../lib/cta';
 
 interface Props {
   title: string;
@@ -22,14 +24,16 @@ interface Props {
     | 'faqs'
     | 'contact';
   /** Closing call to action, rendered as the footer's cap. */
-  cta?: { title: string; body: string; label: string; href: string };
+  cta?: FooterCta;
   /** Header style. `floating` is the rounded, detached bar the new Home at /home tries out. */
   nav?: 'default' | 'floating';
+  /** Footer style. `framed` is the xmind-style footer the new Home at /home tries out. */
+  footer?: 'default' | 'framed';
   ogType?: 'website' | 'article';
   publishedTime?: string;
 }
 
-const { title, description, schema = [], active, cta, nav = 'default', ogType, publishedTime } = Astro.props;
+const { title, description, schema = [], active, cta, nav = 'default', footer = 'default', ogType, publishedTime } = Astro.props;
 ---
 
 <BaseLayout
@@ -43,5 +47,5 @@ const { title, description, schema = [], active, cta, nav = 'default', ogType, p
   <main>
     <slot />
   </main>
-  <Footer cta={cta} />
+  {footer === 'framed' ? <FramedFooter cta={cta} /> : <Footer cta={cta} />}
 </BaseLayout>
