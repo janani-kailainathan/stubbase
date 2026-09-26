@@ -1,5 +1,5 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Zap } from 'lucide-astro';
 // The handwritten accent in the hero headline. Latin only, and imported here so
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
@@ -59,6 +59,14 @@ const [generation, jsonToRest, deployments] = capabilities;
 // is the single source of truth, so a new feature page shows up in this section
 // the moment it is added there, with no second list to keep in step.
 const features = NAV_GROUPS.find((group) => group.key === 'features')!;
+// Presentation only, like the nav's icons: a feature added to nav.ts without an
+// entry here still renders, with the fallback arrow.
+const FEATURE_ICONS: Record<string, typeof ArrowRight> = {
+  '/features/ai-rest-api-generation': Sparkles,
+  '/features/google-github-social-login': KeyRound,
+  '/features/instant-api-deployments': Zap,
+};
+const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)'];
 
 const pipeline = [
   {
@@ -768,29 +776,54 @@ const pipeline = [
     identical feature grid.
   */}
   <section>
-    <div class="mx-auto max-w-5xl px-6 py-20">
-      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Explore Stubbase Features</h2>
-      <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
-        Each feature has a page of its own — how it works, the exact configuration it takes, and
-        what it replaces.
-      </p>
-      <div class="grid gap-6 md:grid-cols-3">
-        {
-          features.links.map((link) => (
-            <a
-              href={link.href}
-              class="group flex flex-col rounded-xl border border-border-c bg-card p-6 transition-colors hover:border-border-strong"
-            >
-              <h3 class="mb-2 font-semibold text-foreground">{link.label}</h3>
-              <p class="mb-6 text-sm leading-relaxed text-muted-foreground">{link.blurb}</p>
-              <span class="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink transition-colors group-hover:text-primary-ink-hover">
-                Read more
-                <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </a>
-          ))
-        }
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-14 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore Stubbase Features</h2>
+        <p class="font-medium leading-relaxed text-muted-foreground">
+          Each feature has a page of its own — how it works, the exact configuration it takes, and
+          what it replaces.
+        </p>
       </div>
+      {/*
+        After xmind's "Trusted by top industry evaluators": a row of shields,
+        each with a ribbon across it. They say "Feature", never an award — the
+        shape is borrowed, the claim is not. The blurb and link sit under each
+        shield so no copy is lost to the drawing.
+      */}
+      <ul class="reveal flex flex-wrap justify-center gap-x-10 gap-y-14">
+        {
+          features.links.map((link, i) => {
+            const Icon = FEATURE_ICONS[link.href] ?? ArrowUpRight;
+            return (
+              <li class="w-full max-w-72 sm:w-72" style={`--tint: ${FEATURE_TINTS[i % FEATURE_TINTS.length]}`}>
+                <a href={link.href} class="group flex flex-col items-center text-center">
+                  <span class="feature-badge relative mb-6 block h-44 w-36 transition-transform duration-200 group-hover:-translate-y-1">
+                    <span class="feature-shield absolute inset-0 bg-border-strong"></span>
+                    <span class="feature-shield absolute inset-px flex flex-col items-center bg-card pt-4">
+                      <span class="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                        <span class="hero-mark h-3 w-3 bg-current" aria-hidden="true"></span>
+                        Stubbase
+                      </span>
+                      <span class="mt-3 flex h-11 w-11 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)">
+                        <Icon class="h-6 w-6" />
+                      </span>
+                    </span>
+                    <span class="absolute inset-x-[-10px] top-[62%] flex h-7 items-center justify-center rounded-sm bg-(--tint) text-[11px] font-bold tracking-widest text-background uppercase">
+                      Feature
+                    </span>
+                  </span>
+                  <h3 class="mb-2 font-semibold text-foreground">{link.label}</h3>
+                  <p class="mb-4 text-sm leading-relaxed text-muted-foreground">{link.blurb}</p>
+                  <span class="inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink transition-colors group-hover:text-primary-ink-hover">
+                    Read more
+                    <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
     </div>
   </section>
 
@@ -1140,6 +1173,12 @@ const pipeline = [
     to {
       transform: translateX(calc(-50% - 0.5rem));
     }
+  }
+
+  /* Feature badges: a shield, drawn twice — the outer copy is the border, the
+     inner one inset by a pixel is the face — so the outline follows the point. */
+  .feature-shield {
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 50% 100%, 0 80%);
   }
 
   /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
