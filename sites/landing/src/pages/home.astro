@@ -1,5 +1,5 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe } from 'lucide-astro';
 // The handwritten accent in the hero headline. Latin only, and imported here so
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
@@ -557,59 +557,116 @@ const pipeline = [
     </div>
   </section>
 
-  <section class="bg-background">
-    <div class="mx-auto max-w-3xl px-6 py-24 text-center">
-      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Try it live</h2>
-      <p class="mb-8 text-muted-foreground">
-        Run this code here, in your console, or from any frontend application.
-      </p>
+  {/*
+    Try it live, after xmind's "Global security & privacy" grid: white cards
+    around one tall dark card. Here the tall card is the terminal the Run
+    button fills, so the answer lands where the eye already is. The runner
+    script below owns #run-script-btn, #output-container, #script-output,
+    #success-msg and #output-placeholder — keep the ids.
+  */}
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Try it live</h2>
+        <p class="font-medium text-muted-foreground">
+          Run this code here, in your console, or from any frontend application.
+        </p>
+      </div>
 
-      <div class="mb-6 overflow-hidden rounded-xl border border-border-c bg-code-bg text-left shadow-xl">
-        <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
-          <Terminal class="h-4 w-4 text-subtle" />
-          <span class="font-mono text-xs text-subtle">fetch.js</span>
-        </div>
-        <pre
-          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-emphasis"><code><span class="text-syntax-fn">fetch</span>(<span class="text-syntax-str">'{CORE_URL}/public/users/1'</span>)
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:grid-rows-[auto_1fr] [&>*]:min-w-0">
+        {/* The request. */}
+        <div class="reveal flex flex-col rounded-3xl border border-border-c bg-card p-6 sm:p-8 lg:col-span-2">
+          <h3 class="mb-2 text-xl font-semibold text-foreground">One call to a live API</h3>
+          <p class="mb-6 max-w-lg text-muted-foreground">
+            A real request to the public demo project, answered by the same engine that serves yours.
+          </p>
+          <div class="overflow-hidden rounded-2xl border border-border-c bg-code-bg text-left">
+            <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
+              <Terminal class="h-4 w-4 text-subtle" />
+              <span class="font-mono text-xs text-subtle">fetch.js</span>
+            </div>
+            <pre
+              class="overflow-x-auto p-5 font-mono text-sm leading-relaxed text-emphasis"><code><span class="text-syntax-fn">fetch</span>(<span class="text-syntax-str">'{CORE_URL}/public/users/1'</span>)
   .<span class="text-syntax-fn">then</span>(response =&gt; response.<span class="text-syntax-fn">json</span>())
   .<span class="text-syntax-fn">then</span>(json =&gt; console.<span class="text-syntax-fn">log</span>(json))</code></pre>
-      </div>
-
-      <div class="mb-6 text-left">
-        <button
-          id="run-script-btn"
-          class="flex items-center gap-2 rounded-md bg-contrast px-5 py-2 text-sm font-semibold text-contrast-foreground shadow-sm transition-colors hover:bg-contrast-hover"
-        >
-          <span class="flex items-center gap-2 data-[hidden]:hidden" data-state="idle">
-            <Play class="h-4 w-4" /> Run script
-          </span>
-          <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="loading">
-            <Loader class="h-4 w-4 animate-spin" /> Running...
-          </span>
-          <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="done">
-            <Check class="h-4 w-4 text-primary-accent" /> Done
-          </span>
-        </button>
-      </div>
-
-      <div
-        id="output-container"
-        class="hidden overflow-hidden rounded-xl border border-border-c bg-code-bg text-left shadow-xl"
-      >
-        <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
-          <FileJson class="h-4 w-4 text-subtle" />
-          <span class="font-mono text-xs text-subtle">Output</span>
+          </div>
+          <div class="mt-6">
+            <span class="inline-block rounded-2xl bg-muted-hover p-1">
+              <button
+                id="run-script-btn"
+                class="flex items-center gap-2 rounded-xl bg-contrast px-5 py-2.5 text-sm font-semibold text-contrast-foreground transition-colors hover:bg-contrast-hover"
+              >
+                <span class="flex items-center gap-2 data-[hidden]:hidden" data-state="idle">
+                  <Play class="h-4 w-4" /> Run script
+                </span>
+                <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="loading">
+                  <Loader class="h-4 w-4 animate-spin" /> Running...
+                </span>
+                <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="done">
+                  <Check class="h-4 w-4 text-primary-accent" /> Done
+                </span>
+              </button>
+            </span>
+          </div>
         </div>
-        <div
-          id="script-output"
-          class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-emphasis"
-        >
+
+        {/* The answer: the tall dark card. */}
+        <div class="reveal try-terminal relative flex min-h-96 flex-col overflow-hidden rounded-3xl border border-border-c p-6 sm:p-8 lg:row-span-2">
+          <h3 class="relative mb-2 text-xl font-semibold text-foreground">The response</h3>
+          <p class="relative mb-6 text-muted-foreground">Straight from the API, highlighted as it lands.</p>
+
+          <div id="output-placeholder" class="relative flex flex-1 flex-col items-center justify-center text-center">
+            <div class="try-badge relative mb-5 flex h-28 w-28 items-center justify-center rounded-full">
+              <span class="flex h-16 w-16 items-center justify-center rounded-2xl border border-primary-soft-border bg-primary-soft text-primary-accent">
+                <Play class="h-7 w-7" />
+              </span>
+            </div>
+            <p class="font-mono text-xs text-subtle">GET /public/users/1</p>
+            <p class="mt-1 text-sm text-muted-foreground">Press Run script to call it.</p>
+          </div>
+
+          <div
+            id="output-container"
+            class="relative hidden overflow-hidden rounded-2xl border border-border-c bg-code-bg text-left"
+          >
+            <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
+              <FileJson class="h-4 w-4 text-subtle" />
+              <span class="font-mono text-xs text-subtle">Output</span>
+            </div>
+            <div
+              id="script-output"
+              class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-emphasis"
+            >
+            </div>
+          </div>
+
+          <p id="success-msg" class="relative mt-5 hidden text-sm text-muted-foreground">
+            Congrats! You've made your first call to Stubbase. 🎉
+          </p>
+        </div>
+
+        {/* Two small cards: why that call works from anywhere. */}
+        <div class="reveal rounded-3xl border border-border-c bg-card p-6 sm:p-8">
+          <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary-accent">
+            <LockOpen class="h-6 w-6" />
+          </span>
+          <h3 class="mb-2 text-lg font-semibold text-foreground">No login, no API key</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">
+            The demo project is public, so this call needs nothing from you. Paste it into your
+            console and it answers there too.
+          </p>
+        </div>
+        <div class="reveal rounded-3xl border border-border-c bg-card p-6 sm:p-8">
+          <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-(--syntax-fn)/15 text-syntax-fn">
+            <Globe class="h-6 w-6" />
+          </span>
+          <h3 class="mb-2 text-lg font-semibold text-foreground">Open to every origin</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">
+            Public routes answer with <code class="font-mono text-xs text-emphasis">Access-Control-Allow-Origin: *</code>,
+            so the same fetch runs from localhost or your deployed app.
+          </p>
         </div>
       </div>
-
-      <p id="success-msg" class="mt-6 hidden text-left text-sm text-muted-foreground">
-        Congrats! You've made your first call to Stubbase. 🎉
-      </p>
     </div>
   </section>
 
@@ -707,6 +764,7 @@ const pipeline = [
   const outContainer = document.getElementById('output-container');
   const outText = document.getElementById('script-output');
   const successMsg = document.getElementById('success-msg');
+  const placeholder = document.getElementById('output-placeholder');
 
   const FALLBACK_USER = { id: 1, name: 'Ava Chen', role: 'admin', active: true };
 
@@ -754,6 +812,7 @@ const pipeline = [
     }
 
     if (outText) outText.innerHTML = `<pre class="whitespace-pre-wrap">${highlightJson(data)}</pre>`;
+    placeholder?.classList.add('hidden');
     outContainer?.classList.remove('hidden');
     successMsg?.classList.remove('hidden');
     setButtonState('done');
@@ -982,6 +1041,25 @@ const pipeline = [
     );
   }
 
+  /* Try it live's tall card: the code surface with an emerald glow rising
+     behind the badge, as xmind's dark certificate card. */
+  .try-terminal {
+    background:
+      radial-gradient(70% 55% at 50% 60%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 70%),
+      var(--code-bg);
+  }
+  /* Two soft rings around the badge, breathing slowly. */
+  .try-badge {
+    border: 1px solid color-mix(in oklab, var(--primary) 25%, transparent);
+    box-shadow: 0 0 0 14px color-mix(in oklab, var(--primary) 6%, transparent);
+    animation: try-breathe 3.2s ease-in-out infinite;
+  }
+  @keyframes try-breathe {
+    50% {
+      box-shadow: 0 0 0 22px color-mix(in oklab, var(--primary) 3%, transparent);
+    }
+  }
+
   /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
      no script; a browser without view timelines shows them as they are. */
   @supports (animation-timeline: view()) {
@@ -993,6 +1071,7 @@ const pipeline = [
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .try-badge,
     .reveal,
     .hero-rise,
     .hero-piece,
