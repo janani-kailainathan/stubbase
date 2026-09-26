@@ -4,7 +4,7 @@
  * and these two rows are how you see both sides of it.
  *
  *   free@stubbase.dev   Free   10,000 requests/mo, 100 gift AI credits
- *   pro@stubbase.dev    Pro    250,000/mo, 1,000 AI credits a month on top
+ *   pro@stubbase.dev    Pro    250,000/mo, 5,000 AI credits a month on top
  *
  * Both share the password below. Dev-only: this writes to the local
  * app.sqlite that scripts/dev.ts points the Dashboard API at, and nothing here

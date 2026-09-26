@@ -99,7 +99,7 @@ Shipped and working:
 - MCP over HTTP+SSE with one `execute_sql_query` tool against a read-only
   in-memory SQLite projection; developer API keys for external agents. The
   Co-Pilot runs on Gemini 3.1 Flash-Lite via Vertex AI and is metered in AI
-  credits on every plan (100 gift credits, 1,000 a month on Pro, packs).
+  credits on every plan (100 gift credits, 5,000 a month on Pro, packs).
 
 **Not built yet — the user is building these one at a time. Do not present them
 as shipped, and do not invent new claims in the same family:**

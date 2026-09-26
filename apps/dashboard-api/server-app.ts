@@ -417,7 +417,7 @@ const PLANS: Record<PlanId, Plan> = {
     requestsPerSecond: 50,
     burst: 150,
     requestPacks: true,
-    monthlyAiCredits: 1_000,
+    monthlyAiCredits: 5_000,
   },
 };
 

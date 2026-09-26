@@ -72,7 +72,11 @@ const tiers: {
         text: 'Bursts of 150',
         hint: 'Up to 150 requests can arrive at once, then 50 per second after that. A page load or a test run firing several calls together stays within the limit.',
       },
-      '1,000 AI credits every month',
+      '5,000 AI credits every month',
+      {
+        text: 'Includes $10 of AI credits',
+        hint: 'The same 5,000 credits as a $9.99 Starter pack. Monthly credits are spent before any pack and end with the month.',
+      },
       'Request add-ons',
     ],
   },
@@ -109,14 +113,14 @@ const addons = [
 
 /**
  * AI credit packs, sold on any plan. Free starts with 100 gift credits and Pro
- * gets 1,000 a month; a pack tops either up. Credits pay for the Co-Pilot: each reply
+ * gets 5,000 a month; a pack tops either up. Credits pay for the Co-Pilot: each reply
  * spends credits in proportion to the work it did. A pack is a one-time
  * purchase, valid for 12 months, spent after a plan's own credits.
  */
 const creditPacks = [
-  { name: 'Starter', credits: '5,000 credits', price: '$4.99', comingSoon: true },
-  { name: 'Builder', credits: '20,000 credits', price: '$14.99', comingSoon: true },
-  { name: 'Scale', credits: '60,000 credits', price: '$39.99', comingSoon: true },
+  { name: 'Starter', credits: '5,000 credits', price: '$9.99', comingSoon: true },
+  { name: 'Builder', credits: '20,000 credits', price: '$34.99', comingSoon: true },
+  { name: 'Scale', credits: '60,000 credits', price: '$99.99', comingSoon: true },
 ];
 
 const ctaClass = {
@@ -191,7 +195,7 @@ const offerSchema = {
 
 <Layout
   title="Transparent API Pricing for Developers and Teams — Stubbase"
-  description="Flat, predictable Stubbase limits: start mocking APIs for free, then upgrade to Pro at $29/mo for 250,000 requests a month and 1,000 AI credits every month. Enterprise on request."
+  description="Flat, predictable Stubbase limits: start mocking APIs for free, then upgrade to Pro at $29/mo for 250,000 requests a month and 5,000 AI credits every month. Enterprise on request."
   active="pricing"
   schema={[offerSchema]}
 >

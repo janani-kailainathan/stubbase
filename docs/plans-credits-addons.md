@@ -76,10 +76,10 @@ charged once, when it ends: all its rounds' tokens are added up, divided by
 | Source | Credits | Expires | Who |
 | --- | --- | --- | --- |
 | Welcome gift | 100 | 3 months after sign-up | New Free accounts, once per account. A revived account (deleted, then signed up again) does not get another. |
-| Pro monthly grant | 1,000 | End of the calendar month (UTC) | Pro |
-| Starter pack | 5,000 | 365 days after grant | Any plan, $4.99 |
-| Builder pack | 20,000 | 365 days after grant | Any plan, $14.99 |
-| Scale pack | 60,000 | 365 days after grant | Any plan, $39.99 |
+| Pro monthly grant | 5,000 | End of the calendar month (UTC) | Pro |
+| Starter pack | 5,000 | 365 days after grant | Any plan, $9.99 |
+| Builder pack | 20,000 | 365 days after grant | Any plan, $34.99 |
+| Scale pack | 60,000 | 365 days after grant | Any plan, $99.99 |
 
 - Credits are spent **soonest-expiring first**, so the monthly grant and the
   welcome gift go before any pack.
@@ -204,7 +204,7 @@ updates CLAUDE.md, ENVIRONMENT.md and FEATURES.md where they describe it.
 **Tests**
 - A new Free account has 100 credits, and has none 3 months later.
 - A revived account gets no second gift.
-- Pro gets 1,000 a month, and last month's leftover is gone.
+- Pro gets 5,000 a month, and last month's leftover is gone.
 - Spending order is soonest-expiring first.
 - The charge equals the sum of tokens across rounds, rounded up.
 - Zero balance: 402, before the provider check, for Free and Pro alike.

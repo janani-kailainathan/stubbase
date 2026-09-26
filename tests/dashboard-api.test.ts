@@ -2275,27 +2275,27 @@ describe("AI credits", () => {
     expect(await credits(late.token)).toMatchObject({ balance: 0, grants: [] });
   }, 30_000);
 
-  test("Pro gets 1,000 credits each month, and last month's leftovers are gone", async () => {
+  test("Pro gets 5,000 credits each month, and last month's leftovers are gone", async () => {
     const owner = await signup();
     setPlan(owner.email, "pro");
     grant(owner.email, `monthly:${yearMonth(-1)}`); // last month's, never spent
 
     const summary = await credits(owner.token);
-    expect(summary).toMatchObject({ balance: 1_100, monthly: 1_000 });
+    expect(summary).toMatchObject({ balance: 5_100, monthly: 5_000 });
     // This month's credits end first, so they are listed — and spent — before the gift.
     expect(summary.grants).toEqual([
-      expect.objectContaining({ name: "Pro monthly credits", credits: 1_000, remaining: 1_000, expiresAt: `${yearMonth(1)}-01T00:00:00Z` }),
+      expect.objectContaining({ name: "Pro monthly credits", credits: 5_000, remaining: 5_000, expiresAt: `${yearMonth(1)}-01T00:00:00Z` }),
       expect.objectContaining({ name: "Gift credits", remaining: 100 }),
     ]);
     // Reading the balance again does not grant the month twice.
-    expect((await credits(owner.token)).balance).toBe(1_100);
+    expect((await credits(owner.token)).balance).toBe(5_100);
   }, 30_000);
 
   test("a downgrade drops the month's plan credits but keeps the gift and packs", async () => {
     const owner = await signup();
     setPlan(owner.email, "pro");
     grant(owner.email, "credits_5k");
-    expect((await credits(owner.token)).balance).toBe(1_000 + 100 + 5_000);
+    expect((await credits(owner.token)).balance).toBe(5_000 + 100 + 5_000);
 
     setPlan(owner.email, "free");
     expect(await credits(owner.token)).toMatchObject({ balance: 100 + 5_000, monthly: 0 });
@@ -3132,21 +3132,21 @@ describe("AI Co-Pilot agent loop", () => {
       // No total: the parts are summed, thinking tokens included.
       { parts: [{ text: "All quiet." }], usage: { promptTokenCount: 400, candidatesTokenCount: 200, thoughtsTokenCount: 100 } },
     ];
-    const owner = await signupOnPaidPlan(aiApp); // Pro: 1,000 this month + the 100 gift
+    const owner = await signupOnPaidPlan(aiApp); // Pro: 5,000 this month + the 100 gift
     const { tenantId } = await createProject(owner.token, "Charged", {}, aiApp);
 
     const res = await chat(owner.token, tenantId);
     expect(res.status).toBe(200);
     const body = await res.json();
     // 1,500 + 700 = 2,200 tokens is 3 credits, not 2 and not one per round.
-    expect(body).toMatchObject({ creditsCharged: 3, creditsRemaining: 1_097 });
+    expect(body).toMatchObject({ creditsCharged: 3, creditsRemaining: 5_097 });
     expect(seen.length).toBe(2);
 
     // Spent soonest-expiring first: this month's credits, not the gift.
     const { balance, grants } = await credits(owner.token);
-    expect(balance).toBe(1_097);
+    expect(balance).toBe(5_097);
     expect(grants).toEqual([
-      expect.objectContaining({ name: "Pro monthly credits", credits: 1_000, remaining: 997 }),
+      expect.objectContaining({ name: "Pro monthly credits", credits: 5_000, remaining: 4_997 }),
       expect.objectContaining({ name: "Gift credits", credits: 100, remaining: 100 }),
     ]);
   }, 30_000);

@@ -826,7 +826,7 @@ right shows your balance.
 - **Every new account gets 100 gift credits**, valid for 3 months from sign-up.
   You get them once — deleting your account and signing up again does not give
   you more.
-- **Pro adds 1,000 credits every month.** They are there from the 1st and do
+- **Pro adds 5,000 credits every month.** They are there from the 1st and do
   not carry over into the next month.
 - **Credit packs** add 5,000, 20,000 or 60,000 credits on any plan and last 12
   months. They are not on sale yet.
