@@ -3266,7 +3266,9 @@ async function toolStageSchemaDrafts(
       // and tells the user to call a URL that does not exist.
       apiBase: `${PUBLIC_API_BASE}/${tenantId}`,
       ...(await deployHint(tenantId)),
-      note: "Staged as drafts. They are not reachable on the public API until the project is deployed.",
+      note:
+        "Added. The tables are not on the public API until the user presses the button named in " +
+        "deployButton. Say they are added and that pressing it puts them live.",
     },
   };
 }
@@ -3310,8 +3312,7 @@ async function toolSetServerStatus(
       note:
         status === "active"
           ? "The public API is serving traffic again."
-          : "Every public endpoint now answers 503. The user can start it again with the Deploy " +
-            "button, or by asking you.",
+          : "Your API is stopped. Start it again with the Deploy button, or ask the Co-Pilot.",
     },
   };
 }
@@ -3422,15 +3423,17 @@ async function toolDeleteResources(
   };
 }
 
-// ── Settings and starters: proposals the user confirms ─────────────
+// ── Settings and starters ──────────────────────────────────────────
 //
-// Like delete_resources, these two decide and never do. A settings change
-// written by the agent would be a tenant setting changed unreviewed — and the
-// agent reads text strangers wrote (get_diagnostics hands it failed requests'
-// bodies), so a prompt injection could otherwise switch auth off or open a
-// project's sign-up. Each returns a `pendingConfirmation` the dashboard shows
-// as a card; the user's click applies it through the ordinary files routes,
-// staged like any edit, and it goes live only on a deploy.
+// The agent reads text strangers wrote — request paths in the log, field names
+// in the data model — so a prompt injection could ask it to switch auth off or
+// open a project's sign-up. A setting that can only NARROW who may do what is
+// harmless in an attacker's hands, so change_settings applies those itself
+// (`settingTightens`), saved like the editor's Save and live on the next
+// deploy. Anything that could widen access — and every starter, which brings
+// tables and settings of its own — returns a `pendingConfirmation` the
+// dashboard shows as a card, applied only by the user's click through the
+// ordinary files routes.
 
 const bool = (v: string) => (v === "true" || v === "false" ? null : "must be true or false");
 const atLeast = (min: number) => (v: string) =>
@@ -3490,7 +3493,147 @@ function settingRefusal(key: string, value: string): string | null {
   return "is not a Stubbase setting. There is no feature by that name — tell the user it does not exist";
 }
 
-/** change_settings — validates a proposal and hands it to the user; changes nothing. */
+/** The core's defaults for the two lifetimes, for comparing against a .env that leaves them out. */
+const DEFAULT_JWT_TTL_SECONDS = 86_400;
+const DEFAULT_REFRESH_TTL_SECONDS = 2_592_000;
+
+const listOf = (v: string) => new Set(v.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
+const within = (a: Set<string>, b: Set<string>) => [...a].every((x) => b.has(x));
+
+/**
+ * Whether setting `key` to `value` can only narrow who may use the API, judged
+ * against `current` — the settings being edited, which are what the next
+ * deploy puts live. Such a change is applied without a confirmation; anything
+ * that could open the API up, or that this cannot tell, waits for the user's
+ * click. Unknown direction is loosening: roles cut both ways (the rules the
+ * user wrote may allow more than ownership does), and replacing a table's
+ * schema may drop a constraint.
+ */
+function settingTightens(key: string, value: string, current: Record<string, unknown>): boolean {
+  const cur = typeof current[key] === "string" ? (current[key] as string).trim() : "";
+  if (value === cur) return true; // nothing changes
+  switch (key) {
+    case "AUTH_ENABLED":
+    case "AUTH_EMAIL_VERIFICATION":
+    case "AUTH_BLOCK_DISPOSABLE_EMAIL":
+      return value === "true";
+    case "QA_MODE":
+      return value === "false";
+    case "AUTH_JWT_TTL_SECONDS":
+      return Number(value) <= Number(cur || DEFAULT_JWT_TTL_SECONDS);
+    case "AUTH_REFRESH_TTL_SECONDS":
+      return Number(value) <= Number(cur || DEFAULT_REFRESH_TTL_SECONDS);
+    case "AUTH_PUBLIC_ROUTES":
+    case "AUTH_EMAIL_DOMAINS_ALLOWED":
+      return within(listOf(value), listOf(cur));
+    case "AUTH_EMAIL_DOMAINS_BLOCKED":
+      return within(listOf(cur), listOf(value));
+    case "AUTH_EMAIL_DOMAINS_ONLY":
+      // An empty gate lets every domain in, so only a non-empty one narrows.
+      return listOf(value).size > 0 && (cur === "" || within(listOf(value), listOf(cur)));
+  }
+  if (SCHEMA_KEY_RE.test(key)) {
+    // A first schema only refuses bodies; replacing one may drop a constraint.
+    const table = key.slice("SCHEMA_".length);
+    const structured = current.resources;
+    const hasStructured =
+      structured !== null &&
+      typeof structured === "object" &&
+      Object.keys(structured).some((k) => k.toUpperCase() === table);
+    return cur === "" && !hasStructured;
+  }
+  return false; // RBAC_ENABLED either way, and anything added later until it is judged here
+}
+
+// A copy of the SPA's .env merge (sites/dashboard/src/lib/env.ts: setEnvLine,
+// mergeEnv, exposeSocialLogin) for the settings change_settings applies itself.
+// Each Dockerfile's context is its own app, so it cannot be imported;
+// tests/dashboard-api.test.ts holds this to the SPA's result on the same input.
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Set KEY=value in .env text: replace the live line, else uncomment the template's, else append. */
+function setEnvLine(text: string, key: string, value: string): string {
+  const line = `${key}=${value}`;
+  const name = escapeRegExp(key);
+  const live = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=.*$`, "m");
+  if (live.test(text)) return text.replace(live, () => line);
+  const commented = new RegExp(`^\\s*#\\s*${name}\\s*=.*$`, "m");
+  if (commented.test(text)) return text.replace(commented, () => line);
+  return text.trim() ? `${text.replace(/\n+$/, "")}\n${line}` : line;
+}
+
+const SOCIAL_PROVIDERS = [
+  { name: "Google", slug: "google", keys: ["AUTH_GOOGLE_CLIENT_ID", "AUTH_GOOGLE_SECRET"] },
+  { name: "GitHub", slug: "github", keys: ["AUTH_GITHUB_CLIENT_ID", "AUTH_GITHUB_SECRET"] },
+] as const;
+
+function socialLoginConfigured(config: Record<string, unknown>): boolean {
+  const set = (key: string) => String(config[key] ?? "").trim() !== "";
+  return SOCIAL_PROVIDERS.some((p) => p.keys.every(set));
+}
+
+/** Uncomment (or append, with their guide comments) the empty Google and GitHub key lines. */
+function exposeSocialLogin(text: string, tenantBase: string): string {
+  let out = text;
+  for (const provider of SOCIAL_PROVIDERS) {
+    const missing: string[] = [];
+    for (const key of provider.keys) {
+      const name = escapeRegExp(key);
+      if (new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`, "m").test(out)) continue;
+      const commented = new RegExp(`^\\s*#\\s*${name}\\s*=.*$`, "m");
+      if (commented.test(out)) out = out.replace(commented, () => `${key}=`);
+      else missing.push(key);
+    }
+    if (missing.length === 0) continue;
+    const block = [
+      `# ${provider.name} login: fill in both values, Save, then Deploy.`,
+      `# Register this callback URL in your ${provider.name} OAuth app:`,
+      `#   ${tenantBase}/auth/${provider.slug}/callback`,
+      `# How to get the keys: ${OAUTH_KEYS_GUIDE}`,
+      ...missing.map((key) => `${key}=`),
+    ].join("\n");
+    out = out.trim() ? `${out.replace(/\n+$/, "")}\n\n${block}\n` : `${block}\n`;
+  }
+  return out;
+}
+
+/** Merge settings into a stored config, keeping its keys and its `__raw` text in agreement. */
+function mergeEnv(config: Record<string, unknown>, patch: Record<string, string>, tenantBase: string) {
+  const merged: Record<string, unknown> = { ...config, ...patch };
+  const raw = config.__raw;
+  if (typeof raw !== "string") return merged;
+  let text = Object.entries(patch).reduce((t, [key, value]) => setEnvLine(t, key, value), raw);
+  if (String(patch.AUTH_ENABLED ?? "").trim().toLowerCase() === "true" && !socialLoginConfigured(merged)) {
+    text = exposeSocialLogin(text, tenantBase);
+    for (const key of SOCIAL_PROVIDERS.flatMap((p) => p.keys)) if (!(key in merged)) merged[key] = "";
+  }
+  merged.__raw = text;
+  return merged;
+}
+
+/**
+ * The settings being edited — the staged draft, else the live file — with the
+ * revision to write back against, so a save from the .env editor landing
+ * meanwhile is refused rather than overwritten.
+ */
+async function editedSettings(
+  tenantId: string,
+): Promise<{ config: Record<string, unknown>; ifMatch: string } | { error: string }> {
+  const asObject = (d: unknown) =>
+    d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : {};
+  const draft = await coreAdmin("GET", tenantId, `${DRAFT_PREFIX}config`);
+  if (draft.ok) return { config: asObject(draft.data), ifMatch: draft.revision ?? "none" };
+  if (draft.status !== 404) return { error: "the project's settings could not be read" };
+  const live = await coreAdmin("GET", tenantId, "config");
+  if (!live.ok && live.status !== 404) return { error: "the project's settings could not be read" };
+  return { config: live.ok ? asObject(live.data) : {}, ifMatch: "none" };
+}
+
+/**
+ * change_settings — validates the settings, applies them itself when every one
+ * only narrows access, and otherwise hands them to the user as a proposal.
+ */
 async function toolChangeSettings(args: Record<string, unknown>, tenantId: string): Promise<ToolOutcome> {
   const raw = Array.isArray(args.settings) ? args.settings.slice(0, AI_MAX_SETTINGS) : [];
   if (raw.length === 0)
@@ -3514,15 +3657,39 @@ async function toolChangeSettings(args: Record<string, unknown>, tenantId: strin
   const supported = [...Object.keys(AGENT_SETTINGS), "SCHEMA_<TABLE>"];
   if (Object.keys(set).length === 0)
     return { result: { error: "none of those settings can be proposed", refused, supported } };
+
+  const edited = await editedSettings(tenantId);
+  if ("error" in edited) return { result: { error: edited.error } };
+  // All or nothing: one loosening setting sends the whole change to the card,
+  // so a harmless setting cannot carry a dangerous one past the click.
+  if (Object.entries(set).every(([k, v]) => settingTightens(k, v, edited.config))) {
+    const merged = mergeEnv(edited.config, set, `${PUBLIC_API_BASE}/${tenantId}`);
+    const res = await coreAdmin("POST", tenantId, `${DRAFT_PREFIX}config`, merged, { ifMatch: edited.ifMatch });
+    if (res.status === 409)
+      return { result: { error: "the settings were changed by someone else just now; call change_settings again" } };
+    if (!res.ok) return { result: { error: `the settings could not be saved (status ${res.status})` } };
+    markDirty(tenantId);
+    return {
+      changed: true,
+      result: {
+        applied: set,
+        ...(refused.length > 0 ? { refused } : {}),
+        ...(await deployHint(tenantId)),
+        note:
+          "Done: these settings are saved, because they only make the API stricter. Say they are " +
+          "added, and that pressing the button named in deployButton applies them to the live API.",
+      },
+    };
+  }
   return {
     result: {
       pendingConfirmation: { kind: "settings", set },
       ...(refused.length > 0 ? { refused } : {}),
       ...(await deployHint(tenantId)),
       note:
-        "NOTHING HAS CHANGED YET. The user is shown these settings to confirm in the dashboard; " +
-        "once confirmed they are staged, and they go live when the project is deployed. " +
-        "Tell them both, and do not claim the settings are on.",
+        "NOTHING HAS CHANGED YET. A card under your reply shows these settings with a button to " +
+        "apply them. In one sentence, say what they will do and ask the user to confirm below. " +
+        "Do not claim they are on, and do not explain deploying: the card says that after the click.",
     },
   };
 }
@@ -3552,9 +3719,9 @@ async function toolUseStarter(args: Record<string, unknown>, user: User, tenantI
       pendingConfirmation: { kind: "starter", id: starter.id, title: starter.title, tables: starter.tables },
       ...(await deployHint(tenantId)),
       note:
-        "NOTHING HAS CHANGED YET. The user is shown this starter to confirm in the dashboard; " +
-        "once confirmed its tables are staged as drafts, and they go live when the project is " +
-        "deployed. Tell them it is waiting for their confirmation.",
+        "NOTHING HAS CHANGED YET. A card under your reply shows this starter with a button to " +
+        "use it. Say what it includes and ask the user to confirm below. Do not explain " +
+        "deploying: the card says that after the click.",
     },
   };
 }
@@ -3898,10 +4065,11 @@ async function diagnosticsOf(user: User, tenantId: string): Promise<Record<strin
 
   // Edge conditions the user never sees while editing files. Derived from the
   // log ring rather than by probing the public API: a diagnosis must not
-  // manufacture traffic against the user's own quota.
+  // manufacture traffic against the user's own quota. A stopped API is not one
+  // of them: it is where every project starts and a state the owner chose, and
+  // `status` above already says it — as a warning it read as an alarm on every
+  // card while a project was still being built.
   const warnings: string[] = [];
-  if (status !== "active")
-    warnings.push(`The API is ${status} — every public endpoint answers 503.`);
   if (recent.some((e) => e.status === 429))
     warnings.push("Recent requests were rate limited (429).");
   if (recent.some((e) => e.status === 413))

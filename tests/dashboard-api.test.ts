@@ -25,6 +25,9 @@ import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
 // Data only, React-free: the Co-Pilot's prompt must offer exactly these.
 import { STARTERS } from "../sites/dashboard/src/lib/starters.ts";
+// React-free too: the settings the Co-Pilot applies itself must land in the
+// .env exactly as the dashboard's own merge would write them.
+import { mergeEnv } from "../sites/dashboard/src/lib/env.ts";
 import {
   ADMIN_SECRET,
   startApp,
@@ -2773,6 +2776,108 @@ describe("AI Co-Pilot agent loop", () => {
     expect(none.supported).toContain("AUTH_ENABLED");
   }, 30_000);
 
+  test("a change that only makes the API stricter is applied at once, written as the dashboard writes it", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Stricter", { posts: [] }, aiApp);
+    const before = await (await coreFile(tenantId, "config")).json();
+    const { apiBase } = await toolResult(owner.token, tenantId, "get_diagnostics", {});
+    const set = { AUTH_ENABLED: "true", SCHEMA_POSTS: '{"type":"object","required":["title"]}' };
+
+    const result = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: Object.entries(set).map(([key, value]) => ({ key, value })),
+    });
+    expect(result.pendingConfirmation).toBeUndefined();
+    expect(result.applied).toEqual(set);
+    expect(result).toMatchObject({ needsDeploy: true, deployButton: "Deploy" });
+
+    // Saved as a draft, text and keys together, exactly as the SPA's mergeEnv
+    // would have written it — Google and GitHub lines uncommented included.
+    const draft = await (await coreFile(tenantId, "draft_config")).json();
+    expect(draft).toEqual(mergeEnv(before, set, { tenantBase: apiBase }));
+    expect(draft.__raw).toMatch(/^AUTH_ENABLED=true$/m);
+    expect(draft.__raw).toMatch(/^AUTH_GOOGLE_CLIENT_ID=$/m);
+    // Not live until a deploy, and the project says it is behind.
+    expect((await (await coreFile(tenantId, "config")).json()).AUTH_ENABLED).toBeUndefined();
+    const projects = await fetch(`${aiApp.base}/projects`, { headers: as(owner.token) }).then((r) => r.json());
+    expect(projects.find((p: any) => p.tenant_id === tenantId).dirty).toBe(true);
+
+    // A second change builds on the first, not on the live file.
+    const again = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: [{ key: "AUTH_JWT_TTL_SECONDS", value: "3600" }],
+    });
+    expect(again.applied).toEqual({ AUTH_JWT_TTL_SECONDS: "3600" });
+    const after = await (await coreFile(tenantId, "draft_config")).json();
+    expect(after).toMatchObject({ AUTH_ENABLED: "true", AUTH_JWT_TTL_SECONDS: "3600" });
+  }, 30_000);
+
+  test("a change that could open the API up waits for the user's click, and writes nothing", async () => {
+    const owner = await signup(aiApp);
+    const { tenantId } = await createProject(owner.token, "Looser", { posts: [], tags: [] }, aiApp);
+    // Start from settings the user saved: the direction is judged against these.
+    const res = await fetch(`${aiApp.base}/projects/${tenantId}/files/config`, {
+      method: "PUT",
+      headers: jsonHeaders(owner.token),
+      body: JSON.stringify({
+        AUTH_ENABLED: "true",
+        AUTH_PUBLIC_ROUTES: "posts",
+        AUTH_JWT_TTL_SECONDS: "3600",
+        AUTH_EMAIL_DOMAINS_ONLY: "acme.com",
+        AUTH_EMAIL_DOMAINS_BLOCKED: "spam.com",
+        SCHEMA_POSTS: '{"type":"object"}',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const saved = await (await coreFile(tenantId, "draft_config")).text();
+
+    const verdict = async (key: string, value: string) => {
+      const r = await toolResult(owner.token, tenantId, "change_settings", { settings: [{ key, value }] });
+      return r.applied ? "applied" : r.pendingConfirmation ? "card" : r.error;
+    };
+    // Each of these widens who may do what, so each waits for a click.
+    for (const [key, value] of [
+      ["AUTH_ENABLED", "false"],
+      ["AUTH_EMAIL_VERIFICATION", "false"],
+      ["AUTH_BLOCK_DISPOSABLE_EMAIL", "false"],
+      ["QA_MODE", "true"],
+      ["AUTH_PUBLIC_ROUTES", "posts,tags"],
+      ["AUTH_JWT_TTL_SECONDS", "86400"],
+      ["AUTH_REFRESH_TTL_SECONDS", "9999999"], // longer than the default it leaves out
+      ["AUTH_EMAIL_DOMAINS_ONLY", ""],
+      ["AUTH_EMAIL_DOMAINS_ONLY", "acme.com,other.com"],
+      ["AUTH_EMAIL_DOMAINS_BLOCKED", ""],
+      ["AUTH_EMAIL_DOMAINS_ALLOWED", "friend.com"],
+      ["RBAC_ENABLED", "true"], // roles cut both ways
+      ["SCHEMA_POSTS", '{"type":"object","required":["title"]}'], // replacing one may drop a rule
+    ])
+      expect(`${key}=${value} → ${await verdict(key, value)}`).toBe(`${key}=${value} → card`);
+    // A card writes nothing.
+    expect(await (await coreFile(tenantId, "draft_config")).text()).toBe(saved);
+
+    // One loosening setting sends the whole change to the card.
+    const mixed = await toolResult(owner.token, tenantId, "change_settings", {
+      settings: [
+        { key: "AUTH_BLOCK_DISPOSABLE_EMAIL", value: "true" },
+        { key: "QA_MODE", value: "true" },
+      ],
+    });
+    expect(mixed.applied).toBeUndefined();
+    expect(mixed.pendingConfirmation.set).toEqual({ AUTH_BLOCK_DISPOSABLE_EMAIL: "true", QA_MODE: "true" });
+    expect(await (await coreFile(tenantId, "draft_config")).text()).toBe(saved);
+
+    // And each of these only narrows it.
+    for (const [key, value] of [
+      ["AUTH_PUBLIC_ROUTES", ""],
+      ["AUTH_JWT_TTL_SECONDS", "600"],
+      ["AUTH_REFRESH_TTL_SECONDS", "86400"],
+      ["AUTH_EMAIL_DOMAINS_ONLY", "acme.com"],
+      ["AUTH_EMAIL_DOMAINS_BLOCKED", "spam.com,junk.com"],
+      ["AUTH_BLOCK_DISPOSABLE_EMAIL", "true"],
+      ["QA_MODE", "false"],
+      ["SCHEMA_TAGS", '{"type":"object","required":["name"]}'], // a first schema
+    ])
+      expect(`${key}=${value} → ${await verdict(key, value)}`).toBe(`${key}=${value} → applied`);
+  }, 60_000);
+
   test("a starter is proposed only for an empty project, and only one that exists", async () => {
     const owner = await signup(aiApp);
     const empty = await createProject(owner.token, "Empty", {}, aiApp);
@@ -2911,6 +3016,9 @@ describe("AI Co-Pilot agent loop", () => {
     const own = await toolResult(owner.token, tenantId, "get_diagnostics", {});
     expect(own.status).toBe("stopped");
     expect(own.shown).toBeUndefined();
+    // Stopped is where every project starts, not something wrong: the status
+    // says it, and no warning repeats it as an alarm.
+    expect(own.warnings).toEqual([]);
     const asked = await toolResult(owner.token, tenantId, "get_diagnostics", { userAsked: true });
     expect(asked.shown).toBe(true);
     // Only a real true: a model's "yes" is not the user asking.

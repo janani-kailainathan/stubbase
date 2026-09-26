@@ -876,11 +876,15 @@ tells you plainly when you ask for something Stubbase does not do.
 - **Deploy, start and stop** your API, and **propose deleting or emptying**
   tables.
 
-Anything that changes your settings, fills your project from a starter, or
-removes or empties a whole table is a proposal: a card in the chat with a
-button to confirm it. Nothing happens until you click. A confirmed settings
-change, starter or table removal then waits for Deploy, like your own; emptying
-a table happens at once. Changes to records happen when you ask for them.
+A settings change that only makes your API stricter — turning sign-in on,
+shortening how long a login lasts, blocking throwaway email addresses, adding a
+first validation schema to a table — is made as soon as you ask. Anything that
+could open your API up — turning sign-in off, making a table public, turning QA
+mode or roles on — is a proposal instead: a card in the chat with a button to
+confirm it, and nothing happens until you click. So are filling your project
+from a starter and removing or emptying a whole table. A settings change,
+starter or table removal then waits for Deploy, like your own; emptying a table
+happens at once. Changes to records happen when you ask for them.
 
 ---
 

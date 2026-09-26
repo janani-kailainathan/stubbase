@@ -26,7 +26,7 @@ import { useAccountSummary } from '@/hooks/account'
 import { OutOfCreditsNotice } from '@/components/shell/CreditNotice'
 import { useCurrentProject, useSetPaneMode } from '@/hooks/projects'
 import { useApplyDeletion } from '@/hooks/resources'
-import { useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
+import { useProjectStatus, useSaveTenantConfig, useTenantConfig } from '@/hooks/config'
 import { useApplyStarter } from '@/hooks/starters'
 import { CORE_PUBLIC_URL } from '@/lib/api'
 import { mergeEnv } from '@/lib/env'
@@ -78,10 +78,21 @@ function Warnings({ warnings }: { warnings: unknown }) {
   )
 }
 
+/**
+ * What to press for a change that waits for a deploy, in the words of the
+ * button on screen: Deploy starts a stopped API, Redeploy restarts a live one.
+ * Nothing here says "staged" or "draft" — those are the platform's words, and a
+ * person who asked for sign-in wants to hear it was added and what to press.
+ */
+const applyLine = (live: boolean, them: boolean) =>
+  live
+    ? `Press Redeploy to restart your API with ${them ? 'them' : 'it'}.`
+    : `Press Deploy to start your API with ${them ? 'them' : 'it'}.`
+
 function StagedTables({ result }: { result: Record<string, unknown> }) {
   const staged = list(result.staged) as { name: string; records: number; fields: string[] }[]
   return (
-    <ToolCard icon={Table2} title="Staged schema drafts">
+    <ToolCard icon={Table2} title={`Added ${staged.length} table${staged.length === 1 ? '' : 's'}`}>
       {staged.map((t) => (
         <div key={t.name} className="rounded-md border border-border bg-code-bg px-3 py-2">
           <div className="flex items-baseline gap-2">
@@ -97,8 +108,7 @@ function StagedTables({ result }: { result: Record<string, unknown> }) {
       ))}
       <Warnings warnings={result.warnings} />
       <p className="font-mono text-[10px] text-faint">
-        Staged as drafts — press {str(result.deployButton) ?? 'Deploy'} to put them live, or ask
-        the Co-Pilot to deploy.
+        {applyLine(result.deployButton === 'Redeploy', staged.length !== 1)}
       </p>
     </ToolCard>
   )
@@ -114,7 +124,7 @@ function Deployed({ result }: { result: Record<string, unknown> }) {
       {promoted.length > 0 ? (
         <p className="font-mono text-[10px] text-subtle">{promoted.join(' · ')} are now live.</p>
       ) : (
-        <p className="font-mono text-[10px] text-faint">Nothing was staged, so nothing changed.</p>
+        <p className="font-mono text-[10px] text-faint">There were no changes to apply.</p>
       )}
     </ToolCard>
   )
@@ -139,7 +149,7 @@ function Diagnostics({ result }: { result: Record<string, unknown> }) {
   return (
     <ToolCard icon={Activity} title="Read diagnostics">
       <p className="font-mono text-[10px] text-subtle">
-        Status {str(result.status) ?? 'unknown'} · {String(result.filesChecked ?? 0)} file(s) checked
+        API {result.status === 'active' ? 'live' : (str(result.status) ?? 'unknown')} · {String(result.filesChecked ?? 0)} file(s) checked
         {recent.length > 0 ? ` · ${recent.length} recent request(s)` : ' · no recent traffic'}
       </p>
       {syntaxErrors.map((e) => (
@@ -238,7 +248,7 @@ function DataModelRead({ result }: { result: Record<string, unknown> }) {
     <ToolCard icon={Shapes} title="Read the data model">
       <p className="font-mono text-[10px] text-subtle">
         {tables.length > 0 ? tables.join(' · ') : 'No tables yet'}
-        {staged.length > 0 ? ` · staged: ${staged.join(' · ')}` : ''}
+        {staged.length > 0 ? ` · not deployed yet: ${staged.join(' · ')}` : ''}
       </p>
     </ToolCard>
   )
@@ -360,7 +370,7 @@ function ConfirmDeletion({
 /**
  * The frame both proposals share: what the Co-Pilot wants to do, a Confirm
  * that does it and a Cancel that throws it away. Neither is destructive — a
- * confirmed proposal is staged like any edit and only goes live on Deploy —
+ * confirmed proposal is saved like any edit and only goes live on Deploy —
  * so it wears the ordinary panel colours, not the deletion card's.
  */
 function ProposalCard({
@@ -377,7 +387,7 @@ function ProposalCard({
 }: {
   icon: typeof Wrench
   title: string
-  detail: string
+  detail?: string
   confirm: string
   busy: boolean
   /** Why Confirm is unavailable, when it is. */
@@ -394,7 +404,7 @@ function ProposalCard({
         <span className="font-mono text-[11px] text-body">{title}</span>
       </div>
       <div className="mt-2">{children}</div>
-      <p className="mt-1.5 font-mono text-[10px] text-subtle">{blocked ?? detail}</p>
+      {(blocked ?? detail) && <p className="mt-1.5 font-mono text-[10px] text-subtle">{blocked ?? detail}</p>}
       {error && <p className="mt-1 font-mono text-[10px] text-danger-ink">{error}</p>}
       <div className="mt-2.5 flex gap-2">
         <button
@@ -419,7 +429,9 @@ function ProposalCard({
 /**
  * Settings the Co-Pilot proposed. The server validated them against what the
  * agent may set; the user's click merges them into the .env the editor shows
- * (mergeEnv, so the text and the keys agree) and stages it like a Save.
+ * (mergeEnv, so the text and the keys agree) and saves it like the editor's
+ * Save — so, like it, the live API picks it up on the next deploy, which is
+ * what the card says once it is done.
  */
 function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set: Record<string, string> }) {
   const [settled, setSettled] = useState<'done' | 'cancelled' | null>(null)
@@ -427,13 +439,18 @@ function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set:
   const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
   const { data: config, isLoading } = useTenantConfig(tenantId)
   const save = useSaveTenantConfig(tenantId)
+  const live = useProjectStatus(tenantId) === 'active'
   const lines = Object.entries(set).map(([k, v]) => `${k}=${v}`)
+  const many = lines.length !== 1
 
   if (settled)
     return (
-      <ToolCard icon={Settings2} title={settled === 'done' ? 'Settings staged' : 'Cancelled'}>
+      <ToolCard
+        icon={Settings2}
+        title={settled === 'done' ? (many ? 'Settings changed' : 'Setting changed') : 'Cancelled'}
+      >
         <p className="font-mono text-[10px] text-subtle">
-          {settled === 'done' ? 'Deploy to put them live.' : 'Nothing was changed.'}
+          {settled === 'done' ? applyLine(live, many) : 'Nothing was changed.'}
         </p>
       </ToolCard>
     )
@@ -445,9 +462,8 @@ function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set:
   return (
     <ProposalCard
       icon={Settings2}
-      title={`Change ${lines.length} setting${lines.length === 1 ? '' : 's'}?`}
-      detail="Staged into your .env like a Save. Your live API keeps its current settings until you Deploy."
-      confirm="Yes, stage them"
+      title={`Change ${lines.length} setting${many ? 's' : ''}?`}
+      confirm={many ? 'Yes, change them' : 'Yes, change it'}
       busy={save.isPending || isLoading}
       error={error}
       onConfirm={() => {
@@ -456,7 +472,7 @@ function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set:
         save.mutate(mergeEnv(config ?? {}, set, { tenantBase: `${CORE_PUBLIC_URL}/${tenantId}` }), {
           onSuccess: () => {
             setSettled('done')
-            notice(`Staged ${Object.keys(set).join(', ')} — Deploy to put them live.`, 'done')
+            notice(`Changed ${Object.keys(set).join(', ')}. ${applyLine(live, many)}`, 'done')
           },
           onError: (e) => setError(e.message),
         })
@@ -474,6 +490,26 @@ function ConfirmSettings({ tenantId, set }: { tenantId: string | undefined; set:
 }
 
 /**
+ * Settings the Co-Pilot changed itself: the server applies a change only when
+ * every setting in it makes the API stricter, so there is nothing to confirm —
+ * the card says what changed and what to press for it to reach the live API.
+ */
+function SettingsApplied({ result }: { result: Record<string, unknown> }) {
+  const applied = Object.entries((result.applied as Record<string, unknown>) ?? {}).filter(
+    (e): e is [string, string] => typeof e[1] === 'string',
+  )
+  const many = applied.length !== 1
+  return (
+    <ToolCard icon={Settings2} title={many ? 'Settings changed' : 'Setting changed'}>
+      <pre className="overflow-x-auto rounded border border-border bg-code-bg px-2.5 py-1.5 font-mono text-[10px] text-emphasis">
+        {applied.map(([k, v]) => `${k}=${v}`).join('\n')}
+      </pre>
+      <p className="font-mono text-[10px] text-faint">{applyLine(result.deployButton === 'Redeploy', many)}</p>
+    </ToolCard>
+  )
+}
+
+/**
  * A starter the Co-Pilot proposed for an empty project. Applied exactly as the
  * starter cards apply one (useApplyStarter), and refused here as on the server
  * if the project has gained tables since the proposal was made.
@@ -484,15 +520,16 @@ function ConfirmStarter({ tenantId, id }: { tenantId: string; id: string }) {
   const addChatEntry = useWorkspaceStore((s) => s.addChatEntry)
   const project = useCurrentProject()
   const starters = useApplyStarter(tenantId)
+  const live = useProjectStatus(tenantId) === 'active'
   const starter = STARTERS.find((s) => s.id === id)
   if (!starter) return <ToolCard icon={TriangleAlert} title={`Unknown starter '${id}'`} />
   const tables = Object.keys(starter.resources)
 
   if (settled)
     return (
-      <ToolCard icon={LayoutTemplate} title={settled === 'done' ? `${starter.title} staged` : 'Cancelled'}>
+      <ToolCard icon={LayoutTemplate} title={settled === 'done' ? `${starter.title} added` : 'Cancelled'}>
         <p className="font-mono text-[10px] text-subtle">
-          {settled === 'done' ? `${tables.join(' · ')} — Deploy to put them live.` : 'Nothing was changed.'}
+          {settled === 'done' ? `${tables.join(' · ')}. ${applyLine(live, true)}` : 'Nothing was changed.'}
         </p>
       </ToolCard>
     )
@@ -505,7 +542,7 @@ function ConfirmStarter({ tenantId, id }: { tenantId: string; id: string }) {
     <ProposalCard
       icon={LayoutTemplate}
       title={`Start from ${starter.title}?`}
-      detail={`${starter.blurb} Staged as drafts; your live API changes when you Deploy.`}
+      detail={starter.blurb}
       blocked={hasTables ? 'This project has tables now, so a starter can no longer be used here.' : undefined}
       confirm="Yes, use it"
       busy={starters.busy}
@@ -516,7 +553,7 @@ function ConfirmStarter({ tenantId, id }: { tenantId: string; id: string }) {
           .apply(starter)
           .then((names) => {
             setSettled('done')
-            notice(`Staged the ${starter.title} starter — Deploy to put it live.`, 'done')
+            notice(`Added the ${starter.title} starter. ${applyLine(live, false)}`, 'done')
             starters.open(names)
           })
           .catch((e: Error) => setError(e.message))
@@ -573,6 +610,8 @@ function ToolResult({
     )
 
   switch (name) {
+    case 'change_settings':
+      return result.applied ? <SettingsApplied result={result} /> : <ToolCard icon={Settings2} title={toolLabel(name)} />
     case 'stage_schema_drafts':
       return <StagedTables result={result} />
     case 'deploy_project':
@@ -607,7 +646,7 @@ function ToolResult({
  * build has no card for) come from here.
  */
 const TOOL_LABELS: Record<string, string> = {
-  stage_schema_drafts: 'Staging tables',
+  stage_schema_drafts: 'Adding tables',
   set_server_status: 'Starting or stopping the API',
   deploy_project: 'Deploy',
   delete_resources: 'Removing tables',

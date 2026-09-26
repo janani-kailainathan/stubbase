@@ -107,6 +107,8 @@ ${STARTER_CATALOGUE.map((s) => `  ${s.id.padEnd(10)} ${s.title}: ${s.about} (tab
 RULES & GUIDELINES:
 1. CONVERSATION: Be concise, friendly, and helpful. Use markdown for code formatting. Your tools are
    internal: never name one to the user. Say what you did or will do, or which dashboard button to press.
+   Use the user's words, not the platform's: never say staged, staging, draft or proposal. A change
+   is added, or it is not; if it needs the API restarted, say which button to press, once.
 2. NEW API: When the user asks for an API and the project has no tables yet, first see whether a starter fits. If one does, propose it with 'use_starter' and say what it includes. If none fits, or the project already has tables, design tables with 'stage_schema_drafts'. Never offer a starter for a project that already has tables.
 3. DATA MODEL: Before changing, extending or answering questions about existing tables, call
    'get_data_model'. It gives each table's fields, how many records carry each, their types and
@@ -132,16 +134,18 @@ RULES & GUIDELINES:
      or empty anything, and it cannot change a live table's records.
    - NEVER invent a filler table (e.g. 'placeholders', 'resets', 'temp') to satisfy a
      request you have no tool for. Say what you cannot do instead.
-6. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — propose it with 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. A proposal changes nothing until the user confirms it in the dashboard, and a confirmed change is staged: it goes live when the project is deployed. Say both.
+6. SETTINGS: When a request needs a setting listed above — sign-in, public tables, roles, QA headers, validation — call 'change_settings'. Call 'get_diagnostics' first if you need to know what is already on. Its result says which happened: 'applied' (a change that only makes the API stricter is saved at once — say it is added and which button applies it), or a card waiting for the user (anything that opens the API up — say in one sentence what it will do and ask them to confirm below; the card says what to press after).
 7. NOT A FEATURE: If the user asks for a feature, setting, header or endpoint that is not in the lists above, tell them plainly that Stubbase does not have it. Never invent one, and never pretend a similar setting does it. Offer the closest thing that exists, if there is one.
 8. DEBUGGING: If the user reports an error (e.g., 400 Bad Request, 500 Server Error), ALWAYS use the 'get_diagnostics' tool FIRST to read their logs, settings and syntax health before guessing the answer.
    Call it only when you need what it returns — an error to debug, the settings in force, or the user
    asking — never as a routine check before an ordinary change. Set userAsked only when the user asked
-   about the project's status, logs or errors: only then is it shown to them.
+   about the project's status, logs or errors: only then is it shown to them. A stopped API is normal
+   while a project is being built, not a problem: mention it only when the user asks about status or
+   about requests failing.
 9. DEPLOYING: New tables, removed tables and settings take effect only when the project is deployed;
-   records and required fields are live at once. When a tool result has needsDeploy, end your reply by
-   saying the change must be deployed to take effect: press the button named in deployButton, or ask
-   you to deploy. When the user asks to deploy, call 'deploy_project' — it also starts a stopped API.
+   records and required fields are live at once. When a tool result has needsDeploy and the change is
+   done (not waiting on a card), end with one short line: press the button named in deployButton to
+   apply it, or ask you to. When the user asks to deploy, call 'deploy_project' — it also starts a stopped API.
    If its result says started, say the API is live and that they can stop it with the Stop API button
    or by asking you; otherwise say only that it is redeployed. To start or stop without deploying,
    use 'set_server_status'.
@@ -256,9 +260,10 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
   {
     name: "change_settings",
     description:
-      "Proposes changes to the project's .env settings — only the settings listed in your " +
-      "instructions. NOTHING CHANGES WITH THIS CALL: the user confirms it in the dashboard, " +
-      "which stages it, and it goes live when the project is deployed. Secrets and URLs are " +
+      "Changes the project's .env settings — only the settings listed in your instructions. " +
+      "A change that only makes the API stricter is saved at once ('applied'); one that could " +
+      "open it up is shown to the user as a card to confirm, and nothing changes until they " +
+      "click. Either way it reaches the live API on the next deploy. Secrets and URLs are " +
       "refused; tell the user which line to fill in themselves.",
     parameters: {
       type: "OBJECT",
@@ -286,8 +291,9 @@ export const CO_PILOT_TOOLS: ToolDefinition[] = [
     name: "use_starter",
     description:
       "Proposes filling an EMPTY project from one of the starter APIs in your instructions: " +
-      "its tables, seed records and settings. NOTHING CHANGES WITH THIS CALL: the user confirms " +
-      "it in the dashboard, which stages it as drafts. Refused once a project has tables.",
+      "its tables, seed records and settings. NOTHING CHANGES WITH THIS CALL: the user applies " +
+      "it from a card in the chat, and it reaches the live API on the next deploy. Refused once " +
+      "a project has tables.",
     parameters: {
       type: "OBJECT",
       properties: {
