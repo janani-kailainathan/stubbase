@@ -1,0 +1,177 @@
+---
+// "Stop Writing Boilerplate APIs", after xmind.com/ai's "Generate mind maps
+// from your ideas": two large cards for the two ways a table is born, then a
+// row of smaller ones for what happens next. Drawings are aria-hidden; each
+// card's text carries its claim. Styles come from home.astro's global block.
+import { FileJson, Sparkles, Rocket, SlidersHorizontal, LayoutTemplate, ArrowRight, ArrowUpRight } from 'lucide-astro';
+
+// The seedable starters, as the dashboard lists them (STARTERS in
+// sites/dashboard/src/lib/starters.ts; the Co-Pilot's STARTER_CATALOGUE is
+// held to the same list). Add one there, add it here.
+const starters = [
+  'Issue tracker',
+  'Sign-in basics',
+  'Blog',
+  'Storefront',
+  'Forkful recipes',
+  'Deskline helpdesk',
+  'Signet accounts',
+];
+---
+
+<section>
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Stop Writing Boilerplate APIs</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">
+        Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
+        testing teams to unblock themselves instantly.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2 [&>*]:min-w-0">
+      {/* JSON-to-REST */}
+      <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-7 sm:p-9 [--tint:var(--syntax-fn)]">
+        <h3 class="mb-2 flex items-center gap-3 text-xl font-semibold text-foreground">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)"><FileJson class="h-4.5 w-4.5" /></span>
+          JSON-to-REST
+        </h3>
+        <p class="leading-relaxed text-muted-foreground">
+          Upload a flat JSON file. Stubbase automatically infers relationships, mounts CRUD
+          operations, and enables nested routing.
+        </p>
+        <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+          <div class="absolute top-3 left-0 hidden w-44 -rotate-3 rounded-xl border border-border-c bg-background sm:block">
+            <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
+              <FileJson class="h-3.5 w-3.5 text-(--tint)" /> albums.json
+            </p>
+            <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">3</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Neon"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"artistId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span>
+<span class="text-syntax-punct">{'}'}]</span></pre>
+          </div>
+          <div class="absolute top-0 right-0 w-60 rounded-xl border border-border-c bg-background p-2">
+            {
+              [
+                ['GET', '/albums'],
+                ['GET', '/albums/3'],
+                ['POST', '/albums'],
+                ['PUT', '/albums/3'],
+                ['DELETE', '/albums/3'],
+                ['GET', '/albums?_expand=artist'],
+              ].map(([method, path]) => (
+                <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                  <span class="w-12 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
+                  <span class={path.includes('_expand') ? 'text-(--tint)' : ''}>{path}</span>
+                </p>
+              ))
+            }
+          </div>
+        </div>
+        <a href="/use-cases/mock-apis" class="bento-link" aria-label="JSON-to-REST: read more"><ArrowUpRight class="h-4 w-4" /></a>
+      </article>
+
+      {/* AI-Powered Generation */}
+      <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-7 sm:p-9 [--tint:var(--primary)]">
+        <h3 class="mb-2 flex items-center gap-3 text-xl font-semibold text-foreground">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent"><Sparkles class="h-4.5 w-4.5" /></span>
+          AI-Powered Generation
+        </h3>
+        <p class="leading-relaxed text-muted-foreground">
+          Describe your schema in plain English. Our AI engine outputs a fully populated, relational
+          database with production-ready endpoints.
+        </p>
+        <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+          <div class="absolute top-0 left-0 w-60 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
+            <p class="mb-2 flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
+            <p class="text-sm leading-relaxed text-foreground">A music app with artists, albums and reviews.</p>
+            <div class="mt-3 flex items-center justify-between">
+              <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables</span>
+              <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><ArrowRight class="h-4 w-4" /></span>
+            </div>
+          </div>
+          <div class="absolute right-0 bottom-0 hidden gap-2 sm:flex">
+            {
+              [
+                { name: 'artists', fields: ['id', 'name'] },
+                { name: 'albums', fields: ['id', 'artistId'] },
+                { name: 'reviews', fields: ['id', 'albumId'] },
+              ].map((table, i) => (
+                <div class={`w-28 rounded-xl border border-border-c bg-background ${i === 1 ? '-translate-y-5' : ''}`}>
+                  <p class="border-b border-border-c px-3 py-1.5 font-mono text-[11px] font-semibold text-foreground">{table.name}</p>
+                  <ul class="px-3 py-1.5 font-mono text-[11px] leading-5">
+                    {table.fields.map((field) => (
+                      <li class={field.endsWith('Id') ? 'text-syntax-fn' : 'text-muted-foreground'}>{field}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+        <a href="/features/ai-rest-api-generation" class="bento-link" aria-label="AI-Powered Generation: read more"><ArrowUpRight class="h-4 w-4" /></a>
+      </article>
+    </div>
+
+    <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3 [&>*]:min-w-0">
+      {/* Zero-Downtime Deployments */}
+      <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+        <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-bool)/15 text-syntax-bool"><Rocket class="h-4.5 w-4.5" /></span>
+          Zero-Downtime Deployments
+        </h3>
+        <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+          Click "Deploy" to instantly push schema changes live without breaking existing client
+          connections.
+        </p>
+        <div aria-hidden="true" class="space-y-2 text-xs">
+          <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
+            <span class="font-mono text-foreground">reviews.json</span>
+            <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">new table</span>
+          </p>
+          <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
+            <span class="font-mono text-foreground">.env</span>
+            <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">staged</span>
+          </p>
+          <p class="flex justify-end">
+            <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-semibold text-primary-foreground"><Rocket class="h-3.5 w-3.5" /> Deploy</span>
+          </p>
+        </div>
+      </article>
+
+      {/* Starters */}
+      <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+        <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-num)/15 text-syntax-num"><LayoutTemplate class="h-4.5 w-4.5" /></span>
+          Start from a starter
+        </h3>
+        <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+          Seven starter APIs with related tables and real records, one click from an empty project.
+        </p>
+        <ul class="flex flex-wrap gap-1.5">
+          {
+            starters.map((name) => (
+              <li class="rounded-full border border-border-c bg-background px-2.5 py-1 text-xs text-muted-foreground">{name}</li>
+            ))
+          }
+        </ul>
+      </article>
+
+      {/* The .env */}
+      <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+        <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent"><SlidersHorizontal class="h-4.5 w-4.5" /></span>
+          Every setting, one .env
+        </h3>
+        <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+          A new project's .env already lists every setting, commented out and grouped by feature.
+          Delete the # to switch one on.
+        </p>
+        <pre aria-hidden="true" class="overflow-hidden rounded-lg border border-border-c bg-background px-3 py-2.5 font-mono text-[11px] leading-6"><span class="text-subtle"># ── 1.1 Sign-up, login and sessions ──</span>
+<span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span>
+<span class="text-subtle"># AUTH_PUBLIC_ROUTES=posts,comments</span></pre>
+      </article>
+    </div>
+  </div>
+</section>

@@ -1,9 +1,16 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Zap } from 'lucide-astro';
+import { Sparkles, FileJson, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Zap } from 'lucide-astro';
 // The handwritten accent in the hero headline. Latin only, and imported here so
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
 import Layout from '../layouts/Layout.astro';
+import HomeStart from '../components/home/HomeStart.astro';
+import HomeQuery from '../components/home/HomeQuery.astro';
+import HomePipeline from '../components/home/HomePipeline.astro';
+import HomeAuth from '../components/home/HomeAuth.astro';
+import HomeAgents from '../components/home/HomeAgents.astro';
+import HomeWorkspace from '../components/home/HomeWorkspace.astro';
+import HomePlans from '../components/home/HomePlans.astro';
 import { APP_URL, CORE_URL } from '../lib/urls';
 import { NAV_GROUPS } from '../lib/nav';
 
@@ -33,28 +40,6 @@ const sampleRecords: { path: string; record: Record<string, string | number | bo
 // half its width, so the loop is seamless and a half still spans a wide screen.
 const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
 
-const capabilities = [
-  {
-    Icon: Sparkles,
-    title: 'AI-Powered Generation',
-    href: '/features/ai-rest-api-generation',
-    copy: 'Describe your schema in plain English. Our AI engine outputs a fully populated, relational database with production-ready endpoints.',
-  },
-  {
-    Icon: FileJson,
-    title: 'JSON-to-REST',
-    href: '/use-cases/mock-apis',
-    copy: 'Upload a flat JSON file. Stubbase automatically infers relationships, mounts CRUD operations, and enables nested routing.',
-  },
-  {
-    Icon: Rocket,
-    title: 'Zero-Downtime Deployments',
-    href: '/features/instant-api-deployments',
-    copy: 'Click "Deploy" to instantly push schema changes live without breaking existing client connections.',
-  },
-];
-const [generation, jsonToRest, deployments] = capabilities;
-
 // Read straight from the nav rather than restating the three spokes here: nav.ts
 // is the single source of truth, so a new feature page shows up in this section
 // the moment it is added there, with no second list to keep in step.
@@ -68,29 +53,6 @@ const FEATURE_ICONS: Record<string, typeof ArrowRight> = {
 };
 const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)'];
 
-const pipeline = [
-  {
-    key: 'auth',
-    tint: 'var(--syntax-fn)',
-    Icon: ShieldCheck,
-    name: 'AuthGuard',
-    copy: 'Instantly secure your endpoints. Enable Google OAuth and JWT validation without writing authentication logic.',
-  },
-  {
-    key: 'chaos',
-    tint: 'var(--syntax-num)',
-    Icon: OctagonAlert,
-    name: 'ChaosGuard',
-    copy: 'Inject deterministic latency, error rates, and 5xx status codes to test frontend error boundaries.',
-  },
-  {
-    key: 'webhook',
-    tint: 'var(--syntax-bool)',
-    Icon: Webhook,
-    name: 'Webhook Proxying',
-    copy: 'Securely trigger external services (Resend, Twilio) from your client-side code without exposing secret API keys.',
-  },
-];
 ---
 
 <Layout
@@ -256,340 +218,9 @@ const pipeline = [
     </div>
   </section>
 
-  {/*
-    Capabilities, after xmind's "Tools that think with you": a centred heading,
-    then one wide card and two half cards, each with its title top left, a
-    drawn slice of the product below it, and a round link to its page in the
-    corner. The drawings are aria-hidden: the card's own text carries the
-    claim. Each card tints itself with one syntax colour (`--tint`), so the
-    three read apart without leaving the palette.
-  */}
-  <section>
-    <div class="mx-auto max-w-6xl px-6 py-24">
-      <div class="reveal mx-auto mb-12 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Stop Writing Boilerplate APIs</h2>
-        <p class="font-medium leading-relaxed text-muted-foreground">
-          Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
-          testing teams to unblock themselves instantly.
-        </p>
-      </div>
+  <HomeStart />
 
-      <div class="grid gap-5 md:grid-cols-2">
-        {/* Wide: a sentence becomes tables. */}
-        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 md:col-span-2 [--tint:var(--primary)]">
-          <div class="relative z-10 max-w-md">
-            <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
-              <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent">
-                <Sparkles class="h-4.5 w-4.5" />
-              </span>
-              {generation.title}
-            </h3>
-            <p class="leading-relaxed text-muted-foreground">{generation.copy}</p>
-          </div>
-
-          <div aria-hidden="true" class="pointer-events-none relative mt-8 mb-10 h-44 lg:mx-8 lg:-mb-16 lg:mt-10 lg:h-64">
-            <div class="absolute top-0 left-0 w-64 -rotate-2 rounded-2xl border border-border-c bg-background p-4 sm:w-72">
-              <p class="mb-3 flex items-center gap-2 text-xs font-medium text-subtle">
-                <Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot
-              </p>
-              <p class="text-sm leading-relaxed text-foreground">
-                A music app with artists, albums and reviews. Reviews belong to an album.
-              </p>
-              <div class="mt-4 flex items-center justify-between">
-                <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables</span>
-                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <ArrowRight class="h-4 w-4" />
-                </span>
-              </div>
-            </div>
-
-            <svg class="absolute top-16 left-76 hidden h-16 w-28 text-border-strong lg:block" viewBox="0 0 112 64" fill="none">
-              <path d="M4 8 Q56 4 70 30 T106 54" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" stroke-linecap="round" />
-              <path d="M97 52 L106 54 L102 45" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-
-            <div class="absolute top-10 right-0 hidden items-start gap-4 lg:flex">
-              {[
-                { name: 'artists', count: 12, fields: ['id', 'name', 'country', 'createdAt'] },
-                { name: 'albums', count: 30, fields: ['id', 'title', 'artistId', 'createdAt'] },
-                { name: 'reviews', count: 64, fields: ['id', 'rating', 'albumId', 'createdAt'] },
-              ].map((table, i) => (
-                <div class={`w-40 rounded-xl border border-border-c bg-background ${i === 1 ? 'mt-10' : ''}`}>
-                  <p class="flex items-center justify-between border-b border-border-c px-3 py-2 font-mono text-xs font-semibold text-foreground">
-                    {table.name}
-                    <span class="font-normal text-subtle">{table.count}</span>
-                  </p>
-                  <ul class="px-3 py-2 font-mono text-[11px] leading-6">
-                    {table.fields.map((field) => (
-                      <li class={field.endsWith('Id') ? 'text-syntax-fn' : 'text-muted-foreground'}>{field}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <a href={generation.href} class="bento-link" aria-label={`${generation.title}: read more`}>
-            <ArrowUpRight class="h-4 w-4" />
-          </a>
-        </article>
-
-        {/* Half: a file becomes routes. */}
-        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 [--tint:var(--syntax-fn)]">
-          <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
-            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)">
-              <FileJson class="h-4.5 w-4.5" />
-            </span>
-            {jsonToRest.title}
-          </h3>
-          <p class="leading-relaxed text-muted-foreground">{jsonToRest.copy}</p>
-
-          <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
-            <div class="absolute top-2 left-0 hidden w-44 rotate-[-3deg] rounded-xl border border-border-c bg-background sm:block">
-              <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
-                <FileJson class="h-3.5 w-3.5 text-(--tint)" /> albums.json
-              </p>
-              <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{"{"}</span>
-  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">3</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Neon"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"artistId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span>
-<span class="text-syntax-punct">{"}"}]</span></pre>
-            </div>
-            <div class="absolute top-0 right-0 w-60 rounded-xl border border-border-c bg-background p-2 sm:right-2">
-              {[
-                ['GET', '/albums'],
-                ['GET', '/albums/3'],
-                ['POST', '/albums'],
-                ['PUT', '/albums/3'],
-                ['DELETE', '/albums/3'],
-                ['GET', '/albums?_expand=artist'],
-              ].map(([method, path]) => (
-                <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
-                  <span class="w-12 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
-                  <span class={path.includes('_expand') ? 'text-(--tint)' : ''}>{path}</span>
-                </p>
-              ))}
-            </div>
-          </div>
-
-          <a href={jsonToRest.href} class="bento-link" aria-label={`${jsonToRest.title}: read more`}>
-            <ArrowUpRight class="h-4 w-4" />
-          </a>
-        </article>
-
-        {/* Half: a staged change, then Deploy. */}
-        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 [--tint:var(--syntax-bool)]">
-          <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
-            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)">
-              <Rocket class="h-4.5 w-4.5" />
-            </span>
-            {deployments.title}
-          </h3>
-          <p class="leading-relaxed text-muted-foreground">{deployments.copy}</p>
-
-          <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
-            <div class="absolute inset-x-0 top-0 rounded-xl border border-border-c bg-background p-4 sm:inset-x-4">
-              <div class="mb-3 flex items-center justify-between">
-                <span class="font-mono text-xs text-subtle">acme-api</span>
-                <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
-                  <Rocket class="h-3.5 w-3.5" /> Deploy
-                </span>
-              </div>
-              <ul class="space-y-2 text-xs">
-                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
-                  <span class="font-mono text-foreground">reviews.json</span>
-                  <span class="rounded bg-(--tint)/15 px-1.5 py-0.5 text-[10px] font-medium text-(--tint)">new table</span>
-                </li>
-                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
-                  <span class="font-mono text-foreground">.env</span>
-                  <span class="rounded bg-(--tint)/15 px-1.5 py-0.5 text-[10px] font-medium text-(--tint)">AUTH_ENABLED=true</span>
-                </li>
-                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
-                  <span class="font-mono text-muted-foreground">albums.json</span>
-                  <span class="flex items-center gap-1 text-[10px] text-subtle"><Check class="h-3 w-3 text-primary-accent" /> live</span>
-                </li>
-              </ul>
-            </div>
-            <div class="absolute right-0 bottom-2 rotate-2 rounded-lg border border-border-c bg-background px-3 py-2 text-xs text-muted-foreground sm:right-8">
-              <span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-primary"></span>
-              Live — the API kept serving
-            </div>
-          </div>
-
-          <a href={deployments.href} class="bento-link" aria-label={`${deployments.title}: read more`}>
-            <ArrowUpRight class="h-4 w-4" />
-          </a>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  {/*
-    The pipeline, after xmind's "For the way you think": a row of tabs over one
-    large tinted panel holding a window from the product. The tabs are radio
-    buttons and CSS picks the panel through :has(), so switching needs no
-    script and arrow keys move between stages. Every stage's copy is in the
-    HTML whichever tab is open. The windows are aria-hidden drawings; the
-    copy beside them carries the claim.
-  */}
-  <section class="pipeline">
-    <div class="mx-auto max-w-6xl px-6 py-24">
-      <div class="reveal mx-auto mb-10 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">A Complete API Pipeline</h2>
-        <p class="font-medium leading-relaxed text-muted-foreground">
-          Every endpoint deployed on Stubbase routes through our dynamic middleware pipeline,
-          controlled entirely via your dashboard.
-        </p>
-      </div>
-
-      <div role="radiogroup" aria-label="Pipeline stage" class="reveal mb-6 flex flex-wrap justify-center gap-2 sm:gap-3">
-        {
-          pipeline.map(({ key, tint, Icon, name }, i) => (
-            <label class="pipe-tab flex cursor-pointer items-center gap-2.5 rounded-xl border border-transparent bg-muted py-2 pr-4 pl-2 text-base font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-lg" style={`--tint: ${tint}`}>
-              <input type="radio" name="pipeline-stage" value={key} checked={i === 0} class="sr-only" />
-              <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint) sm:h-9 sm:w-9">
-                <Icon class="h-4.5 w-4.5" />
-              </span>
-              {name}
-            </label>
-          ))
-        }
-      </div>
-
-      {/* AuthGuard */}
-      <div data-stage="auth" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-fn)">
-        <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
-          <div>
-            <h3 class="mb-3 text-2xl font-semibold text-foreground">{pipeline[0].name}</h3>
-            <p class="mb-5 leading-relaxed text-muted-foreground">{pipeline[0].copy}</p>
-            <pre class="w-fit rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span>
-<span class="text-syntax-str">AUTH_GOOGLE_CLIENT_ID</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">…</span>
-<span class="text-syntax-str">AUTH_GOOGLE_CLIENT_SECRET</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">…</span></pre>
-          </div>
-
-          <div aria-hidden="true" class="relative">
-            <div class="overflow-hidden rounded-2xl border border-border-c bg-background">
-              <div class="flex items-center justify-between border-b border-border-c px-4 py-3">
-                <span class="font-mono text-xs text-subtle">acme · live log</span>
-                <span class="hidden items-center gap-2 rounded-md border border-border-c px-2.5 py-1 text-xs font-medium text-foreground sm:inline-flex">
-                  <span class="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[9px] font-bold">G</span>
-                  Continue with Google
-                </span>
-              </div>
-              <ul class="divide-y divide-border-c font-mono text-xs sm:text-[13px]">
-                <li class="flex items-center gap-3 px-4 py-3">
-                  <span class="w-10 shrink-0 text-subtle">GET</span>
-                  <span class="flex-1 text-foreground">/acme/orders</span>
-                  <span class="hidden text-muted-foreground sm:inline">no token</span>
-                  <span class="w-10 text-right font-semibold text-syntax-num">401</span>
-                </li>
-                <li class="flex items-center gap-3 px-4 py-3">
-                  <span class="w-10 shrink-0 text-subtle">GET</span>
-                  <span class="flex-1 text-foreground">/acme/auth/google/callback</span>
-                  <span class="hidden text-muted-foreground sm:inline">verified email</span>
-                  <span class="w-10 text-right font-semibold text-primary-ink">302</span>
-                </li>
-                <li class="px-4 py-3">
-                  <div class="flex items-center gap-3">
-                    <span class="w-10 shrink-0 text-subtle">GET</span>
-                    <span class="flex-1 text-foreground">/acme/orders</span>
-                    <span class="hidden text-muted-foreground sm:inline">3 records</span>
-                    <span class="w-10 text-right font-semibold text-primary-ink">200</span>
-                  </div>
-                  <p class="mt-1.5 truncate text-[11px] text-subtle sm:ml-13">authorization: Bearer <span class="text-(--tint)">eyJhbGciOiJIUzI1NiJ9…</span></p>
-                </li>
-              </ul>
-            </div>
-            <div class="hero-cursor absolute -bottom-9 right-10 hidden sm:block [--c:var(--syntax-fn)] [--drift:4px]">
-              <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
-              <span class="mt-0.5 ml-4 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium text-(--c)">
-                <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">F</span>
-                Frontend dev
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ChaosGuard */}
-      <div data-stage="chaos" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-num)">
-        <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
-          <div>
-            <h3 class="mb-3 text-2xl font-semibold text-foreground">{pipeline[1].name}</h3>
-            <p class="mb-5 leading-relaxed text-muted-foreground">{pipeline[1].copy}</p>
-            <pre class="w-fit rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">QA_MODE</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span></pre>
-          </div>
-
-          <div aria-hidden="true" class="relative">
-            <div class="overflow-hidden rounded-2xl border border-border-c bg-background">
-              <div class="border-b border-border-c px-4 py-3 font-mono text-xs leading-6">
-                <p><span class="text-subtle">GET</span> <span class="text-foreground">/acme/orders</span></p>
-                <p><span class="text-syntax-str">x-stubbase-delay</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1500</span></p>
-                <p><span class="text-syntax-str">x-stubbase-status</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">503</span></p>
-              </div>
-              <ul class="space-y-2.5 px-4 py-4 font-mono text-[11px]">
-                {['Run 1', 'Run 2', 'Run 3'].map((run) => (
-                  <li class="flex items-center gap-3">
-                    <span class="w-10 shrink-0 text-subtle">{run}</span>
-                    <span class="chaos-wait h-2 flex-1 rounded-full"></span>
-                    <span class="w-12 text-right text-muted-foreground">1.50 s</span>
-                    <span class="w-8 text-right font-semibold text-syntax-num">503</span>
-                  </li>
-                ))}
-              </ul>
-              <p class="border-t border-border-c px-4 py-2.5 text-xs text-subtle">
-                Same delay, same status, every run — your error boundary sees exactly what you asked for.
-              </p>
-            </div>
-            <div class="hero-cursor absolute -top-6 right-6 hidden sm:flex flex-col items-end [--c:var(--syntax-num)] [--drift:-4px]">
-              <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium text-(--c)">
-                <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Q</span>
-                QA engineer
-              </span>
-              <MousePointer2 class="mt-0.5 mr-2 h-5 w-5 -scale-x-100 rotate-180 fill-current text-(--c)" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Webhook proxying */}
-      <div data-stage="webhook" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-bool)">
-        <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
-          <div>
-            <h3 class="mb-3 text-2xl font-semibold text-foreground">{pipeline[2].name}</h3>
-            <p class="mb-5 leading-relaxed text-muted-foreground">{pipeline[2].copy}</p>
-            <pre class="w-fit rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">RESEND_API_KEY</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">re_…</span>
-<span class="text-syntax-str">TWILIO_ACCOUNT_SID</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">AC…</span></pre>
-          </div>
-
-          <div aria-hidden="true" class="relative">
-            <div class="mb-4 flex items-center justify-between gap-2 text-center text-xs">
-              <div class="flex-1 rounded-xl border border-border-c bg-background px-3 py-3">
-                <p class="font-semibold text-foreground">Your frontend</p>
-                <p class="mt-0.5 text-subtle">user token</p>
-              </div>
-              <ArrowRight class="h-4 w-4 shrink-0 text-faint" />
-              <div class="flex-1 rounded-xl border border-(--tint)/40 bg-background px-3 py-3">
-                <p class="font-semibold text-foreground">Stubbase</p>
-                <p class="mt-0.5 flex items-center justify-center gap-1 text-(--tint)"><KeyRound class="h-3 w-3" /> holds the key</p>
-              </div>
-              <ArrowRight class="h-4 w-4 shrink-0 text-faint" />
-              <div class="flex-1 rounded-xl border border-border-c bg-background px-3 py-3">
-                <p class="font-semibold text-foreground">Resend</p>
-                <p class="mt-0.5 text-subtle">or Twilio</p>
-              </div>
-            </div>
-            <pre class="overflow-x-auto rounded-2xl border border-border-c bg-background px-4 py-3.5 font-mono text-xs leading-relaxed text-code-fg"><span class="text-syntax-fn">await</span> <span class="text-syntax-fn">fetch</span><span class="text-syntax-punct">(</span><span class="text-syntax-str">`${"{"}API{"}"}/acme/_notify/email`</span><span class="text-syntax-punct">, {"{"}</span>
-  method<span class="text-syntax-punct">:</span> <span class="text-syntax-str">'POST'</span><span class="text-syntax-punct">,</span>
-  headers<span class="text-syntax-punct">: {"{"}</span> authorization<span class="text-syntax-punct">:</span> <span class="text-syntax-str">`Bearer ${"{"}token{"}"}`</span> <span class="text-syntax-punct">{"}"},</span>
-  body<span class="text-syntax-punct">:</span> JSON<span class="text-syntax-punct">.</span><span class="text-syntax-fn">stringify</span><span class="text-syntax-punct">({"{"}</span> to<span class="text-syntax-punct">,</span> subject<span class="text-syntax-punct">,</span> html <span class="text-syntax-punct">{"}"}),</span>
-<span class="text-syntax-punct">{"}"})</span>
-<span class="text-subtle">// → {"{"} ok: true, id: "…" {"}"}  and no API key in the bundle</span></pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <HomeQuery />
 
   {/*
     Try it live, after xmind's "Global security & privacy" grid: white cards
@@ -776,6 +407,16 @@ const pipeline = [
       to add delays, errors, or your own data.
     </p>
   </section>
+
+  <HomePipeline />
+
+  <HomeAuth />
+
+  <HomeAgents />
+
+  <HomeWorkspace />
+
+  <HomePlans />
 
   {/*
     Hub-to-spoke internal links, and deliberately the last band on the page: a
@@ -1013,7 +654,12 @@ const pipeline = [
   void startOneTap();
 </script>
 
-<style>
+{/*
+  Global, not scoped: the sections in components/home/ share these classes
+  (reveal, bento, the pipeline tabs, the cursors). The page is the only one that
+  imports them, so they load on /home alone.
+*/}
+<style is:global>
   /* The canvas: a dot grid that fades out towards the edges. */
   .hero-dots {
     background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
@@ -1101,8 +747,36 @@ const pipeline = [
   }
   .pipeline:has(input[value='auth']:checked) [data-stage='auth'],
   .pipeline:has(input[value='chaos']:checked) [data-stage='chaos'],
-  .pipeline:has(input[value='webhook']:checked) [data-stage='webhook'] {
+  .pipeline:has(input[value='validation']:checked) [data-stage='validation'],
+  .pipeline:has(input[value='hooks']:checked) [data-stage='hooks'],
+  .pipeline:has(input[value='notify']:checked) [data-stage='notify'] {
     display: block;
+  }
+
+  /* Query section: the open item picks the preview; with every item closed,
+     the first preview stays up rather than leaving an empty frame. */
+  .q-preview {
+    display: none;
+  }
+  .query:has(details[data-q='filter'][open]) .q-preview[data-q='filter'],
+  .query:has(details[data-q='sort'][open]) .q-preview[data-q='sort'],
+  .query:has(details[data-q='page'][open]) .q-preview[data-q='page'],
+  .query:has(details[data-q='expand'][open]) .q-preview[data-q='expand'],
+  .query:has(details[data-q='time'][open]) .q-preview[data-q='time'],
+  .query:has(details[data-q='openapi'][open]) .q-preview[data-q='openapi'],
+  .query:not(:has(details[open])) .q-preview[data-q='filter'] {
+    display: flex;
+  }
+  .q-item[open] {
+    border-color: var(--border-strong);
+  }
+
+  /* Agent cards: a picture on a wash of the card's own colour, as xmind's
+     integration cards sit on their brand colours. */
+  .agent-art {
+    background:
+      radial-gradient(90% 90% at 100% 0%, color-mix(in oklab, var(--tint) 22%, transparent), transparent 70%),
+      color-mix(in oklab, var(--tint) 7%, var(--card));
   }
   .pipe-tab:has(:checked) {
     background: var(--card);
