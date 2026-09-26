@@ -1,5 +1,5 @@
 ---
-import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, MousePointer2, Bot } from 'lucide-astro';
+import { Sparkles, FileJson, Rocket, ShieldCheck, OctagonAlert, Webhook, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot } from 'lucide-astro';
 // The handwritten accent in the hero headline. Latin only, and imported here so
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
@@ -20,19 +20,23 @@ const capabilities = [
   {
     Icon: Sparkles,
     title: 'AI-Powered Generation',
+    href: '/features/ai-rest-api-generation',
     copy: 'Describe your schema in plain English. Our AI engine outputs a fully populated, relational database with production-ready endpoints.',
   },
   {
     Icon: FileJson,
     title: 'JSON-to-REST',
+    href: '/use-cases/mock-apis',
     copy: 'Upload a flat JSON file. Stubbase automatically infers relationships, mounts CRUD operations, and enables nested routing.',
   },
   {
     Icon: Rocket,
     title: 'Zero-Downtime Deployments',
+    href: '/features/instant-api-deployments',
     copy: 'Click "Deploy" to instantly push schema changes live without breaking existing client connections.',
   },
 ];
+const [generation, jsonToRest, deployments] = capabilities;
 
 // Read straight from the nav rather than restating the three spokes here: nav.ts
 // is the single source of truth, so a new feature page shows up in this section
@@ -212,25 +216,170 @@ const pipeline = [
     </div>
   </section>
 
+  {/*
+    Capabilities, after xmind's "Tools that think with you": a centred heading,
+    then one wide card and two half cards, each with its title top left, a
+    drawn slice of the product below it, and a round link to its page in the
+    corner. The drawings are aria-hidden: the card's own text carries the
+    claim. Each card tints itself with one syntax colour (`--tint`), so the
+    three read apart without leaving the palette.
+  */}
   <section>
-    <div class="mx-auto max-w-5xl px-6 py-20">
-      <h2 class="mb-4 text-3xl font-extrabold text-foreground">Stop Writing Boilerplate APIs</h2>
-      <p class="mb-12 max-w-3xl leading-relaxed text-muted-foreground">
-        Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
-        testing teams to unblock themselves instantly.
-      </p>
-      <div class="grid gap-6 md:grid-cols-3">
-        {
-          capabilities.map(({ Icon, title, copy }) => (
-            <article class="rounded-xl border border-border-c bg-card p-6">
-              <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft">
-                <Icon class="h-5 w-5 text-primary-accent" />
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Stop Writing Boilerplate APIs</h2>
+        <p class="font-medium leading-relaxed text-muted-foreground">
+          Stubbase provides fully functional REST endpoints out-of-the-box, allowing frontend and
+          testing teams to unblock themselves instantly.
+        </p>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        {/* Wide: a sentence becomes tables. */}
+        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 md:col-span-2 [--tint:var(--primary)]">
+          <div class="relative z-10 max-w-md">
+            <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
+              <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent">
+                <Sparkles class="h-4.5 w-4.5" />
+              </span>
+              {generation.title}
+            </h3>
+            <p class="leading-relaxed text-muted-foreground">{generation.copy}</p>
+          </div>
+
+          <div aria-hidden="true" class="pointer-events-none relative mt-8 mb-10 h-44 lg:mx-8 lg:-mb-16 lg:mt-10 lg:h-64">
+            <div class="absolute top-0 left-0 w-64 -rotate-2 rounded-2xl border border-border-c bg-background p-4 sm:w-72">
+              <p class="mb-3 flex items-center gap-2 text-xs font-medium text-subtle">
+                <Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot
+              </p>
+              <p class="text-sm leading-relaxed text-foreground">
+                A music app with artists, albums and reviews. Reviews belong to an album.
+              </p>
+              <div class="mt-4 flex items-center justify-between">
+                <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables</span>
+                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <ArrowRight class="h-4 w-4" />
+                </span>
               </div>
-              <h3 class="mb-2 font-semibold text-foreground">{title}</h3>
-              <p class="text-sm leading-relaxed text-muted-foreground">{copy}</p>
-            </article>
-          ))
-        }
+            </div>
+
+            <svg class="absolute top-16 left-76 hidden h-16 w-28 text-border-strong lg:block" viewBox="0 0 112 64" fill="none">
+              <path d="M4 8 Q56 4 70 30 T106 54" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" stroke-linecap="round" />
+              <path d="M97 52 L106 54 L102 45" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+
+            <div class="absolute top-10 right-0 hidden items-start gap-4 lg:flex">
+              {[
+                { name: 'artists', count: 12, fields: ['id', 'name', 'country', 'createdAt'] },
+                { name: 'albums', count: 30, fields: ['id', 'title', 'artistId', 'createdAt'] },
+                { name: 'reviews', count: 64, fields: ['id', 'rating', 'albumId', 'createdAt'] },
+              ].map((table, i) => (
+                <div class={`w-40 rounded-xl border border-border-c bg-background ${i === 1 ? 'mt-10' : ''}`}>
+                  <p class="flex items-center justify-between border-b border-border-c px-3 py-2 font-mono text-xs font-semibold text-foreground">
+                    {table.name}
+                    <span class="font-normal text-subtle">{table.count}</span>
+                  </p>
+                  <ul class="px-3 py-2 font-mono text-[11px] leading-6">
+                    {table.fields.map((field) => (
+                      <li class={field.endsWith('Id') ? 'text-syntax-fn' : 'text-muted-foreground'}>{field}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <a href={generation.href} class="bento-link" aria-label={`${generation.title}: read more`}>
+            <ArrowUpRight class="h-4 w-4" />
+          </a>
+        </article>
+
+        {/* Half: a file becomes routes. */}
+        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 [--tint:var(--syntax-fn)]">
+          <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
+            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)">
+              <FileJson class="h-4.5 w-4.5" />
+            </span>
+            {jsonToRest.title}
+          </h3>
+          <p class="leading-relaxed text-muted-foreground">{jsonToRest.copy}</p>
+
+          <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+            <div class="absolute top-2 left-0 hidden w-44 rotate-[-3deg] rounded-xl border border-border-c bg-background sm:block">
+              <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
+                <FileJson class="h-3.5 w-3.5 text-(--tint)" /> albums.json
+              </p>
+              <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{"{"}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">3</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Neon"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"artistId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span>
+<span class="text-syntax-punct">{"}"}]</span></pre>
+            </div>
+            <div class="absolute top-0 right-0 w-60 rounded-xl border border-border-c bg-background p-2 sm:right-2">
+              {[
+                ['GET', '/albums'],
+                ['GET', '/albums/3'],
+                ['POST', '/albums'],
+                ['PUT', '/albums/3'],
+                ['DELETE', '/albums/3'],
+                ['GET', '/albums?_expand=artist'],
+              ].map(([method, path]) => (
+                <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                  <span class="w-12 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
+                  <span class={path.includes('_expand') ? 'text-(--tint)' : ''}>{path}</span>
+                </p>
+              ))}
+            </div>
+          </div>
+
+          <a href={jsonToRest.href} class="bento-link" aria-label={`${jsonToRest.title}: read more`}>
+            <ArrowUpRight class="h-4 w-4" />
+          </a>
+        </article>
+
+        {/* Half: a staged change, then Deploy. */}
+        <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-8 sm:p-10 [--tint:var(--syntax-bool)]">
+          <h3 class="mb-3 flex items-center gap-3 text-xl font-semibold text-foreground">
+            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)">
+              <Rocket class="h-4.5 w-4.5" />
+            </span>
+            {deployments.title}
+          </h3>
+          <p class="leading-relaxed text-muted-foreground">{deployments.copy}</p>
+
+          <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+            <div class="absolute inset-x-0 top-0 rounded-xl border border-border-c bg-background p-4 sm:inset-x-4">
+              <div class="mb-3 flex items-center justify-between">
+                <span class="font-mono text-xs text-subtle">acme-api</span>
+                <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
+                  <Rocket class="h-3.5 w-3.5" /> Deploy
+                </span>
+              </div>
+              <ul class="space-y-2 text-xs">
+                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
+                  <span class="font-mono text-foreground">reviews.json</span>
+                  <span class="rounded bg-(--tint)/15 px-1.5 py-0.5 text-[10px] font-medium text-(--tint)">new table</span>
+                </li>
+                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
+                  <span class="font-mono text-foreground">.env</span>
+                  <span class="rounded bg-(--tint)/15 px-1.5 py-0.5 text-[10px] font-medium text-(--tint)">AUTH_ENABLED=true</span>
+                </li>
+                <li class="flex items-center justify-between rounded-lg border border-border-c px-3 py-2">
+                  <span class="font-mono text-muted-foreground">albums.json</span>
+                  <span class="flex items-center gap-1 text-[10px] text-subtle"><Check class="h-3 w-3 text-primary-accent" /> live</span>
+                </li>
+              </ul>
+            </div>
+            <div class="absolute right-0 bottom-2 rotate-2 rounded-lg border border-border-c bg-background px-3 py-2 text-xs text-muted-foreground sm:right-8">
+              <span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-primary"></span>
+              Live — the API kept serving
+            </div>
+          </div>
+
+          <a href={deployments.href} class="bento-link" aria-label={`${deployments.title}: read more`}>
+            <ArrowUpRight class="h-4 w-4" />
+          </a>
+        </article>
       </div>
     </div>
   </section>
@@ -623,7 +772,48 @@ const pipeline = [
     }
   }
 
+  /* Capability cards: the card surface with a wash of its own colour rising
+     from the bottom right, where the drawing sits. */
+  .bento {
+    background:
+      radial-gradient(90% 80% at 100% 100%, color-mix(in oklab, var(--tint) 16%, transparent), transparent 70%),
+      var(--card);
+  }
+  .bento-link {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 10;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--contrast);
+    color: var(--contrast-foreground);
+    transition: background-color 150ms ease;
+  }
+  .bento-link:hover {
+    background: var(--contrast-hover);
+  }
+  .bento-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
+     no script; a browser without view timelines shows them as they are. */
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: hero-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .reveal,
     .hero-rise,
     .hero-piece,
     .hero-cursor {
