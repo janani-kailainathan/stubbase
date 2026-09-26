@@ -15,7 +15,7 @@ export function NoProjects() {
         </p>
       </div>
 
-      <NewProjectForm />
+      <NewProjectForm autoFocus />
     </div>
   )
 }

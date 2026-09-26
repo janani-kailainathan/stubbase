@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useIsMutating } from '@tanstack/react-query'
 import { Loader2, Plus } from 'lucide-react'
 import { StarterGrid } from '@/components/shell/StarterGrid'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-import { CREATE_PROJECT_KEY, useCreateProject, useOpenProject } from '@/hooks/projects'
+import { CREATE_PROJECT_KEY, useCreateProject, useOpenProject, useProjects } from '@/hooks/projects'
 import { useCreateProjectFromStarter } from '@/hooks/starters'
+import { generatedName, uniqueName } from '@/lib/project-name'
 import type { Starter } from '@/lib/starters'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -13,9 +14,13 @@ import { useWorkspaceStore } from '@/stores/workspace'
  * Creating a project: pick a starter (or an empty project), name it, Create.
  *
  * A card only *selects* — nothing is provisioned until Create, so browsing the
- * starters costs nothing and a stray click cannot make a project. Selecting a
- * starter fills the name in with its title; a name you typed yourself is
- * yours, and switching cards leaves it alone.
+ * starters costs nothing and a stray click cannot make a project.
+ *
+ * The name is never blank to start with: the empty project gets a generated
+ * one (`quiet-harbor`), a starter its title — numbered ("Blog 2") when a
+ * project already has it. Whatever the form fills in is selected whole, so
+ * typing replaces it and Enter takes it; a name you typed yourself is yours,
+ * and switching cards leaves it alone.
  *
  * Shared by the New project dialog and the no-projects screen, so a project is
  * created the same way from either.
@@ -33,20 +38,37 @@ export function NewProjectForm({
   const openProject = useOpenProject()
   const createBlank = useCreateProject()
   const createFromStarter = useCreateProjectFromStarter()
+  const taken = (useProjects().data ?? []).map((p) => p.name)
   // null is the empty project, which is where the form starts.
   const [selected, setSelected] = useState<Starter | null>(null)
-  const [name, setName] = useState('')
+  // The name the form last filled in; while the field still holds it, the
+  // form may replace it.
+  const [filled, setFilled] = useState(() => generatedName(taken))
+  const [name, setName] = useState(filled)
   const [needsName, setNeedsName] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Bumped whenever the form fills the name, so the effect below selects it
+  // once the new value is in the field.
+  const [fillCount, setFillCount] = useState(0)
 
   const busy = createBlank.isPending || createFromStarter.isPending
 
+  useEffect(() => {
+    // The first render selects only when the caller asked for focus.
+    if (fillCount === 0 && !autoFocus) return
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [fillCount, autoFocus])
+
   const choose = (starter: Starter | null) => {
-    // Still blank, or still exactly what the last card filled in: the card
-    // owns the name. Anything else was typed, and is kept.
-    if (!name.trim() || name === selected?.title) {
-      setName(starter?.title ?? '')
+    // Still blank, or still exactly what the form filled in: the form owns the
+    // name. Anything else was typed, and is kept.
+    if (!name.trim() || name === filled) {
+      const next = starter ? uniqueName(starter.title, taken) : generatedName(taken)
+      setFilled(next)
+      setName(next)
       setNeedsName(false)
+      setFillCount((n) => n + 1)
     }
     setSelected(starter)
   }
