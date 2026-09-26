@@ -3327,7 +3327,8 @@ async function toolSetServerStatus(
  */
 async function toolDeployProject(user: User, tenantId: string): Promise<ToolOutcome> {
   // A deploy that brought the API up, or did not go through, is when the
-  // project's health is worth showing unasked; a routine redeploy is not.
+  // project's health is worth reading unasked; a routine redeploy is not. The
+  // dashboard shows the attached copy only when it found something.
   const out = await promoteDrafts(tenantId);
   if ("error" in out) return { result: { error: out.error, diagnostics: await diagnosticsOf(user, tenantId) } };
   const started = (await projectStatus(tenantId)) !== "active";
@@ -4032,7 +4033,8 @@ async function toolSetRequiredFields(args: Record<string, unknown>, tenantId: st
  * get_diagnostics. The model reads it whenever it needs to, but the dashboard
  * shows it only when `userAsked` — a status card on every ordinary answer
  * (and on every deploy) reads as something having gone wrong. A deploy that
- * started the API or failed attaches its own copy, which is always shown.
+ * started the API or failed attaches its own copy, shown when the deploy
+ * failed or the copy found something (a syntax error, a warning).
  */
 async function toolGetDiagnostics(args: Record<string, unknown>, user: User, tenantId: string): Promise<ToolOutcome> {
   return { result: { ...(await diagnosticsOf(user, tenantId)), ...(args.userAsked === true ? { shown: true } : {}) } };

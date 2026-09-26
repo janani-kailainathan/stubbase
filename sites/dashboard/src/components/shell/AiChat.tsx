@@ -682,6 +682,19 @@ function UserTurn({ turn }: { turn: ChatTurn }) {
   )
 }
 
+/**
+ * Whether diagnostics a deploy attached are worth a card: the deploy failed,
+ * or they found something — a file that does not parse, a warning. A healthy
+ * report under "Deployed — API is live" only repeats the title.
+ */
+function diagnosticsWorthShowing(deploy: Record<string, unknown>, diagnostics: Record<string, unknown>): boolean {
+  return (
+    typeof deploy.error === 'string' ||
+    list(diagnostics.syntaxErrors).length > 0 ||
+    list(diagnostics.warnings).length > 0
+  )
+}
+
 /** Cards about the project's state rather than a change to it; they close a reply. */
 const STATUS_TOOLS = new Set(['get_diagnostics', 'deploy_project', 'set_server_status'])
 
@@ -713,15 +726,20 @@ function Reply({ entries, tenantId }: { entries: ChatEntry[]; tenantId: string |
       const key = `${entry.id}-${i}`
       // Diagnostics the agent read for itself stay out of sight: a status card
       // on an ordinary answer reads as something having gone wrong. It shows
-      // when the user asked for it (`shown`), or when a deploy attached it —
-      // one that brought the API up, or one that failed.
+      // when the user asked for it (`shown`), or when a deploy attached it and
+      // it has something to say.
       if (r.name === 'get_diagnostics') {
         if (result.shown === true) cards.push({ key, name: r.name, result })
         return
       }
       cards.push({ key, name: r.name, result })
       const attached = result.diagnostics
-      if (r.name === 'deploy_project' && attached && typeof attached === 'object')
+      if (
+        r.name === 'deploy_project' &&
+        attached &&
+        typeof attached === 'object' &&
+        diagnosticsWorthShowing(result, attached as Record<string, unknown>)
+      )
         cards.push({ key: `${key}-diagnostics`, name: 'get_diagnostics', result: attached as Record<string, unknown> })
     })
   }
