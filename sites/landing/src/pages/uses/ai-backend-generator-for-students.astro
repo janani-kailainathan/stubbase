@@ -64,17 +64,17 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     label: 'Generate API (Free)',
     href: APP_URL,
     secondary: { label: 'Use Public APIs', href: '#free-resources' },
-    note: 'No login required · Generate an endpoint in 2 seconds',
+    note: 'No credit card required',
   }}
   title="Stubbase — The Instant Backend for Frontend & QA Teams"
   description="Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero database configuration. Built for autonomous frontend development and deterministic chaos testing."
 >
   {/*
-    Hero, after xmind.com's: a centred two-line headline with one handwritten
-    accent word, on a dot-grid canvas with pieces of a working project pinned
+    Hero, after xmind.com's: a centred two-line headline with two handwritten
+    accent words, on a dot-grid canvas with pieces of a working project pinned
     around it and teammates' cursors pointing at them. The pieces are
     decoration (aria-hidden, desktop only); everything they say is also said
-    in the page's own text. The H1 wording is unchanged — it is an SEO target.
+    in the page's own text. The H1 is the URL's keyword — it is an SEO target.
     No script: the entrance and the cursors' drift are CSS, and both stop
     under prefers-reduced-motion.
   */}
@@ -175,9 +175,9 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
       </div>
 
       <div class="relative mx-auto max-w-4xl text-center">
-        <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl lg:text-6xl 2xl:text-7xl">
-          The <span class="hero-accent">Instant</span> Backend{' '}<br class="hidden sm:inline" />
-          for Frontend &amp; QA Teams
+        <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground md:text-5xl lg:text-6xl">
+          The <span class="hero-accent">AI</span> Backend Generator{' '}<br class="hidden sm:inline" />
+          for <span class="hero-accent">Students</span>
         </h1>
         <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">
           Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero
@@ -186,21 +186,16 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
         </p>
 
         <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
-          {/* Two-layer buttons, as xmind's: a faint outer ring around the button itself. */}
-          <a href={APP_URL} class="group rounded-2xl bg-muted-hover p-1">
-            <span class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors group-hover:bg-primary-hover">
-              <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
-              Generate API (Free)
-            </span>
+          <a href={APP_URL} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
+            <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
+            Generate API (Free)
           </a>
-          <a href="#free-resources" class="group rounded-2xl bg-muted-hover p-1">
-            <span class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors group-hover:bg-muted">
-              Use Public APIs
-            </span>
+          <a href="#free-resources" class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+            Use Public APIs
           </a>
         </div>
         <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">
-          No login required · Generate an endpoint in 2 seconds
+          No credit card required
         </p>
       </div>
     </div>
@@ -668,7 +663,7 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     opacity: 0.6;
   }
 
-  /* The one handwritten word, on a tinted card like a sticky note. */
+  /* The handwritten words, each on a tinted card like a sticky note. */
   .hero-accent {
     display: inline-block;
     padding: 0 0.12em;
