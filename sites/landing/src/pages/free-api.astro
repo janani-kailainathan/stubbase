@@ -1,0 +1,221 @@
+---
+// The free API: the `public` demo project as a reference page — every
+// resource with its fields and relations, the queries it answers, and what it
+// will not do. Facts come from scripts/seed-public-tenant.ts (resources,
+// fields, counts) and the core's list handling (query parameters); every
+// example below was run against a live core. The demo is READ_ONLY, so the
+// page shows reads only and sends writes to a project of your own.
+import { Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, ArrowUpRight, LockOpen, Globe, Hash } from 'lucide-astro';
+import Layout from '../layouts/Layout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import { APP_URL, CORE_URL } from '../lib/urls';
+
+const BASE = `${CORE_URL}/public`;
+
+// Fields and counts are the seed's. `parent` is the field that links a record
+// to the resource it belongs to, which is what `_expand` follows.
+const resources = [
+  { path: '/users', count: 10, Icon: Users, tint: 'var(--syntax-num)', fields: ['id', 'name', 'username', 'email', 'phone', 'website', 'company', 'active'], parent: null },
+  { path: '/posts', count: 100, Icon: Newspaper, tint: 'var(--syntax-fn)', fields: ['id', 'userId', 'title', 'body'], parent: { field: 'userId', expand: 'user', per: '10 per user' } },
+  { path: '/comments', count: 500, Icon: MessagesSquare, tint: 'var(--syntax-bool)', fields: ['id', 'postId', 'name', 'email', 'body'], parent: { field: 'postId', expand: 'post', per: '5 per post' } },
+  { path: '/albums', count: 100, Icon: Disc3, tint: 'var(--syntax-num)', fields: ['id', 'userId', 'title'], parent: { field: 'userId', expand: 'user', per: '10 per user' } },
+  { path: '/photos', count: 5000, Icon: Image, tint: 'var(--syntax-fn)', fields: ['id', 'albumId', 'title', 'url', 'thumbnailUrl'], parent: { field: 'albumId', expand: 'album', per: '50 per album' } },
+  { path: '/todos', count: 200, Icon: ListChecks, tint: 'var(--primary)', fields: ['id', 'userId', 'title', 'completed'], parent: { field: 'userId', expand: 'user', per: '20 per user' } },
+];
+const totalRecords = resources.reduce((sum, r) => sum + r.count, 0);
+
+const queries = [
+  { param: 'field=value', example: '/todos?completed=true', does: 'Exact match on any field. Combine several to narrow further.' },
+  { param: 'field[contains]=text', example: '/posts?title[contains]=api', does: 'Text search that ignores case and accents.' },
+  { param: 'field[gt|gte|lt|lte]=n', example: '/posts?id[lte]=5', does: 'Greater or less than. Numbers compare as numbers.' },
+  { param: '_sort, _direction', example: '/users?_sort=name&_direction=desc', does: 'Sort by any field, ascending unless you ask for desc.' },
+  { param: '_page, _limit', example: '/posts?_page=2&_limit=10', does: 'Page through a list. _offset works in place of _page.' },
+  { param: '_expand', example: '/posts?_expand=user', does: 'Nest the record each item belongs to, on lists and single records.' },
+];
+
+const FETCH_EXAMPLE = `const res = await fetch('${BASE}/posts?_page=1&_limit=10');
+const posts = await res.json();
+
+// The total before paging, for "page 1 of 10"
+const total = Number(res.headers.get('X-Total-Count')); // 100`;
+
+const RECORD_EXAMPLE = `{
+  "id": 1,
+  "userId": 1,
+  "title": "endpoint api latency mock",
+  "user": {
+    "id": 1,
+    "name": "Ivy Rossi",
+    "username": "ivyrossi",
+    "email": "ivyrossi@example.com"
+  }
+}`;
+
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: new URL('/', Astro.site).toString() },
+    { '@type': 'ListItem', position: 2, name: 'Free API', item: new URL('/free-api', Astro.site).toString() },
+  ],
+};
+---
+
+<Layout
+  title="Free Fake REST API for Testing and Prototyping — Stubbase"
+  description="A free fake REST API with 6 resources and 5,910 records: posts, comments, albums, photos, todos and users. Filters, paging and relations. No sign-up, no key."
+  active="free-api"
+  schema={[breadcrumbs]}
+  cta={{
+    title: 'Need your own data?',
+    body: 'Create a project, start from a JSON file or a chat with the AI Co-Pilot, and get the same API with GET, POST, PUT and DELETE on every resource.',
+    label: 'Create a free project',
+    href: APP_URL,
+    note: 'No credit card required',
+  }}
+>
+  <section>
+    <div class="mx-auto max-w-3xl px-6 pt-20 pb-12 text-center">
+      <h1 class="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">Free REST API for practice and prototyping</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+        Six resources and {totalRecords.toLocaleString('en-US')} records of sample data, linked to each
+        other, with filters, sorting, paging and relations. No sign-up, no API key.
+      </p>
+      <p class="mt-8 inline-flex max-w-full items-center gap-3 rounded-2xl border border-border-c bg-card py-2 pr-4 pl-2">
+        <span class="shrink-0 rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold tracking-wide whitespace-nowrap text-subtle uppercase">Base URL</span>
+        <code class="truncate font-mono text-sm text-emphasis">{BASE}</code>
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto grid max-w-5xl grid-cols-1 gap-4 px-6 pb-16 sm:grid-cols-3">
+      <div class="rounded-2xl border border-border-c bg-card p-5">
+        <LockOpen class="mb-3 h-5 w-5 text-primary-accent" />
+        <p class="font-semibold text-foreground">No account, no key</p>
+        <p class="mt-1 text-sm leading-relaxed text-muted-foreground">Call it straight from your code. Nothing to sign up for.</p>
+      </div>
+      <div class="rounded-2xl border border-border-c bg-card p-5">
+        <Globe class="mb-3 h-5 w-5 text-primary-accent" />
+        <p class="font-semibold text-foreground">Works from any origin</p>
+        <p class="mt-1 text-sm leading-relaxed text-muted-foreground">
+          CORS is open (<code class="font-mono text-xs text-emphasis">Access-Control-Allow-Origin: *</code>), so localhost and deployed apps alike can fetch it.
+        </p>
+      </div>
+      <div class="rounded-2xl border border-border-c bg-card p-5">
+        <Hash class="mb-3 h-5 w-5 text-primary-accent" />
+        <p class="font-semibold text-foreground">Same data every time</p>
+        <p class="mt-1 text-sm leading-relaxed text-muted-foreground">It is read-only, so the records you build against today are there tomorrow.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-5xl px-6 py-16">
+      <h2 class="mb-3 text-3xl font-bold tracking-tight text-foreground">Resources</h2>
+      <p class="mb-8 max-w-2xl text-muted-foreground">
+        Every resource answers <code class="font-mono text-sm text-emphasis">GET /&lt;resource&gt;</code> for the list
+        and <code class="font-mono text-sm text-emphasis">GET /&lt;resource&gt;/&lt;id&gt;</code> for one record.
+      </p>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {
+          resources.map(({ path, count, Icon, tint, fields, parent }) => (
+            <article class="rounded-2xl border border-border-c bg-card p-5" style={`--tint: ${tint}`}>
+              <a href={`${BASE}${path}`} class="group mb-4 flex items-center gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)">
+                  <Icon class="h-5 w-5" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block font-mono font-semibold text-foreground group-hover:text-primary-ink">{path}</span>
+                  <span class="block text-sm text-subtle">{count.toLocaleString('en-US')} records</span>
+                </span>
+                <ArrowUpRight class="h-4 w-4 shrink-0 text-subtle transition-colors group-hover:text-foreground" />
+              </a>
+              <ul class="flex flex-wrap gap-1.5">
+                {fields.map((field) => (
+                  <li class={`rounded-md border border-border-c bg-background px-2 py-0.5 font-mono text-xs ${parent?.field === field ? 'text-syntax-fn' : 'text-muted-foreground'}`}>{field}</li>
+                ))}
+              </ul>
+              <p class="mt-4 text-sm text-muted-foreground">
+                {parent ? (
+                  <>
+                    Belongs to {/^[aeiou]/.test(parent.expand) ? 'an' : 'a'} {parent.expand} ({parent.per}). Add{' '}
+                    <code class="font-mono text-xs text-emphasis">?_expand={parent.expand}</code> to nest it.
+                  </>
+                ) : (
+                  <>Posts, albums and todos each belong to a user.</>
+                )}
+              </p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-5xl px-6 py-16">
+      <h2 class="mb-3 text-3xl font-bold tracking-tight text-foreground">Filters, sorting, paging and relations</h2>
+      <p class="mb-8 max-w-2xl text-muted-foreground">
+        Add query parameters to any list. Every list response carries an{' '}
+        <code class="font-mono text-sm text-emphasis">X-Total-Count</code> header with the number of matches before
+        paging. Each example below opens the live result.
+      </p>
+      <div class="overflow-hidden rounded-2xl border border-border-c bg-card">
+        {
+          queries.map(({ param, example, does }, i) => (
+            <div class={`grid grid-cols-1 gap-2 p-5 md:grid-cols-[12rem_1fr] md:gap-6 ${i > 0 ? 'border-t border-border-c' : ''}`}>
+              <code class="font-mono text-sm font-semibold text-foreground">{param}</code>
+              <div class="min-w-0">
+                <a href={`${BASE}${example}`} class="block truncate font-mono text-sm text-primary-ink hover:text-primary-ink-hover hover:underline">{example}</a>
+                <p class="mt-1 text-sm text-muted-foreground">{does}</p>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+      <p class="mt-4 text-sm text-subtle">
+        An unknown operator such as <code class="font-mono text-xs">title[like]=</code> answers 400 rather than being
+        ignored, so a typo never looks like a match.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto grid max-w-5xl grid-cols-1 gap-12 px-6 py-16 [&>*]:min-w-0">
+      <div>
+        <h2 class="mb-3 text-2xl font-bold tracking-tight text-foreground">Fetch a page of posts</h2>
+        <p class="mb-6 text-muted-foreground">Works in the browser console, React, Vue, or anything that can make a request.</p>
+        <CodeBlock code={FETCH_EXAMPLE} lang="js" filename="posts.js" />
+      </div>
+      <div>
+        <h2 class="mb-3 text-2xl font-bold tracking-tight text-foreground">A record with its relation</h2>
+        <p class="mb-6 text-muted-foreground">
+          <a href={`${BASE}/albums/1?_expand=user`} class="font-mono text-sm text-primary-ink hover:text-primary-ink-hover hover:underline">/albums/1?_expand=user</a>, shortened:
+        </p>
+        <CodeBlock code={RECORD_EXAMPLE} lang="json" filename="albums/1.json" />
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-5xl px-6 pt-16 pb-24">
+      <h2 class="mb-3 text-3xl font-bold tracking-tight text-foreground">What it will not do</h2>
+      <ul class="max-w-2xl space-y-3 text-muted-foreground">
+        <li>
+          <strong class="font-semibold text-foreground">Writes.</strong> Everyone shares this data, so POST, PUT and
+          DELETE answer <code class="font-mono text-sm text-emphasis">405</code>. Your own project gets the full CRUD API.
+        </li>
+        <li>
+          <strong class="font-semibold text-foreground">Your own fields.</strong> The six resources are fixed. A project
+          of your own starts from any JSON file you write.
+        </li>
+        <li>
+          <strong class="font-semibold text-foreground">Images.</strong> Photo <code class="font-mono text-sm text-emphasis">url</code> and{' '}
+          <code class="font-mono text-sm text-emphasis">thumbnailUrl</code> point to Lorem Picsum, so they load from there, not from
+          Stubbase.
+        </li>
+      </ul>
+    </div>
+  </section>
+</Layout>

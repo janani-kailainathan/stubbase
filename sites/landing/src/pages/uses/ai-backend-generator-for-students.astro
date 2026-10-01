@@ -23,23 +23,6 @@ const publicResources = [
   { path: '/users', count: 10, noun: 'users', Icon: Users, tint: 'var(--syntax-num)' },
 ];
 
-// Real records from the `public` demo project, verbatim. Its seed
-// (scripts/seed-public-tenant.ts) is deterministic, so these are exactly what
-// the links above return; reseeding with a new seed means updating them.
-const sampleRecords: { path: string; record: Record<string, string | number | boolean> }[] = [
-  { path: '/users/1', record: { id: 1, name: 'Ivy Rossi', username: 'ivyrossi', company: 'Rossi Collective', active: true } },
-  { path: '/todos/1', record: { id: 1, userId: 1, title: 'dashboard handoff payload mock sandbox', completed: true } },
-  { path: '/comments/1', record: { id: 1, postId: 1, email: 'omarweber@example.com', body: 'Endpoint cursor record api schema payload.' } },
-  { path: '/albums/1', record: { id: 1, userId: 1, title: 'endpoint api latency mock' } },
-  { path: '/users/2', record: { id: 2, name: 'Yuki Okafor', username: 'yukiokafor', company: 'Okafor Works', active: false } },
-  { path: '/photos/1', record: { id: 1, albumId: 1, title: 'draft latency response endpoint', thumbnailUrl: 'https://picsum.photos/seed/stubbase-1/150/150' } },
-  { path: '/todos/2', record: { id: 2, userId: 1, title: 'payload billing billing handoff billing draft', completed: false } },
-  { path: '/posts/1', record: { id: 1, userId: 1, title: 'latency fixture prototype fixture cursor shipping' } },
-];
-// Two rows drifting opposite ways. Each is repeated four times and slides by
-// half its width, so the loop is seamless and a half still spans a wide screen.
-const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
-
 // Read straight from the nav rather than restating the three spokes here: nav.ts
 // is the single source of truth, so a new feature page shows up in this section
 // the moment it is added there, with no second list to keep in step.
@@ -328,18 +311,18 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
   </section>
 
   {/*
-    Free Resources, after xmind's "Join millions who think with Xmind": a row
-    of big numbers, then a wall of cards drifting past. Xmind's cards are
-    testimonials; these are real records from the demo project, labelled with
-    the request that returns them, so nothing here reads as a quote.
+    Free Resources: the public demo project's six resources as plain link
+    cards, each opening the live endpoint; /free-api is the full reference.
+    The project is read-only, so CRUD is a student's own project.
   */}
   <section id="free-resources">
-    <div class="mx-auto max-w-6xl px-6 pt-24 pb-12">
+    <div class="mx-auto max-w-5xl px-6 py-24">
       <div class="reveal mx-auto mb-10 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free Resources</h2>
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free APIs to practise with</h2>
         <p class="font-medium text-muted-foreground">
-          Stubbase comes with a set of 6 common resources for quick frontend prototyping.<br />
-          No account required.
+          Six ready-made endpoints full of sample data, for practising fetch, lists and detail
+          pages. Filter, search, sort, page and expand them with query parameters. No account, no
+          API key.
         </p>
         <p class="mt-6 inline-flex max-w-full items-center gap-3 rounded-2xl border border-border-c bg-card py-2 pr-4 pl-2">
           <span class="shrink-0 rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold tracking-wide whitespace-nowrap text-subtle uppercase">Base URL</span>
@@ -347,57 +330,43 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
         </p>
       </div>
 
-      <ul class="free-stats reveal grid grid-cols-2 gap-y-10 lg:grid-cols-3 lg:gap-y-14">
+      <ul class="reveal grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {
           publicResources.map(({ path, count, noun, Icon, tint }) => (
-            <li class="free-stat relative flex justify-center">
-              <a href={`${CORE_URL}/public${path}`} class="group flex flex-col items-center text-center" style={`--tint: ${tint}`}>
-                <span class="flex items-center gap-3">
-                  <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint) sm:h-12 sm:w-12">
-                    <Icon class="h-5 w-5 sm:h-6 sm:w-6" />
-                  </span>
-                  <span class="text-4xl font-bold tracking-tight text-foreground tabular-nums sm:text-5xl">
-                    {count.toLocaleString('en-US')}
-                  </span>
+            <li>
+              <a
+                href={`${CORE_URL}/public${path}`}
+                class="group flex items-center gap-4 rounded-2xl border border-border-c bg-card p-4 transition-colors hover:bg-muted"
+                style={`--tint: ${tint}`}
+              >
+                <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)">
+                  <Icon class="h-5 w-5" />
                 </span>
-                <span class="mt-2 font-mono text-sm text-primary-ink underline-offset-4 group-hover:text-primary-ink-hover group-hover:underline">
-                  {path}
+                <span class="min-w-0 flex-1">
+                  <span class="block font-mono text-sm font-semibold text-foreground">{path}</span>
+                  <span class="block text-sm text-subtle">{count.toLocaleString('en-US')} {noun}</span>
                 </span>
-                <span class="sr-only">{count} {noun}</span>
+                <ArrowUpRight class="h-4 w-4 shrink-0 text-subtle transition-colors group-hover:text-foreground" />
               </a>
             </li>
           ))
         }
       </ul>
-    </div>
 
-    <div role="group" aria-label="Sample records from the demo project" class="free-marquee reveal space-y-4 pb-10">
-      {
-        recordRows.map((row, r) => (
-          <div class="free-track flex w-max gap-4" data-direction={r === 0 ? 'left' : 'right'}>
-            {[...row, ...row, ...row, ...row].map(({ path, record }, i) => (
-              <article aria-hidden={i >= row.length ? 'true' : undefined} class="w-72 shrink-0 rounded-2xl border border-border-c bg-card p-4 sm:w-80">
-                <p class="mb-3 flex items-center justify-between border-b border-border-c pb-3 font-mono text-xs">
-                  <span><span class="text-subtle">GET</span> <span class="text-foreground">/public{path}</span></span>
-                  <span class="font-semibold text-primary-ink">200</span>
-                </p>
-                <pre class="font-mono text-[11px] leading-5 text-code-fg"><span class="text-syntax-punct">{'{'}</span>{Object.entries(record).map(([key, value]) => (
-  <span class="block truncate pl-3"><span class="text-syntax-str">"{key}"</span><span class="text-syntax-punct">: </span>{typeof value === 'string' ? <span class="text-syntax-fn">"{value}"</span> : typeof value === 'boolean' ? <span class="text-syntax-bool">{String(value)}</span> : <span class="text-syntax-num">{value}</span>}</span>
-))}<span class="text-syntax-punct">{'}'}</span></pre>
-              </article>
-            ))}
-          </div>
-        ))
-      }
-    </div>
+      <p class="reveal mt-8 flex justify-center">
+        <a href="/free-api" class="inline-flex items-center gap-2 rounded-xl border border-border-c bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+          See every field, filter and query <ArrowRight class="h-4 w-4" />
+        </a>
+      </p>
 
-    <p class="reveal mx-auto max-w-2xl px-6 pb-24 text-center text-sm text-muted-foreground">
-      <strong class="font-semibold text-foreground">Need custom fields?</strong> Edit these APIs in the{' '}
-      <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
-        Stubbase Dashboard
-      </a>{' '}
-      to add delays, errors, or your own data.
-    </p>
+      <p class="reveal mt-10 text-center text-sm text-muted-foreground">
+        These are read-only, so everyone sees the same data.{' '}
+        <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
+          Create a free project
+        </a>{' '}
+        for your own full CRUD API: GET, POST, PUT and DELETE on every resource.
+      </p>
+    </div>
   </section>
 
   <StudentsPipeline />
@@ -807,49 +776,6 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     }
   }
 
-  /* Free Resources: soft vertical rules between the numbers, fading at both
-     ends like xmind's, drawn only where a column has a neighbour. */
-  .free-stat + .free-stat::before {
-    content: '';
-    position: absolute;
-    top: 10%;
-    bottom: 10%;
-    left: 0;
-    width: 1px;
-    background: linear-gradient(transparent, var(--border-strong), transparent);
-  }
-  .free-stats .free-stat:nth-child(2n + 1)::before {
-    display: none;
-  }
-  @media (min-width: 1024px) {
-    .free-stats .free-stat:nth-child(2n + 1)::before {
-      display: block;
-    }
-    .free-stats .free-stat:nth-child(3n + 1)::before {
-      display: none;
-    }
-  }
-
-  /* The record wall drifts, row against row, fading out at the edges. */
-  .free-marquee {
-    overflow: hidden;
-    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
-  }
-  .free-track {
-    animation: free-drift 60s linear infinite;
-  }
-  .free-track[data-direction='right'] {
-    animation-direction: reverse;
-  }
-  .free-marquee:hover .free-track {
-    animation-play-state: paused;
-  }
-  @keyframes free-drift {
-    to {
-      transform: translateX(calc(-50% - 0.5rem));
-    }
-  }
-
   /* Feature badges: a shield, drawn twice — the outer copy is the border, the
      inner one inset by a pixel is the face — so the outline follows the point. */
   .feature-shield {
@@ -867,12 +793,6 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .free-track {
-      animation: none;
-    }
-    .free-marquee {
-      overflow-x: auto;
-    }
     .try-badge,
     .reveal,
     .hero-rise,
