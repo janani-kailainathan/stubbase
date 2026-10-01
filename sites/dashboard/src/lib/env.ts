@@ -46,6 +46,7 @@ export function parseEnvText(text: string): EnvParseResult {
 // the project's system/status.json), so a line for it here does nothing.
 const KNOWN_KEYS = new Set([
   'QA_MODE',
+  'READ_ONLY',
   'AUTH_ENABLED',
   'AUTH_EMAIL_VERIFICATION',
   'AUTH_PUBLIC_ROUTES',

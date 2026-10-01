@@ -191,6 +191,16 @@ export const emailVerificationEnabled = (config: TenantConfig | undefined) =>
     .trim()
     .toLowerCase() !== 'false'
 
+/**
+ * Read READ_ONLY as the Core Engine does — only a literal `true` — so a
+ * read-only project's rail lists the reads it serves and none of the writes it
+ * answers 405.
+ */
+export const readOnly = (config: TenantConfig | undefined) =>
+  String(config?.READ_ONLY ?? '')
+    .trim()
+    .toLowerCase() === 'true'
+
 export interface EndpointGroup {
   resource: string
   endpoints: Endpoint[]
@@ -201,7 +211,11 @@ export function groupEndpoints(
   resources: string[],
   config: TenantConfig | undefined,
 ): EndpointGroup[] {
-  const groups = resources.map((resource) => ({ resource, endpoints: endpointsFor([resource]) }))
+  const reads = readOnly(config)
+  const groups = resources.map((resource) => ({
+    resource,
+    endpoints: endpointsFor([resource]).filter((endpoint) => !reads || endpoint.method === 'GET'),
+  }))
   if (!authEnabled(config)) return groups
   const verifying = emailVerificationEnabled(config)
   const auth = AUTH_ENDPOINTS.filter((endpoint) => verifying || !endpoint.verification)

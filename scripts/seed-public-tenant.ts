@@ -106,11 +106,25 @@ const todos = range(200).map((id) => ({
 const RESOURCES = { posts, comments, albums, photos, todos, users };
 
 /**
- * Writes the tenant's resource files into its data/ folder. No-ops when that
- * folder already exists unless `force` is set, so local edits to the demo data
- * survive a restart. Returns true when files were written.
+ * The demo is read-only (READ_ONLY in ENVIRONMENT.md): everyone shares it, so
+ * a write from one visitor — a DELETE of /users/1 — would break it for the
+ * rest, and the home page's "Try it live" runner with them. Written on every
+ * run, data or not, so a demo seeded before this existed becomes read-only too;
+ * the data can still be changed through the admin plane.
+ */
+const CONFIG = { READ_ONLY: "true" };
+
+/**
+ * Writes the tenant's resource files into its data/ folder, and its config.
+ * The data no-ops when that folder already exists unless `force` is set, so
+ * local edits to the demo data survive a restart. Returns true when the data
+ * was written.
  */
 export async function seedPublicTenant(force = false): Promise<boolean> {
+  const system = join(TENANTS_DIR, TENANT_ID, "system");
+  await mkdir(system, { recursive: true });
+  await Bun.write(join(system, "config.json"), `${JSON.stringify(CONFIG, null, 2)}\n`);
+
   const dir = join(TENANTS_DIR, TENANT_ID, "data");
   if (!force && (await stat(dir).catch(() => null))) return false;
 

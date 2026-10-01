@@ -162,6 +162,12 @@ button; and by the Co-Pilot. It is never staged, never promoted and has no
 `PROJECT_STATUS` key in config is ignored. The `_admin` plane stays reachable so
 the dashboard can always bring the API back up.
 
+### Read-only
+
+| Key | Example | Purpose |
+|---|---|---|
+| `READ_ONLY` | `"true"` | The resources answer `GET` and `HEAD`, and every other method gets `405 {"error":"this API is read-only"}` with `Allow: GET, HEAD`, whoever sends it — a token does not help. The `_admin` plane is untouched, so the owner still edits records from the dashboard and the Co-Pilot, and so are the auth routes, which follow the `AUTH_*` keys. `openapi.json` leaves out the write operations. The refusal is an ordinary answer: metered, logged, and counted against the rate limit. It is what keeps the platform's `public` demo unchangeable, and so safe to cache at the edge. |
+
 ### QA Chaos Engine
 
 | Key | Example | Purpose |

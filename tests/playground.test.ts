@@ -110,6 +110,27 @@ describe("the rail", () => {
     expect(find("GET", "/users/{id}").needsId).toBe(true);
     expect(find("GET", "/posts/{id}").needsId).toBe(true);
   });
+
+  test("lists only the reads of a read-only project, which are exactly what a real core serves", async () => {
+    const config = { READ_ONLY: " TRUE " }; // read as the core reads it
+    await seedTenant(core, "readonly", { posts: [{ id: "p1", title: "Hello" }], config });
+    const listed = groupEndpoints(["posts"], config).flatMap((g) => g.endpoints);
+    expect(listed.map((e) => `${e.method} ${e.path}`)).toEqual(["GET /posts", "GET /posts/{id}"]);
+
+    // Everything the rail offers is served; everything it leaves out is refused.
+    const call = (e: Endpoint) =>
+      fetch(`${core.base}${requestPath("readonly", e, e.needsId ? "p1" : "")}`, {
+        method: e.method,
+        headers: { "content-type": "application/json" },
+        body: e.method === "GET" || e.method === "DELETE" ? undefined : "{}",
+      });
+    for (const e of listed) expect(`${e.method} ${e.path} → ${(await call(e)).status}`).toBe(`${e.method} ${e.path} → 200`);
+    const unlisted = groupEndpoints(["posts"], {})
+      .flatMap((g) => g.endpoints)
+      .filter((e) => !listed.some((l) => l.path === e.path && l.method === e.method));
+    expect(unlisted).toHaveLength(3);
+    for (const e of unlisted) expect(`${e.method} ${e.path} → ${(await call(e)).status}`).toBe(`${e.method} ${e.path} → 405`);
+  });
 });
 
 describe("an id can never move a request off its route", () => {

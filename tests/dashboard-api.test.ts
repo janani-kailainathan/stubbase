@@ -331,6 +331,7 @@ describe("project provisioning", () => {
   /** Every fixed key the core reads from a tenant's config (ENVIRONMENT.md §2). */
   const CORE_TENANT_KEYS = [
     "QA_MODE",
+    "READ_ONLY",
     "AUTH_ENABLED",
     "AUTH_EMAIL_VERIFICATION",
     "AUTH_PUBLIC_ROUTES",
@@ -404,7 +405,7 @@ describe("project provisioning", () => {
     });
 
     const numbers = headings.map((h) => h.number);
-    expect(numbers).toEqual(["1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.5.1", "1.5.2", "1.6", "2", "2.1", "2.2", "3", "4", "5"]);
+    expect(numbers).toEqual(["1", "1.1", "1.2", "1.3", "1.4", "1.5", "1.5.1", "1.5.2", "1.6", "2", "2.1", "2.2", "3", "4", "5", "6"]);
     expect(contents.map((c) => c.number)).toEqual(numbers);
     // Each heading reads as its contents entry does (a heading may add a note, e.g. "(needs AUTH_ENABLED=true)").
     headings.forEach((h, i) => expect({ n: h.number, starts: h.title.startsWith(contents[i].title) }).toEqual({ n: h.number, starts: true }));
@@ -2868,6 +2869,7 @@ describe("AI Co-Pilot agent loop", () => {
       ["AUTH_EMAIL_VERIFICATION", "false"],
       ["AUTH_BLOCK_DISPOSABLE_EMAIL", "false"],
       ["QA_MODE", "true"],
+      ["READ_ONLY", "false"],
       ["AUTH_PUBLIC_ROUTES", "posts,tags"],
       ["AUTH_JWT_TTL_SECONDS", "86400"],
       ["AUTH_REFRESH_TTL_SECONDS", "9999999"], // longer than the default it leaves out
@@ -2902,6 +2904,7 @@ describe("AI Co-Pilot agent loop", () => {
       ["AUTH_EMAIL_DOMAINS_BLOCKED", "spam.com,junk.com"],
       ["AUTH_BLOCK_DISPOSABLE_EMAIL", "true"],
       ["QA_MODE", "false"],
+      ["READ_ONLY", "true"],
       ["SCHEMA_TAGS", '{"type":"object","required":["name"]}'], // a first schema
     ])
       expect(`${key}=${value} → ${await verdict(key, value)}`).toBe(`${key}=${value} → applied`);

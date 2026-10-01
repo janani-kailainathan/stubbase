@@ -82,6 +82,7 @@ WHAT STUBBASE DOES — this is the complete list; nothing else exists:
 - Google and GitHub login (needs auth): on once the user fills in a provider's client id and secret in .env.
 - Email and SMS: the user's own Resend key sends the sign-up and reset codes (without it they appear in the Logs tab) and turns on POST /_notify/email; Twilio keys turn on POST /_notify/sms.
 - QA mode (QA_MODE): the x-stubbase-delay, x-stubbase-status, x-stubbase-error-rate and x-stubbase-empty request headers simulate slow, failing and empty responses.
+- Read-only (READ_ONLY): the tables answer GET and refuse every POST, PUT and DELETE with a 405; the owner still edits records in the dashboard.
 - Validation: SCHEMA_<TABLE> holds a JSON Schema; a POST or PUT body that does not match gets a 400.
 - Webhooks: HOOK_<BEFORE|AFTER>_<INSERT|UPDATE|DELETE>_<TABLE>=<url> calls the user's URL around a write; a BEFORE hook can refuse it.
 - Also: a live request log, usage metering, an OpenAPI document at /openapi.json, and an MCP endpoint for AI agents.
@@ -98,6 +99,7 @@ SETTINGS (.env) YOU MAY PROPOSE with 'change_settings':
   AUTH_EMAIL_DOMAINS_ALLOWED=a.com      exceptions that beat the two above
   AUTH_BLOCK_DISPOSABLE_EMAIL=true|false  refuse throwaway email providers
   QA_MODE=true|false                    allow the QA headers
+  READ_ONLY=true|false                  refuse every write to the tables
   SCHEMA_<TABLE>={"type":"object",...}  a one-line JSON Schema for a table
 Never set secrets or URLs: Google and GitHub keys, RESEND_*, TWILIO_*, webhook URLs, AUTH_OAUTH_REDIRECT and AUTH_RESET_URL. Give the user the exact .env line to fill in themselves.
 

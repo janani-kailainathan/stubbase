@@ -2448,6 +2448,7 @@ function envTemplate(tenantId: string): string {
     "#   3. QA: simulate slow, failing and empty responses",
     "#   4. Validation: a JSON Schema per resource",
     "#   5. Webhooks",
+    "#   6. Read-only: refuse every write",
     "#",
     "# Going live is not a setting: Deploy publishes your changes and starts the",
     "# API, and Stop takes it offline.",
@@ -2571,6 +2572,12 @@ function envTemplate(tenantId: string): string {
     "# An AFTER hook is told about the write once it has happened.",
     "# HOOK_BEFORE_INSERT_POSTS=https://your-app.com/hooks/check-post",
     "# HOOK_AFTER_UPDATE_ORDERS=https://your-app.com/hooks/order-changed",
+    "",
+    envChapter("6. Read-only: refuse every write"),
+    "# Your tables answer GET and refuse every POST, PUT and DELETE with a 405,",
+    "# whoever sends it. For data you publish but nobody should change. You can",
+    "# still edit the records here. The auth routes (section 1) are not affected.",
+    "# READ_ONLY=true",
     "",
   ].join("\n");
 }
@@ -3532,6 +3539,7 @@ const AGENT_SETTINGS: Record<string, (value: string) => string | null> = {
   AUTH_EMAIL_DOMAINS_ALLOWED: domainListSetting,
   AUTH_BLOCK_DISPOSABLE_EMAIL: bool,
   QA_MODE: bool,
+  READ_ONLY: bool,
 };
 
 /** Settings that exist but only the user may set: credentials, and URLs a request would be sent to. */
@@ -3582,6 +3590,7 @@ function settingTightens(key: string, value: string, current: Record<string, unk
     case "AUTH_ENABLED":
     case "AUTH_EMAIL_VERIFICATION":
     case "AUTH_BLOCK_DISPOSABLE_EMAIL":
+    case "READ_ONLY":
       return value === "true";
     case "QA_MODE":
       return value === "false";

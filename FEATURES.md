@@ -683,6 +683,42 @@ See [3.1.6](#316-who-may-sign-up) for the full table of keys.
 
 _To be written — placeholder._
 
+### 1.6 Read-only API
+
+Publish data that nobody can change. Your tables keep answering every `GET` —
+lists, single records, filters, sorting, paging and `_expand` all work as
+before — but a `POST`, `PUT` or `DELETE` to them is refused with a `405`,
+whoever sends it:
+
+```http
+DELETE /<project-id>/posts/1
+
+405 Method Not Allowed
+Allow: GET, HEAD
+{ "error": "this API is read-only" }
+```
+
+A token doesn't help: no one can write through the API, not even an account
+with the `admin` role. You still can. Editing records in the dashboard, and
+asking the Co-Pilot to change them, work as usual. Your `openapi.json` lists
+only the read operations, so tools that read it never offer a write. Sign-up,
+login and the other auth routes aren't affected; they follow your auth settings
+as before.
+
+A refused write is an ordinary answer from your API: it shows in your Logs tab
+and counts towards your requests like any other.
+
+##### To enable this feature, add to your `.env`:
+
+```env
+READ_ONLY=true
+```
+
+Remove the line, or set it to `false`, and writes are accepted again on the
+next deploy.
+
+See [3.2](#32-read-only-api) for the key.
+
 ---
 
 ## 2. App-level features — the Stubbase platform
@@ -992,3 +1028,11 @@ Feature: [1.4.6 Who may sign up](#146-who-may-sign-up)
 | `AUTH_EMAIL_DOMAINS_BLOCKED` | `rival.com` | Domains always refused, subdomains included. Everyone else is still accepted. |
 | `AUTH_BLOCK_DISPOSABLE_EMAIL` | `true` | Refuses around 75,000 throwaway providers. Off unless set. |
 | `AUTH_EMAIL_DOMAINS_ALLOWED` | `partner.com` | **An exception**, not a gate: beats the two rows above and accepts nobody on its own. |
+
+### 3.2 Read-only API
+
+Feature: [1.6 Read-only API](#16-read-only-api)
+
+| Key | Example | What it does |
+|---|---|---|
+| `READ_ONLY` | `true` | **The switch.** Your tables answer `GET` and refuse every `POST`, `PUT` and `DELETE` with a `405`, whoever sends it. You can still edit records from the dashboard. The auth routes are not affected. |

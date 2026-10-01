@@ -730,6 +730,88 @@ describe("QA chaos headers", () => {
   });
 });
 
+// ── Read-only projects ─────────────────────────────────────────────
+
+describe("read-only projects (READ_ONLY)", () => {
+  const send = (tenant: string, method: string, path: string, headers: Record<string, string> = {}) =>
+    fetch(`${core.base}/${tenant}/${path}`, {
+      method,
+      headers: { "content-type": "application/json", ...headers },
+      body: method === "GET" || method === "DELETE" ? undefined : JSON.stringify({ id: "9", title: "written" }),
+    });
+
+  test("serve every read and refuse every write with a 405, leaving the data alone", async () => {
+    const posts = [{ id: "1", title: "kept" }];
+    await seed(core, "readonly", { posts, config: { READ_ONLY: "true" } });
+
+    expect(await send("readonly", "GET", "posts").then((r) => r.json())).toEqual(posts);
+    expect(await send("readonly", "GET", "posts/1").then((r) => r.json())).toEqual(posts[0]);
+    expect((await send("readonly", "GET", "posts?title[contains]=KEP")).status).toBe(200);
+
+    for (const [method, path] of [["POST", "posts"], ["PUT", "posts/1"], ["DELETE", "posts/1"], ["PATCH", "posts/1"]]) {
+      const res = await send("readonly", method, path);
+      expect(`${method} → ${res.status}`).toBe(`${method} → 405`);
+      expect(res.headers.get("allow")).toBe("GET, HEAD");
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      expect(await res.json()).toEqual({ error: "this API is read-only" });
+    }
+    // A table the project does not have reads as read-only too, never as a way in.
+    expect((await send("readonly", "POST", "fresh")).status).toBe(405);
+
+    expect(await readFile(core, "readonly", "posts")).toEqual(posts);
+    expect(await send("readonly", "GET", "posts").then((r) => r.json())).toEqual(posts);
+  });
+
+  test("leave the owner's admin plane writable", async () => {
+    await seed(core, "readonlyowner", { posts: [], config: { READ_ONLY: "true" } });
+    const write = await fetch(`${core.base}/readonlyowner/_admin/files/posts`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify([{ id: "1", title: "from the dashboard" }]),
+    });
+    expect(write.status).toBe(201);
+    expect(await send("readonlyowner", "GET", "posts").then((r) => r.json())).toEqual([
+      { id: "1", title: "from the dashboard" },
+    ]);
+  });
+
+  test("refuse a signed-in admin too, while the auth routes keep working", async () => {
+    await seed(core, "readonlyauth", {
+      posts: [],
+      config: { READ_ONLY: "true", AUTH_ENABLED: "true", AUTH_EMAIL_VERIFICATION: "false" },
+    });
+    const { token, user } = await signupAs("readonlyauth", "ro-admin@example.com");
+    const set = await fetch(`${core.base}/readonlyauth/_admin/users/${user.id}/role`, {
+      method: "POST",
+      headers: { ...adminAuth, "content-type": "application/json" },
+      body: JSON.stringify({ role: "admin" }),
+    });
+    expect(set.ok).toBe(true);
+
+    expect((await send("readonlyauth", "GET", "posts", bearer(token))).status).toBe(200);
+    expect((await send("readonlyauth", "POST", "posts", bearer(token))).status).toBe(405);
+    // Refused before the token is even looked at: a bad one gets the same answer.
+    expect((await send("readonlyauth", "POST", "posts", bearer("not-a-token"))).status).toBe(405);
+  });
+
+  test("describe only the reads in openapi.json", async () => {
+    await seed(core, "readonlydoc", { posts: [{ id: "1" }], config: { READ_ONLY: "true" } });
+    const doc = await fetch(`${core.base}/readonlydoc/openapi.json`).then((r) => r.json());
+    expect(Object.keys(doc.paths["/readonlydoc/posts"])).toEqual(["get"]);
+    expect(Object.keys(doc.paths["/readonlydoc/posts/{id}"])).toEqual(["get"]);
+
+    const open = await fetch(`${core.base}/plain/openapi.json`).then((r) => r.json());
+    expect(Object.keys(open.paths["/plain/posts/{id}"]).sort()).toEqual(["delete", "get", "put"]);
+  });
+
+  test("read the switch as the core reads every switch: only a literal true", async () => {
+    await seed(core, "readonlycase", { posts: [], config: { READ_ONLY: " TRUE " } });
+    expect((await send("readonlycase", "POST", "posts")).status).toBe(405);
+    await seed(core, "readonlyno", { posts: [], config: { READ_ONLY: "yes" } });
+    expect((await send("readonlyno", "POST", "posts")).status).toBe(201);
+  });
+});
+
 // ── Tenant auth ────────────────────────────────────────────────────
 
 // ── Who may sign up ────────────────────────────────────────────────
@@ -3458,6 +3540,7 @@ describe("live request log", () => {
       "statusGuard",
       "quotaGuard",
       "rateGuard",
+      "readOnlyGuard",
       "authGuard",
       "rbacGuard",
       "chaosGuard",
@@ -3487,6 +3570,7 @@ describe("live request log", () => {
       "statusGuard",
       "quotaGuard",
       "rateGuard",
+      "readOnlyGuard",
       "authGuard",
     ]);
     stream.close();

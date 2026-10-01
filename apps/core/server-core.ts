@@ -147,6 +147,7 @@ const isProtectedResource = (name: string) =>
 
 interface TenantConfig {
   qaMode: boolean; // gates every x-stubbase-* simulation header
+  readOnly: boolean; // READ_ONLY — the resources answer reads only; every write is a 405
   schemas: Record<string, unknown>; // resource → JSON Schema for POST/PUT bodies
   auth: AuthConfig; // the AUTH_* keys, parsed by the auth feature
   rbacEnabled: boolean; // RBAC_ENABLED — roles and permissions from system/rbac.json (needs auth)
@@ -160,6 +161,7 @@ interface TenantConfig {
 
 const DEFAULT_CONFIG: TenantConfig = {
   qaMode: false,
+  readOnly: false,
   schemas: {},
   auth: parseAuthConfig({}),
   rbacEnabled: false,
@@ -201,6 +203,7 @@ function parseConfig(raw: unknown): TenantConfig {
 
   return {
     qaMode: str("QA_MODE").toLowerCase() === "true",
+    readOnly: str("READ_ONLY").toLowerCase() === "true",
     schemas,
     auth: parseAuthConfig(env),
     rbacEnabled: str("RBAC_ENABLED").toLowerCase() === "true",
@@ -1330,6 +1333,8 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
     schemas[resource] = inferItemSchema(rows);
     const ref = { $ref: `#/components/schemas/${resource}` };
     const idParam = { name: "id", in: "path", required: true, schema: { type: "string" } };
+    // A read-only API describes only what it serves.
+    const writes = !cfg.readOnly;
     paths[`/${tenantId}/${resource}`] = {
       get: {
         summary: `List ${resource}`,
@@ -1356,12 +1361,14 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
         ],
         responses: { "200": { description: "OK", content: jsonOf({ type: "array", items: ref }) } },
       },
-      post: {
-        summary: `Create a ${resource} record`,
-        security: secured(resource, "post"),
-        requestBody: { required: true, content: jsonOf(ref) },
-        responses: { "201": { description: "Created", content: jsonOf(ref) } },
-      },
+      ...(writes && {
+        post: {
+          summary: `Create a ${resource} record`,
+          security: secured(resource, "post"),
+          requestBody: { required: true, content: jsonOf(ref) },
+          responses: { "201": { description: "Created", content: jsonOf(ref) } },
+        },
+      }),
     };
     paths[`/${tenantId}/${resource}/{id}`] = {
       get: {
@@ -1370,19 +1377,21 @@ async function handleOpenApi(req: Request, tenantId: string): Promise<Response> 
         parameters: [idParam],
         responses: { "200": { description: "OK", content: jsonOf(ref) }, "404": { description: "Not found" } },
       },
-      put: {
-        summary: `Replace a ${resource} record`,
-        security: secured(resource, "put"),
-        parameters: [idParam],
-        requestBody: { required: true, content: jsonOf(ref) },
-        responses: { "200": { description: "OK", content: jsonOf(ref) } },
-      },
-      delete: {
-        summary: `Delete a ${resource} record`,
-        security: secured(resource, "delete"),
-        parameters: [idParam],
-        responses: { "200": { description: "Deleted", content: jsonOf(ref) } },
-      },
+      ...(writes && {
+        put: {
+          summary: `Replace a ${resource} record`,
+          security: secured(resource, "put"),
+          parameters: [idParam],
+          requestBody: { required: true, content: jsonOf(ref) },
+          responses: { "200": { description: "OK", content: jsonOf(ref) } },
+        },
+        delete: {
+          summary: `Delete a ${resource} record`,
+          security: secured(resource, "delete"),
+          parameters: [idParam],
+          responses: { "200": { description: "Deleted", content: jsonOf(ref) } },
+        },
+      }),
     };
   }
   return json({
@@ -2607,6 +2616,21 @@ function rateBlocked(tenantId: string): Response | null {
 
 const rateGuard: Middleware = (ctx) => rateBlocked(ctx.tenantId) ?? undefined;
 
+// READ_ONLY: the resources answer reads and refuse every write with a 405,
+// whoever asks — which is what lets the platform's `public` demo be shared, and
+// cached, without anyone being able to change it. Only the public plane: the
+// owner still edits the records from the dashboard, over _admin. Only the
+// resources: the auth routes follow the AUTH_* settings as ever. Before
+// authGuard, since no token could make the write allowed, so there is no
+// signature worth checking; after the quota and the rate, so a refused write
+// still counts towards both, like any other answer the API gives.
+const readOnlyGuard: Middleware = (ctx) => {
+  if (!ctx.state.config.readOnly || ctx.req.method === "GET" || ctx.req.method === "HEAD") return;
+  const res = err(405, "this API is read-only");
+  res.headers.set("allow", "GET, HEAD");
+  return res;
+};
+
 const authGuard: Middleware = (ctx) => {
   const cfg = ctx.state.config.auth;
   if (!cfg.enabled) return;
@@ -2937,6 +2961,7 @@ const PIPELINE: Middleware[] = [
   statusGuard,
   quotaGuard,
   rateGuard,
+  readOnlyGuard,
   authGuard,
   rbacGuard,
   chaosGuard,
