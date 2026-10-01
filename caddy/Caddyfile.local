@@ -38,6 +38,8 @@ http://app.stubbase.localhost {
 http://api.app.stubbase.localhost {
 	reverse_proxy 127.0.0.1:3001
 	handle_errors 502 {
+		# Matches the page: it refreshes itself after 10 seconds.
+		header Retry-After 10
 		header Access-Control-Allow-Origin http://app.stubbase.localhost
 		root * /var/www/stubbase-error
 		rewrite * /maintenance.html
@@ -48,6 +50,8 @@ http://api.app.stubbase.localhost {
 http://api.stubbase.localhost {
 	reverse_proxy 127.0.0.1:3000
 	handle_errors 502 {
+		# Matches the page: it refreshes itself after 10 seconds.
+		header Retry-After 10
 		header Access-Control-Allow-Origin *
 		root * /var/www/stubbase-error
 		rewrite * /maintenance.html
