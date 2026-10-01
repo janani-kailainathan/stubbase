@@ -58,8 +58,10 @@ const linkClass = (isActive: boolean) =>
         either the job they are doing or the job they hold, never reliably both,
         so the menu asks the question twice side by side rather than making them
         translate. Still a native <details> — no client JS (see CLAUDE.md).
+        Every panel hangs from its own trigger, a little to its left, so the
+        pointer coming straight down lands inside the first link.
       */}
-      <details name="primary-nav" class="group">
+      <details name="primary-nav" class="group relative">
         <summary
           class={`flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden ${linkClass(active === 'use-cases' || active === 'roles')}`}
         >
@@ -67,7 +69,7 @@ const linkClass = (isActive: boolean) =>
           <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
         </summary>
         <div
-          class="absolute top-full left-1/2 z-50 mt-3 w-[44rem] max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-xl border border-border-c bg-card p-6"
+          class="absolute top-full -left-8 z-50 mt-3 w-[44rem] max-w-[calc(100vw-3rem)] rounded-xl border border-border-c bg-card p-6"
         >
           <div class="grid grid-cols-2 gap-x-8">
             {SOLUTION_GROUPS.map((group) => (
@@ -109,7 +111,7 @@ const linkClass = (isActive: boolean) =>
               <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
             </summary>
             <div
-              class="absolute top-full left-0 z-50 mt-3 w-64 rounded-lg border border-border-c bg-card p-2"
+              class="absolute top-full -left-5 z-50 mt-3 w-64 rounded-lg border border-border-c bg-card p-2"
             >
               {group.links.map((link) => (
                 <a
