@@ -66,8 +66,8 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     secondary: { label: 'Use Public APIs', href: '#free-resources' },
     note: 'No credit card required',
   }}
-  title="Stubbase — The Instant Backend for Frontend & QA Teams"
-  description="Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero database configuration. Built for autonomous frontend development and deterministic chaos testing."
+  title="AI Backend Generator for Students — Stubbase"
+  description="Chat with AI or write one JSON file, your data model and database in one, and get a REST API with relationships linked automatically. Built for student projects."
 >
   {/*
     Hero, after xmind.com's: a centred two-line headline with two handwritten
@@ -84,31 +84,31 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     <div class="relative mx-auto max-w-7xl px-6 pt-16 pb-16 lg:pt-24 xl:pt-32 xl:pb-40">
       {/* Only from xl: below that the headline needs the width the pieces sit in. */}
       <div aria-hidden="true" class="pointer-events-none absolute inset-0 mx-6 hidden xl:block">
-        {/* Top left: a resource file, wired to what it becomes. */}
+        {/* Top left: a class project's resource file, wired to what it becomes. */}
         <div class="hero-piece absolute top-12 left-0 w-56 [--d:0.35s]">
           <div class="rounded-xl border border-border-c bg-card">
             <div class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
               <FileJson class="h-3.5 w-3.5 text-primary-accent" />
-              artists.json
+              assignments.json
             </div>
             <pre class="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{"{"}</span>
   <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"name"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Ava Chen"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"albumIds"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-punct">[</span><span class="text-syntax-num">3</span><span class="text-syntax-punct">,</span> <span class="text-syntax-num">7</span><span class="text-syntax-punct">]</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
 <span class="text-syntax-punct">{"}"}]</span></pre>
           </div>
           <div class="ml-6 h-6 w-px border-l border-dashed border-border-strong"></div>
           <div class="ml-6 flex items-center">
             <div class="w-5 border-t border-dashed border-border-strong"></div>
             <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-              A relational REST API,<br />live in 2 seconds
+              A REST API for your<br />class project, in seconds
             </div>
           </div>
           <div class="hero-cursor absolute top-3 -right-20 [--c:var(--syntax-str)] [--drift:6px]">
             <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
             <span class="mt-0.5 ml-3 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">F</span>
-              Frontend dev
+              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Y</span>
+              You
             </span>
           </div>
         </div>
@@ -118,17 +118,17 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
           <div class="rounded-lg border border-primary-soft-border bg-primary-soft p-3">
             <p class="font-mono text-xs text-subtle">201</p>
             <p class="text-3xl font-extrabold text-foreground">POST</p>
-            <p class="font-mono text-xs text-muted-foreground">/artists</p>
-            <p class="font-mono text-[11px] text-subtle">[written to disk]</p>
+            <p class="font-mono text-xs text-muted-foreground">/assignments</p>
+            <p class="font-mono text-[11px] text-subtle">[saved]</p>
           </div>
           <div class="ml-10 h-6 w-px bg-border-strong"></div>
           <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-            Persistent,<br />not a mock
+            Still there<br />after a refresh
           </div>
           <div class="hero-cursor absolute -top-10 -left-32 flex flex-col items-end [--c:var(--syntax-num)] [--drift:-5px]">
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Q</span>
-              QA engineer
+              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">L</span>
+              Lab partner
             </span>
             <MousePointer2 class="mt-0.5 mr-1 h-5 w-5 -scale-x-100 rotate-180 fill-current text-(--c)" />
           </div>
@@ -139,8 +139,8 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
           <div class="w-32 rounded-lg border border-border-c bg-card p-3">
             <p class="font-mono text-xs text-subtle">200</p>
             <p class="text-3xl font-extrabold text-foreground">GET</p>
-            <p class="font-mono text-xs text-muted-foreground">/albums</p>
-            <p class="font-mono text-[11px] text-subtle">[100 records]</p>
+            <p class="font-mono text-xs text-muted-foreground">/courses</p>
+            <p class="font-mono text-[11px] text-subtle">[12 records]</p>
           </div>
           <svg class="mb-6 h-14 w-24 text-border-strong" viewBox="0 0 96 56" fill="none">
             <path d="M4 48 H44 Q72 48 76 24 V10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" stroke-linecap="round" />
@@ -148,26 +148,26 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
           </svg>
         </div>
 
-        {/* Bottom right: a failure, on purpose. */}
+        {/* Bottom right: a sign-in, with nothing to build behind it. */}
         <div class="hero-piece absolute right-0 bottom-4 [--d:0.8s]">
           <div class="ml-auto w-fit rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-            Deterministic<br />chaos testing
+            Sign-up and login<br />already built in
           </div>
           <div class="mr-12 ml-auto h-5 w-px bg-border-strong"></div>
           <div class="flex items-stretch gap-2">
             <div class="rounded-lg border border-border-c bg-card px-3 py-2 font-mono text-[11px] leading-relaxed">
-              <span class="text-syntax-str">x-stubbase-delay</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">800</span><br />
-              <span class="text-syntax-str">x-stubbase-status</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">503</span>
+              <span class="text-syntax-punct">POST</span> <span class="text-syntax-str">/auth/login</span><br />
+              <span class="text-syntax-str">email</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"ana@uni.edu"</span>
             </div>
             <div class="flex flex-col justify-center rounded-lg border border-border-c bg-card px-3 text-center">
-              <p class="text-xl font-extrabold text-foreground">503</p>
-              <p class="font-mono text-[10px] text-subtle">after 800 ms</p>
+              <p class="text-xl font-extrabold text-foreground">200</p>
+              <p class="font-mono text-[10px] text-subtle">token issued</p>
             </div>
           </div>
           <div class="hero-cursor absolute top-2 -left-24 [--c:var(--syntax-bool)] [--drift:4px]">
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
               <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-background"><Bot class="h-3 w-3" /></span>
-              AI agent
+              AI Co-Pilot
             </span>
             <MousePointer2 class="mt-0.5 ml-auto h-5 w-5 -scale-x-100 fill-current text-(--c)" />
           </div>
@@ -180,9 +180,8 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
           for <span class="hero-accent">Students</span>
         </h1>
         <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">
-          Generate persistent, relational REST APIs from a JSON file or AI prompt in seconds. Zero
-          database configuration. Built for autonomous frontend development and deterministic chaos
-          testing.
+          No database to install, no server to deploy. Built for class projects, hackathons and
+          portfolio apps.
         </p>
 
         <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
