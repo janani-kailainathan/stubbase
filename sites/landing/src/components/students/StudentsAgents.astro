@@ -1,0 +1,111 @@
+---
+// "An agent-native datastore" (PRODUCT.md's third positioning claim), after
+// xmind.com/ai's "Use Xmind in your AI tools": three cards, each topped by a
+// tinted picture of the thing itself, then its name, a line and Learn more.
+// Claims are the Co-Pilot's and MCP's invariants from CLAUDE.md, no wider.
+import { Sparkles, Database, KeyRound, ChevronRight, Undo2, Coins } from 'lucide-astro';
+---
+
+<section>
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">An agent-native datastore</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">
+        Agents are a first-class client, next to browsers and curl. They can design your tables,
+        change your records and query them with SQL, with guard rails where it matters.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-3 [&>*]:min-w-0">
+      {/* AI Co-Pilot */}
+      <article class="reveal group flex flex-col" style="--tint: var(--primary)">
+        <div aria-hidden="true" class="agent-art relative mb-5 flex h-56 flex-col justify-end gap-2.5 overflow-hidden rounded-3xl border border-border-c p-5">
+          <p class="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground">
+            Mark every pending order shipped
+          </p>
+          <div class="max-w-[90%] rounded-2xl rounded-bl-md border border-border-c bg-background p-3 text-xs">
+            <p class="mb-2 flex items-center gap-1.5 text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
+            <p class="font-medium text-foreground">Updated 12 orders</p>
+            <p class="font-mono text-[11px] text-subtle">where status=pending · set status=shipped</p>
+            <span class="mt-2 inline-flex items-center gap-1 rounded-md border border-border-c px-2 py-0.5 text-[11px] text-muted-foreground"><Undo2 class="h-3 w-3" /> Undo</span>
+          </div>
+        </div>
+        <h3 class="mb-2 text-lg font-semibold text-foreground">AI Co-Pilot</h3>
+        <p class="mb-4 text-sm leading-relaxed text-muted-foreground">
+          Designs tables, seeds data and changes records or settings from a sentence. It never
+          reads your records, a change to more than 20 waits for your go-ahead, and every change
+          has an Undo.
+        </p>
+        <a href="/features/ai-rest-api-generation" class="mt-auto inline-flex items-center gap-0.5 text-sm font-medium text-primary-ink hover:text-primary-ink-hover">
+          Learn more <ChevronRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </a>
+      </article>
+
+      {/* MCP + SQL */}
+      <article class="reveal group flex flex-col" style="--tint: var(--syntax-fn)">
+        <div aria-hidden="true" class="agent-art relative mb-5 h-56 overflow-hidden rounded-3xl border border-border-c p-5">
+          <div class="rounded-2xl border border-border-c bg-background p-3 font-mono text-[11px] leading-relaxed">
+            <p class="mb-1.5 flex items-center gap-1.5 font-sans text-xs text-subtle"><Database class="h-3.5 w-3.5 text-syntax-fn" /> execute_sql_query</p>
+            <p class="text-code-fg"><span class="text-syntax-fn">SELECT</span> u.name, <span class="text-syntax-fn">COUNT</span>(p.id) <span class="text-syntax-fn">AS</span> posts</p>
+            <p class="text-code-fg"><span class="text-syntax-fn">FROM</span> users u <span class="text-syntax-fn">JOIN</span> posts p <span class="text-syntax-fn">ON</span> p.userId = u.id</p>
+            <p class="text-code-fg"><span class="text-syntax-fn">GROUP BY</span> u.id <span class="text-syntax-fn">ORDER BY</span> posts <span class="text-syntax-fn">DESC</span></p>
+          </div>
+          <table class="mt-2.5 w-full rounded-xl border border-border-c bg-background font-mono text-[11px]">
+            <tbody class="divide-y divide-border-c">
+              {
+                [
+                  ['Ivy Rossi', 14],
+                  ['Yuki Okafor', 11],
+                ].map(([name, count]) => (
+                  <tr>
+                    <td class="px-3 py-1.5 text-foreground">{name}</td>
+                    <td class="px-3 py-1.5 text-right text-syntax-num">{count}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <h3 class="mb-2 text-lg font-semibold text-foreground">MCP server with SQL</h3>
+        <p class="mb-4 text-sm leading-relaxed text-muted-foreground">
+          Agents connect over the Model Context Protocol and query your tables with read-only SQL,
+          joins and aggregates included, against a projection of your JSON that is rebuilt as it
+          changes.
+        </p>
+        <a href="/roles/ai-engineer" class="mt-auto inline-flex items-center gap-0.5 text-sm font-medium text-primary-ink hover:text-primary-ink-hover">
+          Learn more <ChevronRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </a>
+      </article>
+
+      {/* Developer API keys */}
+      <article class="reveal group flex flex-col" style="--tint: var(--syntax-bool)">
+        <div aria-hidden="true" class="agent-art relative mb-5 h-56 overflow-hidden rounded-3xl border border-border-c p-5">
+          <pre class="h-full overflow-hidden rounded-2xl border border-border-c bg-code-bg p-3 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">{'{'}</span> <span class="text-syntax-str">"mcpServers"</span><span class="text-syntax-punct">: {'{'}</span>
+  <span class="text-syntax-str">"stubbase_acme"</span><span class="text-syntax-punct">: {'{'}</span>
+    <span class="text-syntax-str">"command"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"npx"</span><span class="text-syntax-punct">,</span>
+    <span class="text-syntax-str">"args"</span><span class="text-syntax-punct">: [</span><span class="text-syntax-fn">"-y"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-fn">"mcp-remote"</span><span class="text-syntax-punct">, …],</span>
+    <span class="text-syntax-str">"env"</span><span class="text-syntax-punct">: {'{'}</span>
+      <span class="text-syntax-str">"STUBBASE_API_KEY"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"sk_stub_…"</span>
+<span class="text-syntax-punct">{'}'} {'}'} {'}'} {'}'}</span></pre>
+          <span class="absolute right-7 bottom-7 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-background px-2.5 py-1 text-[11px] text-(--tint)"><KeyRound class="h-3 w-3" /> shown once</span>
+        </div>
+        <h3 class="mb-2 text-lg font-semibold text-foreground">Developer API keys</h3>
+        <p class="mb-4 text-sm leading-relaxed text-muted-foreground">
+          Create a key per project for Claude Desktop, your IDE or your own agent. It is shown
+          once, stored hashed, and revoking it cuts access immediately.
+        </p>
+        <a href="/roles/ai-engineer" class="mt-auto inline-flex items-center gap-0.5 text-sm font-medium text-primary-ink hover:text-primary-ink-hover">
+          Learn more <ChevronRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </a>
+      </article>
+    </div>
+
+    <div class="reveal mt-10 flex flex-col items-center gap-3 rounded-2xl border border-border-c bg-card px-6 py-4 text-center text-sm text-muted-foreground sm:flex-row sm:justify-center sm:text-left">
+      <Coins class="h-5 w-5 shrink-0 text-syntax-num" />
+      <p>
+        The Co-Pilot is on every plan: <strong class="font-semibold text-foreground">1,000 credits</strong> when you sign up,{' '}
+        <strong class="font-semibold text-foreground">5,000 a month</strong> on Pro, and a reply that fails costs nothing.
+      </p>
+    </div>
+  </div>
+</section>

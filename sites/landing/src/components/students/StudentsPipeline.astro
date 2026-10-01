@@ -1,0 +1,298 @@
+---
+// "A Complete API Pipeline", after xmind's "For the way you think": the whole
+// chain of stages as a strip, then a row of tabs over one tinted panel per
+// stage, each holding a window from the product. The tabs are radio buttons and
+// CSS picks the panel through :has() (see ai-backend-generator-for-students.astro's global styles), so
+// switching needs no script and arrow keys move between stages. The chain's
+// order is the core's PIPELINE, named for people rather than by stage function.
+import { ShieldCheck, OctagonAlert, FileCheck2, Webhook, Send, MousePointer2, ArrowRight, KeyRound, ChevronRight } from 'lucide-astro';
+
+const chain = [
+  'Status',
+  'Quota',
+  'Rate limit',
+  'AuthGuard',
+  'Roles',
+  'ChaosGuard',
+  'Validation',
+  'Before hook',
+  'Your data',
+  'After hook',
+];
+
+const stages = [
+  {
+    key: 'auth',
+    tint: 'var(--syntax-fn)',
+    Icon: ShieldCheck,
+    name: 'AuthGuard',
+    copy: 'Instantly secure your endpoints. Enable Google OAuth and JWT validation without writing authentication logic.',
+  },
+  {
+    key: 'chaos',
+    tint: 'var(--syntax-num)',
+    Icon: OctagonAlert,
+    name: 'ChaosGuard',
+    copy: 'Inject deterministic latency, error rates, and 5xx status codes to test frontend error boundaries.',
+  },
+  {
+    key: 'validation',
+    tint: 'var(--primary)',
+    Icon: FileCheck2,
+    name: 'Schema validation',
+    copy: 'Give a resource a JSON Schema and every POST and PUT body is checked before it is saved. A bad body is a 400 that lists each problem by path.',
+  },
+  {
+    key: 'hooks',
+    tint: 'var(--syntax-bool)',
+    Icon: Webhook,
+    name: 'Webhooks',
+    copy: 'A before-hook is asked about every insert, update or delete, and anything but a 200 stops it. An after-hook hears about each one once it is saved, record included.',
+  },
+  {
+    key: 'notify',
+    tint: 'var(--syntax-bool)',
+    Icon: Send,
+    name: 'Webhook Proxying',
+    copy: 'Securely trigger external services (Resend, Twilio) from your client-side code without exposing secret API keys.',
+  },
+];
+const byKey = Object.fromEntries(stages.map((stage) => [stage.key, stage]));
+---
+
+<section class="pipeline">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-10 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">A Complete API Pipeline</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">
+        Every endpoint deployed on Stubbase routes through our dynamic middleware pipeline,
+        controlled entirely via your dashboard.
+      </p>
+    </div>
+
+    {/* The chain, in the order a request meets it. */}
+    <ol class="reveal mx-auto mb-10 flex max-w-5xl flex-wrap items-center justify-center gap-y-2 text-xs" aria-label="Pipeline stages, in order">
+      {
+        chain.map((stage, i) => (
+          <li class="flex items-center">
+            <span class={`rounded-full border px-3 py-1 font-medium ${stage === 'Your data' ? 'border-primary-soft-border bg-primary-soft text-primary-ink' : 'border-border-c bg-card text-muted-foreground'}`}>
+              {stage}
+            </span>
+            {i < chain.length - 1 && <ChevronRight class="mx-0.5 h-3.5 w-3.5 text-faint" aria-hidden="true" />}
+          </li>
+        ))
+      }
+    </ol>
+
+    <div role="radiogroup" aria-label="Pipeline stage" class="reveal mb-6 flex flex-wrap justify-center gap-2 sm:gap-3">
+      {
+        stages.map(({ key, tint, Icon, name }, i) => (
+          <label class="pipe-tab flex cursor-pointer items-center gap-2.5 rounded-xl border border-transparent bg-muted py-2 pr-4 pl-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-base" style={`--tint: ${tint}`}>
+            <input type="radio" name="pipeline-stage" value={key} checked={i === 0} class="sr-only" />
+            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)">
+              <Icon class="h-4.5 w-4.5" />
+            </span>
+            {name}
+          </label>
+        ))
+      }
+    </div>
+
+    {/* AuthGuard */}
+    <div data-stage="auth" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-fn)">
+      <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
+        <div>
+          <h3 class="mb-3 text-2xl font-semibold text-foreground">{byKey.auth.name}</h3>
+          <p class="mb-5 leading-relaxed text-muted-foreground">{byKey.auth.copy}</p>
+          <pre class="w-fit max-w-full overflow-x-auto rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span>
+<span class="text-syntax-str">AUTH_GOOGLE_CLIENT_ID</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">…</span>
+<span class="text-syntax-str">AUTH_GOOGLE_CLIENT_SECRET</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">…</span></pre>
+        </div>
+        <div aria-hidden="true" class="relative">
+          <div class="overflow-hidden rounded-2xl border border-border-c bg-background">
+            <div class="flex items-center justify-between border-b border-border-c px-4 py-3">
+              <span class="font-mono text-xs text-subtle">acme · live log</span>
+              <span class="hidden items-center gap-2 rounded-md border border-border-c px-2.5 py-1 text-xs font-medium text-foreground sm:inline-flex">
+                <span class="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[9px] font-bold">G</span>
+                Continue with Google
+              </span>
+            </div>
+            <ul class="divide-y divide-border-c font-mono text-xs sm:text-[13px]">
+              <li class="flex items-center gap-3 px-4 py-3">
+                <span class="w-10 shrink-0 text-subtle">GET</span>
+                <span class="flex-1 truncate text-foreground">/acme/orders</span>
+                <span class="hidden text-muted-foreground sm:inline">no token</span>
+                <span class="w-10 text-right font-semibold text-syntax-num">401</span>
+              </li>
+              <li class="flex items-center gap-3 px-4 py-3">
+                <span class="w-10 shrink-0 text-subtle">GET</span>
+                <span class="flex-1 truncate text-foreground">/acme/auth/google/callback</span>
+                <span class="hidden text-muted-foreground sm:inline">verified email</span>
+                <span class="w-10 text-right font-semibold text-primary-ink">302</span>
+              </li>
+              <li class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <span class="w-10 shrink-0 text-subtle">GET</span>
+                  <span class="flex-1 truncate text-foreground">/acme/orders</span>
+                  <span class="hidden text-muted-foreground sm:inline">3 records</span>
+                  <span class="w-10 text-right font-semibold text-primary-ink">200</span>
+                </div>
+                <p class="mt-1.5 truncate text-[11px] text-subtle sm:ml-13">authorization: Bearer <span class="text-(--tint)">eyJhbGciOiJIUzI1NiJ9…</span></p>
+              </li>
+            </ul>
+          </div>
+          <div class="hero-cursor absolute right-10 -bottom-9 hidden sm:block [--c:var(--syntax-fn)] [--drift:4px]">
+            <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
+            <span class="mt-0.5 ml-4 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium text-(--c)">
+              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">F</span>
+              Frontend dev
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* ChaosGuard */}
+    <div data-stage="chaos" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-num)">
+      <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
+        <div>
+          <h3 class="mb-3 text-2xl font-semibold text-foreground">{byKey.chaos.name}</h3>
+          <p class="mb-5 leading-relaxed text-muted-foreground">{byKey.chaos.copy}</p>
+          <pre class="w-fit rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">QA_MODE</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span></pre>
+          <p class="mt-4 text-sm text-subtle">
+            Four headers, per request: <code class="font-mono text-xs text-emphasis">x-stubbase-delay</code>, <code class="font-mono text-xs text-emphasis">-status</code>, <code class="font-mono text-xs text-emphasis">-error-rate</code> and <code class="font-mono text-xs text-emphasis">-empty</code>. Without QA_MODE they are ignored.
+          </p>
+        </div>
+        <div aria-hidden="true" class="relative">
+          <div class="overflow-hidden rounded-2xl border border-border-c bg-background">
+            <div class="border-b border-border-c px-4 py-3 font-mono text-xs leading-6">
+              <p><span class="text-subtle">GET</span> <span class="text-foreground">/acme/orders</span></p>
+              <p><span class="text-syntax-str">x-stubbase-delay</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1500</span></p>
+              <p><span class="text-syntax-str">x-stubbase-status</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">503</span></p>
+            </div>
+            <ul class="space-y-2.5 px-4 py-4 font-mono text-[11px]">
+              {
+                ['Run 1', 'Run 2', 'Run 3'].map((run) => (
+                  <li class="flex items-center gap-3">
+                    <span class="w-10 shrink-0 text-subtle">{run}</span>
+                    <span class="chaos-wait h-2 flex-1 rounded-full" />
+                    <span class="w-12 text-right text-muted-foreground">1.50 s</span>
+                    <span class="w-8 text-right font-semibold text-syntax-num">503</span>
+                  </li>
+                ))
+              }
+            </ul>
+            <p class="border-t border-border-c px-4 py-2.5 text-xs text-subtle">
+              Same delay, same status, every run — your error boundary sees exactly what you asked for.
+            </p>
+          </div>
+          <div class="hero-cursor absolute -top-6 right-6 hidden flex-col items-end sm:flex [--c:var(--syntax-num)] [--drift:-4px]">
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium text-(--c)">
+              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Q</span>
+              QA engineer
+            </span>
+            <MousePointer2 class="mt-0.5 mr-2 h-5 w-5 -scale-x-100 rotate-180 fill-current text-(--c)" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Schema validation */}
+    <div data-stage="validation" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--primary)">
+      <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
+        <div>
+          <h3 class="mb-3 text-2xl font-semibold text-foreground">{byKey.validation.name}</h3>
+          <p class="mb-5 leading-relaxed text-muted-foreground">{byKey.validation.copy}</p>
+          <pre class="max-w-full overflow-x-auto rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">SCHEMA_POSTS</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">{'{"type":"object","required":["title"]}'}</span></pre>
+          <p class="mt-4 text-sm text-subtle">
+            A built-in validator: type, properties, required, enum, const, pattern, minimum and maximum, the length limits, items and additionalProperties.
+          </p>
+        </div>
+        <div aria-hidden="true" class="overflow-hidden rounded-2xl border border-border-c bg-background font-mono text-xs leading-relaxed">
+          <div class="border-b border-border-c px-4 py-3">
+            <p><span class="text-subtle">POST</span> <span class="text-foreground">/acme/posts</span></p>
+            <p class="text-code-fg"><span class="text-syntax-punct">{'{'}</span> <span class="text-syntax-str">"body"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"No title yet"</span> <span class="text-syntax-punct">{'}'}</span></p>
+          </div>
+          <div class="px-4 py-3">
+            <p class="mb-2 font-semibold text-syntax-num">400</p>
+            <pre class="text-code-fg"><span class="text-syntax-punct">{'{'}</span>
+  <span class="text-syntax-str">"error"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"validation failed"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"errors"</span><span class="text-syntax-punct">: [{'{'}</span> <span class="text-syntax-str">"path"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"title"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"message"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"is required"</span> <span class="text-syntax-punct">{'}'}]</span>
+<span class="text-syntax-punct">{'}'}</span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Webhooks */}
+    <div data-stage="hooks" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-bool)">
+      <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
+        <div>
+          <h3 class="mb-3 text-2xl font-semibold text-foreground">{byKey.hooks.name}</h3>
+          <p class="mb-5 leading-relaxed text-muted-foreground">{byKey.hooks.copy}</p>
+          <pre class="max-w-full overflow-x-auto rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">HOOK_BEFORE_INSERT_ORDERS</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">https://…/check-stock</span>
+<span class="text-syntax-str">HOOK_AFTER_UPDATE_ORDERS</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">https://…/order-changed</span></pre>
+          <p class="mt-4 text-sm text-subtle">
+            Hook URLs that resolve to private or internal addresses are refused.
+          </p>
+        </div>
+        <ol aria-hidden="true" class="relative space-y-3 text-xs">
+          {
+            [
+              { label: 'Your app', detail: 'POST /acme/orders', code: '' },
+              { label: 'Before hook', detail: 'POST https://…/check-stock', code: '200' },
+              { label: 'Saved', detail: 'the order is written', code: '201' },
+              { label: 'After hook', detail: 'POST https://…/order-changed, with the record', code: '' },
+            ].map((step, i) => (
+              <li class="flex items-center gap-3 rounded-xl border border-border-c bg-background px-4 py-3">
+                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--tint)/15 font-mono text-[11px] font-semibold text-(--tint)">{i + 1}</span>
+                <span class="w-24 shrink-0 font-semibold text-foreground">{step.label}</span>
+                <span class="flex-1 truncate font-mono text-muted-foreground">{step.detail}</span>
+                {step.code && <span class="font-mono font-semibold text-primary-ink">{step.code}</span>}
+              </li>
+            ))
+          }
+          <li class="rounded-xl border border-dashed border-border-strong px-4 py-3 text-subtle">
+            If check-stock answers anything but <span class="font-mono">200</span>, nothing is saved and your app gets <span class="font-mono font-semibold text-syntax-num">422</span>.
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    {/* Webhook proxying */}
+    <div data-stage="notify" class="pipe-panel reveal rounded-3xl p-5 sm:p-10" style="--tint: var(--syntax-bool)">
+      <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-[2fr_3fr] [&>*]:min-w-0">
+        <div>
+          <h3 class="mb-3 text-2xl font-semibold text-foreground">{byKey.notify.name}</h3>
+          <p class="mb-5 leading-relaxed text-muted-foreground">{byKey.notify.copy}</p>
+          <pre class="w-fit rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs leading-6"><span class="text-syntax-str">RESEND_API_KEY</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">re_…</span>
+<span class="text-syntax-str">TWILIO_ACCOUNT_SID</span><span class="text-syntax-punct">=</span><span class="text-muted-foreground">AC…</span></pre>
+        </div>
+        <div aria-hidden="true" class="relative">
+          <div class="mb-4 flex items-center justify-between gap-2 text-center text-xs">
+            <div class="flex-1 rounded-xl border border-border-c bg-background px-3 py-3">
+              <p class="font-semibold text-foreground">Your frontend</p>
+              <p class="mt-0.5 text-subtle">user token</p>
+            </div>
+            <ArrowRight class="h-4 w-4 shrink-0 text-faint" />
+            <div class="flex-1 rounded-xl border border-(--tint)/40 bg-background px-3 py-3">
+              <p class="font-semibold text-foreground">Stubbase</p>
+              <p class="mt-0.5 flex items-center justify-center gap-1 text-(--tint)"><KeyRound class="h-3 w-3" /> holds the key</p>
+            </div>
+            <ArrowRight class="h-4 w-4 shrink-0 text-faint" />
+            <div class="flex-1 rounded-xl border border-border-c bg-background px-3 py-3">
+              <p class="font-semibold text-foreground">Resend</p>
+              <p class="mt-0.5 text-subtle">or Twilio</p>
+            </div>
+          </div>
+          <pre class="overflow-x-auto rounded-2xl border border-border-c bg-background px-4 py-3.5 font-mono text-xs leading-relaxed text-code-fg"><span class="text-syntax-fn">await</span> <span class="text-syntax-fn">fetch</span><span class="text-syntax-punct">(</span><span class="text-syntax-str">`${'{'}API{'}'}/acme/_notify/email`</span><span class="text-syntax-punct">, {'{'}</span>
+  method<span class="text-syntax-punct">:</span> <span class="text-syntax-str">'POST'</span><span class="text-syntax-punct">,</span>
+  headers<span class="text-syntax-punct">: {'{'}</span> authorization<span class="text-syntax-punct">:</span> <span class="text-syntax-str">`Bearer ${'{'}token{'}'}`</span> <span class="text-syntax-punct">{'}'},</span>
+  body<span class="text-syntax-punct">:</span> JSON<span class="text-syntax-punct">.</span><span class="text-syntax-fn">stringify</span><span class="text-syntax-punct">({'{'}</span> to<span class="text-syntax-punct">,</span> subject<span class="text-syntax-punct">,</span> html <span class="text-syntax-punct">{'}'}),</span>
+<span class="text-syntax-punct">{'}'})</span>
+<span class="text-subtle">// → {'{'} ok: true, id: "…" {'}'}  and no API key in the bundle</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,109 @@
+---
+// The dashboard, after xmind.com/ai's "Turn ideas into action": a grid of
+// cards, each a title and a line over a small drawing of the screen it means.
+// PRODUCT.md's third principle — the endpoint is the product — is the heading:
+// every card is a step between a JSON file and a URL someone can call.
+import { Activity, Play, Rocket, Power, Copy, Gauge } from 'lucide-astro';
+---
+
+<section class="bg-section">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">A dashboard built around the endpoint</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">
+        Everything between your JSON and a working URL, in one browser tab: the editor, the logs,
+        a playground and the switch that takes it all live.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0">
+      {/* Live logs */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Activity class="h-5 w-5 text-primary-accent" /> Live request logs</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">Every request your API answers streams into the Logs tab as it happens, bodies included.</p>
+        </div>
+        <ul aria-hidden="true" class="mx-6 mt-auto mb-6 divide-y divide-border-c rounded-xl border border-border-c bg-card font-mono text-[11px]">
+          {
+            [
+              ['GET', '/acme/orders', '200', true],
+              ['POST', '/acme/orders', '201', true],
+              ['GET', '/acme/orders/9', '404', false],
+            ].map(([method, path, code, ok]) => (
+              <li class="flex items-center gap-2 px-3 py-2">
+                <span class="w-9 text-subtle">{method}</span>
+                <span class="flex-1 truncate text-foreground">{path}</span>
+                <span class={ok ? 'text-primary-ink' : 'text-syntax-num'}>{code}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </article>
+
+      {/* Playground */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Play class="h-5 w-5 text-syntax-fn" /> An API playground</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">The Live tab calls your deployed API for real. Pick a route, fill in the id, query, headers and body, and Send.</p>
+        </div>
+        <div aria-hidden="true" class="mx-6 mt-auto mb-6 rounded-xl border border-border-c bg-card p-3 font-mono text-[11px]">
+          <div class="flex items-center gap-2">
+            <span class="rounded border border-border-c px-1.5 py-0.5 text-subtle">GET</span>
+            <span class="flex-1 truncate text-foreground">/acme/orders/<span class="rounded bg-muted px-1">9</span></span>
+            <span class="rounded-md bg-primary px-2.5 py-1 font-sans text-xs font-semibold text-primary-foreground">Send</span>
+          </div>
+          <p class="mt-2 text-subtle">authorization: Bearer <span class="text-syntax-fn">eyJ…</span></p>
+        </div>
+      </article>
+
+      {/* Drafts and deploy */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Rocket class="h-5 w-5 text-syntax-bool" /> Staged until you Deploy</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">New tables and settings wait for Deploy, so a half-finished change is never served. A table you remove keeps serving until then.</p>
+        </div>
+        <ul aria-hidden="true" class="mx-6 mt-auto mb-6 space-y-1.5 font-mono text-[11px]">
+          <li class="flex items-center justify-between rounded-lg border border-border-c bg-card px-3 py-1.5"><span class="text-foreground">reviews.json</span><span class="text-syntax-bool">new</span></li>
+          <li class="flex items-center justify-between rounded-lg border border-border-c bg-card px-3 py-1.5"><span class="text-subtle line-through">coupons.json</span><span class="font-sans text-xs text-primary-ink">Restore</span></li>
+        </ul>
+      </article>
+
+      {/* Start / Stop */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Power class="h-5 w-5 text-syntax-num" /> Start and stop</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">Stop answers every public request with a 503 while your dashboard keeps working. Start brings it back with no deploy.</p>
+        </div>
+        <div aria-hidden="true" class="mx-6 mt-auto mb-6 flex items-center justify-between rounded-xl border border-border-c bg-card px-3 py-2.5 text-xs">
+          <span class="flex items-center gap-2 text-foreground"><span class="h-2 w-2 rounded-full bg-(--syntax-num)"></span> Stopped</span>
+          <span class="font-mono text-[11px] text-subtle">GET /acme/orders → <span class="text-syntax-num">503</span></span>
+        </div>
+      </article>
+
+      {/* Duplicate */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Copy class="h-5 w-5 text-syntax-fn" /> Duplicate a project</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">Copy a project for staging or experiments: its tables as the editor shows them, its .env if you want it, never its users or keys.</p>
+        </div>
+        <div aria-hidden="true" class="mx-6 mt-auto mb-6 flex items-center gap-2 text-xs">
+          <span class="rounded-lg border border-border-c bg-card px-3 py-1.5 font-mono text-foreground">acme</span>
+          <span class="text-faint">→</span>
+          <span class="rounded-lg border border-dashed border-border-strong bg-card px-3 py-1.5 font-mono text-foreground">acme-staging</span>
+        </div>
+      </article>
+
+      {/* Usage and diagnostics */}
+      <article class="reveal flex flex-col overflow-hidden rounded-3xl border border-border-c bg-background">
+        <div class="p-6 pb-5">
+          <h3 class="mb-2 flex items-center gap-2.5 font-semibold text-foreground"><Gauge class="h-5 w-5 text-primary-accent" /> Usage and diagnostics</h3>
+          <p class="text-sm leading-relaxed text-muted-foreground">See requests against your monthly allowance and your AI credits, and which JSON files no longer parse.</p>
+        </div>
+        <div aria-hidden="true" class="mx-6 mt-auto mb-6 rounded-xl border border-border-c bg-card p-3 text-xs">
+          <div class="mb-1.5 flex justify-between"><span class="text-muted-foreground">Requests this month</span><span class="font-mono text-foreground">4,210 / 10,000</span></div>
+          <div class="h-1.5 rounded-full bg-muted"><div class="h-full w-[42%] rounded-full bg-primary"></div></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

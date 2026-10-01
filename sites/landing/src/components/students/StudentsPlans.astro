@@ -1,0 +1,87 @@
+---
+// Plans, in brief. Figures are PLANS in apps/dashboard-api/server-app.ts and
+// the prices /pricing shows; /pricing stays the full page, with packs and
+// structured data. Plans differ by request limits alone, so the list of what
+// is included is the same for both — never gate a feature here.
+import { Check, ArrowRight } from 'lucide-astro';
+
+const included = [
+  'Auth, sessions and verified sign-up',
+  'Google and GitHub login',
+  'Roles and permissions',
+  'Schema validation and webhooks',
+  'QA mode and chaos headers',
+  'MCP with read-only SQL',
+  'The AI Co-Pilot',
+];
+
+const plans = [
+  {
+    name: 'Free',
+    price: '$0',
+    per: '',
+    rows: ['10,000 requests a month', '5 requests a second, bursts of 20', '1,000 AI credits when you sign up'],
+    featured: false,
+  },
+  {
+    name: 'Pro',
+    price: '$29',
+    per: '/month',
+    rows: ['250,000 requests a month', '50 requests a second, bursts of 150', '5,000 AI credits every month', 'Request packs when you need more'],
+    featured: true,
+  },
+];
+---
+
+<section>
+  <div class="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 py-24 lg:grid-cols-[5fr_7fr] [&>*]:min-w-0">
+    <div class="reveal">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Every feature on every plan</h2>
+      <p class="mb-8 font-medium leading-relaxed text-muted-foreground">
+        Plans differ in requests alone: a monthly allowance and a per-second rate, shared by all
+        your projects. Nothing you switch on in a project is held back.
+      </p>
+      <ul class="grid grid-cols-1 gap-2.5 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-1">
+        {
+          included.map((item) => (
+            <li class="flex items-center gap-2.5">
+              <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-accent"><Check class="h-3.5 w-3.5" /></span>
+              {item}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <div class="reveal grid grid-cols-1 gap-5 sm:grid-cols-2">
+      {
+        plans.map((plan) => (
+          <article class={`flex flex-col rounded-3xl border p-7 ${plan.featured ? 'border-primary-soft-border-strong bg-card' : 'border-border-c bg-card'}`}>
+            <p class="mb-4 flex items-center justify-between">
+              <span class="text-lg font-semibold text-foreground">{plan.name}</span>
+              {plan.featured && <span class="rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary-ink">Most Popular</span>}
+            </p>
+            <p class="mb-6">
+              <span class="text-4xl font-bold tracking-tight text-foreground">{plan.price}</span>
+              <span class="text-sm text-subtle">{plan.per}</span>
+            </p>
+            <ul class="space-y-2.5 text-sm text-muted-foreground">
+              {plan.rows.map((row) => (
+                <li class="flex gap-2.5">
+                  <Check class="mt-0.5 h-4 w-4 shrink-0 text-primary-accent" />
+                  {row}
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))
+      }
+      <p class="text-sm text-muted-foreground sm:col-span-2">
+        Need more than Pro? <a href="/contact" class="font-medium text-primary-ink hover:text-primary-ink-hover">Enterprise is a conversation</a>.
+        <a href="/pricing" class="ml-2 inline-flex items-center gap-1 font-medium text-primary-ink hover:text-primary-ink-hover">
+          See pricing <ArrowRight class="h-4 w-4" />
+        </a>
+      </p>
+    </div>
+  </div>
+</section>

@@ -4,13 +4,13 @@ import { Sparkles, FileJson, Terminal, Play, Check, Loader, ArrowRight, ArrowLef
 // no other page downloads it.
 import '@fontsource/sedgwick-ave/latin-400.css';
 import Layout from '../../layouts/Layout.astro';
-import HomeStart from '../../components/home/HomeStart.astro';
-import HomeQuery from '../../components/home/HomeQuery.astro';
-import HomePipeline from '../../components/home/HomePipeline.astro';
-import HomeAuth from '../../components/home/HomeAuth.astro';
-import HomeAgents from '../../components/home/HomeAgents.astro';
-import HomeWorkspace from '../../components/home/HomeWorkspace.astro';
-import HomePlans from '../../components/home/HomePlans.astro';
+import StudentsStart from '../../components/students/StudentsStart.astro';
+import StudentsQuery from '../../components/students/StudentsQuery.astro';
+import StudentsPipeline from '../../components/students/StudentsPipeline.astro';
+import StudentsAuth from '../../components/students/StudentsAuth.astro';
+import StudentsAgents from '../../components/students/StudentsAgents.astro';
+import StudentsWorkspace from '../../components/students/StudentsWorkspace.astro';
+import StudentsPlans from '../../components/students/StudentsPlans.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
 import { NAV_GROUPS } from '../../lib/nav';
 
@@ -212,9 +212,9 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     </div>
   </section>
 
-  <HomeStart />
+  <StudentsStart />
 
-  <HomeQuery />
+  <StudentsQuery />
 
   {/*
     Try it live, after xmind's "Global security & privacy" grid: white cards
@@ -402,15 +402,15 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
     </p>
   </section>
 
-  <HomePipeline />
+  <StudentsPipeline />
 
-  <HomeAuth />
+  <StudentsAuth />
 
-  <HomeAgents />
+  <StudentsAgents />
 
-  <HomeWorkspace />
+  <StudentsWorkspace />
 
-  <HomePlans />
+  <StudentsPlans />
 
   {/*
     Hub-to-spoke internal links, and deliberately the last band on the page: a
@@ -649,9 +649,9 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
 </script>
 
 {/*
-  Global, not scoped: the sections in components/home/ share these classes
+  Global, not scoped: the sections in components/students/ share these classes
   (reveal, bento, the pipeline tabs, the cursors). The page is the only one that
-  imports them, so they load on the Home page alone.
+  imports them, so they load on this page alone.
 */}
 <style is:global>
   /* The canvas: a dot grid that fades out towards the edges. */

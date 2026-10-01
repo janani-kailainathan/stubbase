@@ -1,0 +1,143 @@
+---
+// Sign-in for a project's own users, after xmind.com/project-management: two
+// wide rows that alternate text and drawing, then a grid of smaller cards for
+// the rest of the feature. Everything here is what the core's auth feature
+// does (apps/core/features/auth/); the log note is its exact wording.
+import { MailCheck, Users, KeyRound, RefreshCw, LifeBuoy, AtSign, ArrowUpRight } from 'lucide-astro';
+
+const extras = [
+  {
+    Icon: KeyRound,
+    tint: 'var(--syntax-fn)',
+    title: 'Google and GitHub login',
+    copy: 'Paste your OAuth app’s client id and secret, and /auth/google or /auth/github goes live. Only verified email addresses get in.',
+    code: 'AUTH_GITHUB_CLIENT_ID=…',
+  },
+  {
+    Icon: RefreshCw,
+    tint: 'var(--primary)',
+    title: 'Sessions that renew themselves',
+    copy: 'Every sign-in returns a token and a refresh token. Each refresh rotates the pair, and a spent refresh token that turns up again ends that session on the spot.',
+    code: 'POST /auth/refresh',
+  },
+  {
+    Icon: LifeBuoy,
+    tint: 'var(--syntax-num)',
+    title: 'Password reset',
+    copy: 'A six-digit code that lasts 15 minutes, and five wrong tries use it up. forgot-password answers the same for every address, so nobody can probe who signed up.',
+    code: 'POST /auth/forgot-password',
+  },
+  {
+    Icon: AtSign,
+    tint: 'var(--syntax-bool)',
+    title: 'Choose who may sign up',
+    copy: 'Accept only your own domain, block others, or refuse throwaway inboxes. Rules apply only where an account would be created, so no existing user is locked out.',
+    code: 'AUTH_EMAIL_DOMAINS_ONLY=acme.dev',
+  },
+];
+---
+
+<section class="bg-section">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-12 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Sign-in for your users, built in</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">
+        One line in your .env gives your API accounts, sessions, verified email and password
+        reset. Roles and permissions are one file more.
+      </p>
+      <pre class="mx-auto mt-6 w-fit rounded-xl border border-border-c bg-background px-4 py-2 font-mono text-sm"><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-bool">true</span></pre>
+    </div>
+
+    {/* Row one: text, then drawing. */}
+    <article class="reveal mb-5 grid grid-cols-1 items-center gap-8 overflow-hidden rounded-3xl border border-border-c bg-background p-7 sm:p-10 lg:grid-cols-2 [&>*]:min-w-0">
+      <div>
+        <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary-accent"><MailCheck class="h-6 w-6" /></span>
+        <h3 class="mb-3 text-2xl font-semibold text-foreground">Sign-up that checks the inbox</h3>
+        <p class="mb-4 leading-relaxed text-muted-foreground">
+          A sign-up gets a six-digit code, not an account. The account exists only once your app
+          sends the code back with that sign-up’s <code class="font-mono text-sm text-emphasis">verificationId</code>, so a code
+          sent for someone else’s sign-up can never finish yours.
+        </p>
+        <p class="leading-relaxed text-muted-foreground">
+          No email provider yet? The code appears in your project’s Logs tab, where only you can
+          see it, so you can build the whole flow before adding a Resend key.
+        </p>
+      </div>
+      <ol aria-hidden="true" class="space-y-3 font-mono text-xs">
+        <li class="rounded-2xl border border-border-c bg-card p-4">
+          <p><span class="text-subtle">POST</span> <span class="text-foreground">/acme/auth/signup</span> <span class="float-right font-semibold text-primary-ink">202</span></p>
+          <p class="mt-1.5 truncate text-code-fg"><span class="text-syntax-str">"verificationId"</span>: <span class="text-syntax-fn">"8c1f…"</span>, <span class="text-syntax-str">"delivery"</span>: <span class="text-syntax-fn">"logs"</span></p>
+        </li>
+        <li class="rounded-2xl border border-dashed border-primary-soft-border-strong bg-primary-soft p-4 font-sans text-xs leading-relaxed text-primary-soft-ink">
+          <span class="mb-1 block font-mono text-[10px] tracking-wide uppercase opacity-80">Logs · note</span>
+          Sign-up verification code for ada@example.com: <span class="font-mono font-semibold">482913</span> — valid 15 minutes.
+        </li>
+        <li class="rounded-2xl border border-border-c bg-card p-4">
+          <p><span class="text-subtle">POST</span> <span class="text-foreground">/acme/auth/signup/verify</span> <span class="float-right font-semibold text-primary-ink">201</span></p>
+          <p class="mt-1.5 truncate text-code-fg"><span class="text-syntax-str">"token"</span>: <span class="text-syntax-fn">"eyJ…"</span>, <span class="text-syntax-str">"refreshToken"</span>: <span class="text-syntax-fn">"…"</span>, <span class="text-syntax-str">"user"</span>: <span class="text-syntax-punct">{'{…}'}</span></p>
+        </li>
+      </ol>
+    </article>
+
+    {/* Row two: drawing, then text. */}
+    <article class="reveal mb-5 grid grid-cols-1 items-center gap-8 overflow-hidden rounded-3xl border border-border-c bg-background p-7 sm:p-10 lg:grid-cols-2 [&>*]:min-w-0">
+      <div aria-hidden="true" class="order-last lg:order-first">
+        <pre class="mb-3 overflow-x-auto rounded-2xl border border-border-c bg-card px-4 py-3.5 font-mono text-xs leading-relaxed text-code-fg"><span class="text-subtle">// system/rbac.json</span>
+<span class="text-syntax-punct">{'{'}</span> <span class="text-syntax-str">"defaultRole"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"customer"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"roles"</span><span class="text-syntax-punct">: {'{'}</span>
+    <span class="text-syntax-str">"customer"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"orders"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"read"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"own"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"create"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"own"</span> <span class="text-syntax-punct">{'}'} {'}'},</span>
+    <span class="text-syntax-str">"staff"</span><span class="text-syntax-punct">:    {'{'}</span> <span class="text-syntax-str">"orders"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"read"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"all"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"update"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"all"</span> <span class="text-syntax-punct">{'}'} {'}'},</span>
+    <span class="text-syntax-str">"admin"</span><span class="text-syntax-punct">:</span>    <span class="text-syntax-fn">"*"</span>
+<span class="text-syntax-punct">{'}'} {'}'}</span></pre>
+        <ul class="space-y-2 font-mono text-xs">
+          {
+            [
+              { who: 'customer', req: 'GET /acme/orders', out: 'their 3 orders', code: '200', ok: true },
+              { who: 'staff', req: 'GET /acme/orders', out: 'all 48 orders', code: '200', ok: true },
+              { who: 'customer', req: 'GET /acme/orders/<not theirs>', out: 'not found', code: '404', ok: false },
+            ].map((row) => (
+              <li class="flex items-center gap-3 rounded-xl border border-border-c bg-card px-3 py-2">
+                <span class="w-16 shrink-0 font-sans font-semibold text-foreground">{row.who}</span>
+                <span class="flex-1 truncate text-muted-foreground">{row.req}</span>
+                <span class="hidden text-subtle sm:inline">{row.out}</span>
+                <span class={`font-semibold ${row.ok ? 'text-primary-ink' : 'text-syntax-num'}`}>{row.code}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+      <div>
+        <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-(--syntax-fn)/15 text-syntax-fn"><Users class="h-6 w-6" /></span>
+        <h3 class="mb-3 text-2xl font-semibold text-foreground">Roles and permissions</h3>
+        <p class="mb-4 leading-relaxed text-muted-foreground">
+          Describe roles in <code class="font-mono text-sm text-emphasis">rbac.json</code>. A permission is an action on a resource,
+          reaching the caller’s <code class="font-mono text-sm text-emphasis">own</code> records or <code class="font-mono text-sm text-emphasis">all</code> of them, and anything a
+          role doesn’t list is refused. <code class="font-mono text-sm text-emphasis">own</code> holds everywhere: lists, single reads,
+          updates and <code class="font-mono text-sm text-emphasis">_expand</code>.
+        </p>
+        <p class="leading-relaxed text-muted-foreground">
+          No rules file? Signed-in users can still change only the records they created.
+        </p>
+      </div>
+    </article>
+
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
+      {
+        extras.map(({ Icon, tint, title, copy, code }) => (
+          <article class="reveal flex flex-col rounded-3xl border border-border-c bg-background p-6" style={`--tint: ${tint}`}>
+            <span class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)"><Icon class="h-5 w-5" /></span>
+            <h3 class="mb-2 font-semibold text-foreground">{title}</h3>
+            <p class="mb-5 text-sm leading-relaxed text-muted-foreground">{copy}</p>
+            <code class="mt-auto block truncate rounded-lg border border-border-c bg-card px-3 py-2 font-mono text-[11px] text-emphasis">{code}</code>
+          </article>
+        ))
+      }
+    </div>
+
+    <p class="reveal mt-8 text-center text-sm text-muted-foreground">
+      <a href="/features/google-github-social-login" class="inline-flex items-center gap-1 font-medium text-primary-ink hover:text-primary-ink-hover">
+        How social login works <ArrowUpRight class="h-4 w-4" />
+      </a>
+    </p>
+  </div>
+</section>
