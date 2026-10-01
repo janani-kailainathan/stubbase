@@ -1,11 +1,12 @@
 ---
-// Footer for the Home page, after xmind.com's: the closing call to
+// The site's footer, on every page, after xmind.com's: the closing call to
 // action as a centred card in a sketched frame, then the site map on a ground
-// of its own. Footer.astro is still the footer on every other page.
+// of its own.
 //
 // The CTA stays the footer's, as CLAUDE.md asks: a page passes `cta` to Layout
-// and never builds its own. This one takes an optional second button and a
-// line of microcopy, which the default footer ignores.
+// and never builds its own, so the call to action and the site map read as one
+// ending rather than several footers stacked. It takes an optional second
+// button and a line of microcopy.
 import { ArrowRight } from 'lucide-astro';
 import ThemeToggle from './ThemeToggle.astro';
 import { USE_CASES, ROLES, NAV_GROUPS, RESOURCE_LINKS, LEGAL_LINKS } from '../lib/nav';
@@ -17,7 +18,8 @@ interface Props {
 
 const { cta } = Astro.props;
 
-// By name, not position, for the reason Footer.astro gives.
+// Read the groups by name, not by position: this list grows, and destructuring
+// it once silently re-labelled a whole column when an entry was added.
 const features = NAV_GROUPS.find((group) => group.key === 'features')!;
 const compare = NAV_GROUPS.find((group) => group.key === 'compare')!;
 

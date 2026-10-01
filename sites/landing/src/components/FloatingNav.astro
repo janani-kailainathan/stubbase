@@ -1,9 +1,8 @@
 ---
-// Floating header for the Home page: a rounded bar detached from the
-// page edges, with icon-tile mega-menus that open on hover. Nav.astro is still
-// the header on every other page.
+// The site's header, on every page: a rounded bar detached from the page
+// edges, with icon-tile mega-menus that open on hover.
 //
-// No client JS, the same budget as Nav.astro (see CLAUDE.md). The desktop menus
+// No client JS (see CLAUDE.md). The desktop menus
 // open on :hover and keyboard focus rather than on a <details> click, so moving
 // the pointer across the triggers works like a menubar; keyboard users Tab onto
 // a trigger and straight into its links. The page behind is blurred by a scrim
@@ -94,8 +93,8 @@ const MENUS: Menu[] = [
     sections: [{ links: group('features').links }],
   },
   {
-    // Solutions keeps its two taxonomies side by side, as in Nav.astro: a
-    // visitor knows either the job they are doing or the job they hold.
+    // Solutions keeps its two taxonomies side by side: a visitor knows either
+    // the job they are doing or the job they hold, never reliably both.
     label: 'Solutions',
     active: active === 'use-cases' || active === 'roles',
     width: 'w-[42rem]',

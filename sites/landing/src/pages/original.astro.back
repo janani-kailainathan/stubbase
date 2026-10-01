@@ -61,8 +61,6 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
   copy it over index.astro.
 */}
 <Layout
-  nav="floating"
-  footer="framed"
   cta={{
     title: 'Generate your first API in seconds.',
     body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free resources. No database to run, no server to deploy.',

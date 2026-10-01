@@ -3,9 +3,7 @@
 // the html/body shell; this adds the Header and Footer chrome so a page only has
 // to render its <main>.
 import BaseLayout from './BaseLayout.astro';
-import Nav from '../components/Nav.astro';
 import FloatingNav from '../components/FloatingNav.astro';
-import Footer from '../components/Footer.astro';
 import FramedFooter from '../components/FramedFooter.astro';
 import type { FooterCta } from '../lib/cta';
 
@@ -25,15 +23,11 @@ interface Props {
     | 'contact';
   /** Closing call to action, rendered as the footer's cap. */
   cta?: FooterCta;
-  /** Header style. `floating` is the rounded, detached bar the Home page uses. */
-  nav?: 'default' | 'floating';
-  /** Footer style. `framed` is the xmind-style footer the Home page uses. */
-  footer?: 'default' | 'framed';
   ogType?: 'website' | 'article';
   publishedTime?: string;
 }
 
-const { title, description, schema = [], active, cta, nav = 'default', footer = 'default', ogType, publishedTime } = Astro.props;
+const { title, description, schema = [], active, cta, ogType, publishedTime } = Astro.props;
 ---
 
 <BaseLayout
@@ -43,9 +37,9 @@ const { title, description, schema = [], active, cta, nav = 'default', footer = 
   ogType={ogType}
   publishedTime={publishedTime}
 >
-  {nav === 'floating' ? <FloatingNav active={active} /> : <Nav active={active} />}
+  <FloatingNav active={active} />
   <main>
     <slot />
   </main>
-  {footer === 'framed' ? <FramedFooter cta={cta} /> : <Footer cta={cta} />}
+  <FramedFooter cta={cta} />
 </BaseLayout>

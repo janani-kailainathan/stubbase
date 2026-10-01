@@ -1,7 +1,7 @@
 /**
- * The closing call to action a page hands the footer through Layout's `cta`.
- * `secondary` and `note` are read only by FramedFooter; the default footer
- * shows the heading, body and one button.
+ * The closing call to action a page hands the footer through Layout's `cta`:
+ * a heading, a body and a button, with an optional second button and a line of
+ * microcopy under them.
  */
 export interface FooterCta {
   title: string;

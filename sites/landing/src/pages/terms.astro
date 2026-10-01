@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import Nav from '../components/Nav.astro';
-import Footer from '../components/Footer.astro';
+import FloatingNav from '../components/FloatingNav.astro';
+import FramedFooter from '../components/FramedFooter.astro';
 
 const sections = [
   {
@@ -35,7 +35,7 @@ const sections = [
   title="Terms of Service — Stubbase"
   description="The terms of service governing use of Stubbase mock API hosting."
 >
-  <Nav />
+  <FloatingNav />
   <main>
     <section>
       <article class="mx-auto max-w-3xl px-6 py-20">
@@ -64,5 +64,5 @@ const sections = [
       </article>
     </section>
   </main>
-  <Footer />
+  <FramedFooter />
 </BaseLayout>

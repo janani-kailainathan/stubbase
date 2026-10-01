@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import Nav from '../components/Nav.astro';
-import Footer from '../components/Footer.astro';
+import FloatingNav from '../components/FloatingNav.astro';
+import FramedFooter from '../components/FramedFooter.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 
 // Simulation is header-driven only — there is no ?delay= / ?status= query
@@ -27,7 +27,7 @@ await fetch('https://api.stubbase.dev/<tenant>/users', {
   title="Quick Start — Stubbase"
   description="Fetch a public Stubbase API in one line of code, then simulate latency and HTTP errors with a single query parameter."
 >
-  <Nav active="quick-start" />
+  <FloatingNav active="quick-start" />
   <main>
     <section>
       <div class="mx-auto max-w-2xl px-6 pt-20 pb-12 text-center">
@@ -109,5 +109,5 @@ await fetch('https://api.stubbase.dev/<tenant>/users', {
       </div>
     </section>
   </main>
-  <Footer />
+  <FramedFooter />
 </BaseLayout>

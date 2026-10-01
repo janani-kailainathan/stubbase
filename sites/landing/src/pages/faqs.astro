@@ -1,8 +1,8 @@
 ---
 import { Plus, Minus } from 'lucide-astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import Nav from '../components/Nav.astro';
-import Footer from '../components/Footer.astro';
+import FloatingNav from '../components/FloatingNav.astro';
+import FramedFooter from '../components/FramedFooter.astro';
 
 const faqs = [
   {
@@ -43,7 +43,7 @@ const faqSchema = {
   description="Answers to common questions about Stubbase mock APIs: simulating slow networks, forcing HTTP errors, endpoint expiry, and payload limits."
   schema={[faqSchema]}
 >
-  <Nav active="faqs" />
+  <FloatingNav active="faqs" />
   <main>
     <section>
       <div class="mx-auto max-w-2xl px-6 pt-20 pb-14 text-center">
@@ -78,5 +78,5 @@ const faqSchema = {
       </div>
     </section>
   </main>
-  <Footer />
+  <FramedFooter />
 </BaseLayout>
