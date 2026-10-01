@@ -78,7 +78,10 @@ const group = (key: string) => NAV_GROUPS.find((g) => g.key === key)!;
 interface Menu {
   label: string;
   active: boolean;
-  /** Panel width; the grid inside is always two columns. */
+  /** Panel width; the grid inside is always two columns. Every panel starts a
+      little left of its trigger, so the pointer coming straight down lands inside
+      the first link; a panel further right must be narrower to stay on screen at
+      1024px, the narrowest width the desktop menus show at. */
   width: string;
   sections: { label?: string; links: NavLink[] }[];
 }
@@ -104,13 +107,13 @@ const MENUS: Menu[] = [
   {
     label: 'Compare',
     active: active === 'compare',
-    width: 'w-[38rem]',
+    width: 'w-[36rem]',
     sections: [{ links: group('compare').links }],
   },
   {
     label: 'Resources',
     active: active === 'quick-start' || active === 'faqs' || active === 'contact',
-    width: 'w-[40rem]',
+    width: 'w-[30rem]',
     sections: [{ links: RESOURCE_LINKS }],
   },
 ];
@@ -138,7 +141,7 @@ const trigger =
       <ul class="hidden h-full items-center gap-0.5 lg:flex">
         {
           MENUS.map((menu) => (
-            <li class="nav-menu group flex h-full items-center">
+            <li class="nav-menu group relative flex h-full items-center">
               <button
                 type="button"
                 aria-haspopup="true"
@@ -148,10 +151,10 @@ const trigger =
                 <ChevronDown class="h-3.5 w-3.5 transition-transform duration-200 group-hover:rotate-180 group-has-[:focus-visible]:rotate-180" />
               </button>
 
-              {/* The panel hangs from the bar (the nearest positioned box), and its
-                  padding-top bridges the gap, so the pointer never leaves the menu
-                  on its way down to a link. */}
-              <div class={`nav-panel absolute top-full left-1/2 ${menu.width} max-w-[calc(100vw-3rem)] -translate-x-1/2 pt-2`}>
+              {/* The panel hangs from its own trigger's item, which is as tall as
+                  the bar, and its padding-top bridges the gap, so the pointer never
+                  leaves the menu on its way down to a link. */}
+              <div class={`nav-panel absolute top-full -left-8 ${menu.width} max-w-[calc(100vw-3rem)] pt-2`}>
                 <div class="rounded-2xl border border-border-c bg-card p-3">
                   <div class={`grid gap-x-2 ${menu.sections.length > 1 ? 'grid-cols-2' : ''}`}>
                     {menu.sections.map((section) => (
@@ -306,8 +309,7 @@ const trigger =
       transform 150ms ease,
       visibility 0s linear 150ms;
   }
-  /* `transform`, not `translate`: Tailwind's -translate-x-1/2 centring owns the
-     `translate` property, and setting it here would throw the panel off-centre. */
+  /* A small drop as the panel fades in. */
   .nav-panel {
     transform: translateY(-4px);
   }
