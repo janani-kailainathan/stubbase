@@ -1,0 +1,193 @@
+---
+import { ArrowLeft, ArrowRight, BookOpen, CircleHelp, History, Mail, MousePointer2, Sparkles, Tag, Terminal } from 'lucide-astro';
+// The same handwritten accent as Home's hero, imported here for the same reason:
+// only the pages that use it download it.
+import '@fontsource/sedgwick-ave/latin-400.css';
+import Layout from '../layouts/Layout.astro';
+import { RESOURCE_LINKS } from '../lib/nav';
+
+// Where a lost visitor most likely meant to go. Labels and blurbs come from
+// nav.ts so they never disagree with the menus; only the icons and the order
+// are this page's. Pricing has no nav entry of its own, so it carries its own.
+const ICONS: Record<string, typeof ArrowRight> = {
+  '/quick-start': Terminal,
+  '/guides': BookOpen,
+  '/changelog': History,
+  '/faqs': CircleHelp,
+  '/contact': Mail,
+};
+const TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-num)', 'var(--syntax-bool)', 'var(--syntax-str)'];
+const destinations = [
+  {
+    href: '/features/ai-rest-api-generation',
+    label: 'AI API Generation',
+    blurb: 'Describe a domain in one sentence and get live endpoints.',
+    Icon: Sparkles,
+  },
+  ...RESOURCE_LINKS.filter((link) => link.href !== '/contact').map((link) => ({
+    href: link.href,
+    label: link.label,
+    blurb: link.blurb ?? '',
+    Icon: ICONS[link.href] ?? ArrowRight,
+  })),
+  { href: '/pricing', label: 'Pricing', blurb: 'Every feature on every plan; plans differ by requests.', Icon: Tag },
+].map((item, i) => ({ ...item, tint: TINTS[i % TINTS.length] }));
+---
+
+{/*
+  Built to dist/404.html; Caddy serves it for any path on the apex that has no
+  file, keeping the 404 status. It is static like every page here: with no
+  script, it cannot know the URL that missed, so the response card says so
+  generically rather than inventing one.
+*/}
+<Layout
+  nav="floating"
+  footer="framed"
+  title="Page not found — Stubbase"
+  description="This page doesn't exist. Head back to the Stubbase home page, the API reference or the guides."
+>
+  <section class="hero relative overflow-hidden">
+    <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
+
+    <div class="relative mx-auto max-w-4xl px-6 pt-16 pb-12 text-center lg:pt-24">
+      <p class="hero-rise inline-flex items-center gap-2 rounded-full border border-border-c bg-card px-3 py-1 font-mono text-xs text-subtle">
+        <span class="h-1.5 w-1.5 rounded-full bg-(--syntax-bool)" aria-hidden="true"></span>
+        404 · Not Found
+      </p>
+
+      <h1 class="hero-rise mt-6 text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl lg:text-6xl [--d:0.05s]">
+        This route doesn't <span class="hero-accent">exist</span>
+      </h1>
+      <p class="hero-rise mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">
+        The page may have moved, or the link has a typo. Everything that does exist is one
+        click away.
+      </p>
+
+      <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
+        {/* Two-layer buttons, as on Home. */}
+        <a href="/" class="group rounded-2xl bg-muted-hover p-1">
+          <span class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors group-hover:bg-primary-hover">
+            <ArrowLeft class="h-4 w-4" />
+            Back to home
+          </span>
+        </a>
+        <a href="/guides" class="group rounded-2xl bg-muted-hover p-1">
+          <span class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors group-hover:bg-muted">
+            Read the guides
+          </span>
+        </a>
+      </div>
+
+      {/*
+        The miss, drawn as the API response it would be. Decoration only: the
+        heading above already says everything it does.
+      */}
+      <div aria-hidden="true" class="hero-rise relative mx-auto mt-14 max-w-md text-left [--d:0.35s]">
+        <div class="rounded-xl border border-border-c bg-card">
+          <div class="flex items-center justify-between gap-3 border-b border-border-c px-4 py-2.5 font-mono text-xs">
+            <span class="flex items-center gap-2 text-muted-foreground">
+              <span class="rounded bg-primary-soft px-1.5 py-0.5 font-semibold text-primary-ink">GET</span>
+              /this-page
+            </span>
+            <span class="font-semibold text-(--syntax-bool)">404 Not Found</span>
+          </div>
+          <pre class="overflow-x-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-code-fg"><span class="text-syntax-punct">{"{"}</span>
+  <span class="text-syntax-str">"error"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Not found"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"hint"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Try a route below"</span>
+<span class="text-syntax-punct">{"}"}</span></pre>
+        </div>
+        <div class="hero-cursor absolute -right-6 -bottom-8 hidden [--c:var(--syntax-num)] [--drift:5px] sm:block">
+          <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
+          <span class="mt-0.5 ml-3 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
+            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Y</span>
+            You, probably
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-5xl px-6 pt-6 pb-24">
+    <h2 class="text-center text-sm font-semibold tracking-wide text-subtle uppercase">Popular routes</h2>
+    <ul class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        destinations.map(({ href, label, blurb, Icon, tint }) => (
+          <li>
+            <a
+              href={href}
+              class="group flex h-full items-start gap-3 rounded-xl border border-border-c bg-card p-4 transition-colors hover:bg-muted"
+              style={`--tint: ${tint}`}
+            >
+              <span class="route-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <Icon class="h-4.5 w-4.5" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="flex items-center gap-1.5 font-semibold text-foreground">
+                  {label}
+                  <ArrowRight class="h-3.5 w-3.5 text-subtle transition-transform group-hover:translate-x-0.5" />
+                </span>
+                <span class="mt-0.5 block text-sm leading-snug text-muted-foreground">{blurb}</span>
+              </span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="mt-8 text-center text-sm text-muted-foreground">
+      Followed a broken link from this site? <a href="/contact" class="font-medium text-primary-ink hover:underline">Tell us</a> and we'll fix it.
+    </p>
+  </section>
+</Layout>
+
+<style>
+  /* Home's hero canvas, accent and entrance — repeated rather than shared,
+     since Home keeps them in its own page styles. */
+  .hero-dots {
+    background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+    background-size: 20px 20px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 75%);
+    opacity: 0.6;
+  }
+
+  .hero-accent {
+    display: inline-block;
+    padding: 0 0.12em;
+    font-family: 'Sedgwick Ave', cursive;
+    font-weight: 400;
+    color: var(--primary-ink);
+    background: var(--primary-soft);
+    rotate: -2deg;
+  }
+
+  .hero-rise {
+    animation: hero-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s) both;
+  }
+  @keyframes hero-in {
+    from {
+      opacity: 0;
+      filter: blur(8px);
+      translate: 0 12px;
+    }
+  }
+
+  .hero-cursor {
+    animation: hero-drift 5s ease-in-out infinite alternate;
+  }
+  @keyframes hero-drift {
+    to {
+      translate: var(--drift, 5px) calc(var(--drift, 5px) * -0.6);
+    }
+  }
+
+  .route-icon {
+    color: var(--tint);
+    background: color-mix(in oklab, var(--tint) 14%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-rise,
+    .hero-cursor {
+      animation: none;
+    }
+  }
+</style>

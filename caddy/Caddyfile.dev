@@ -13,6 +13,13 @@ http://stubbase.localhost {
 		root * /srv/landing
 		file_server
 	}
+
+	# A path with no file gets the site's own 404 page, still as a 404.
+	handle_errors 404 {
+		root * /srv/landing
+		rewrite * /404.html
+		file_server
+	}
 }
 
 # Mirrors the production www → apex redirect.
