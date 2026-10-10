@@ -1,0 +1,286 @@
+---
+/*
+  The indie hackers' page, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's or the Dashboard API's: the AI Co-Pilot
+  stages new tables as drafts, AUTH_ENABLED mounts the auth routes (email
+  verification on by default, codes in the request log until a Resend key is
+  set), ownership without rules, _notify behind a user JWT, and a project
+  evicted from RAM after IDLE_TTL_MS (5 minutes) that loads again on the next
+  request. Plans differ by request limits alone.
+*/
+import { Sparkles, ArrowRight, Moon } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+// A day of traffic, then a quiet night: bars are requests, the gap is asleep.
+const traffic = [6, 9, 14, 11, 18, 22, 15, 9, 4, 0, 0, 0, 0, 0, 0, 3, 8];
+---
+
+<RoleLayout
+  title="Stubbase for Indie Hackers — Ship the MVP This Weekend"
+  description="A backend-in-a-box for solo founders: relational data, JWT auth, record ownership and secure webhook proxying, with no server to run and nothing billing while you sleep."
+  active="roles"
+  crumb={{ group: 'Roles', path: '/roles/indie-hacker' }}
+  eyebrow="Stubbase for indie hackers"
+  h1="Ship it this weekend, not after the infrastructure"
+  subhead="Data, auth, ownership and outbound calls behind one API — so the first weekend goes to your idea instead of to Postgres, connection pools and a staging environment nobody visits."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'See pricing', href: '/pricing' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-bool)' },
+    { label: 'First user', initial: 'F', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-fn)' },
+  ]}
+  clientsLabel="Put it behind the frontend you ship fastest"
+  clients={['Next.js', 'Remix', 'SvelteKit', 'Nuxt', 'Astro', 'Expo', 'Flutter', 'SwiftUI', 'Vercel', 'Netlify', 'Cloudflare Pages']}
+  challengesTitle="What stops indie hackers shipping?"
+  challenges={[
+    {
+      art: 'stack',
+      title: 'An infrastructure phase before the product',
+      body: 'You have the idea on Friday. By Sunday night you have a Postgres instance, a migration tool, an ORM and an auth library you half-understand — and no product.',
+    },
+    {
+      art: 'lock',
+      title: 'Multi-user rules written by hand',
+      body: 'The moment two people use your app, every query needs "but only their rows". It quietly takes a week, and it is quietly got wrong in the one place nobody tested.',
+    },
+    {
+      art: 'bill',
+      title: 'Paying for servers nobody visits',
+      body: 'A side project with no traffic still runs a database and an app server around the clock. The bill arrives every month whether anyone signed up or not.',
+    },
+  ]}
+  whyTitle="Why indie hackers ship on Stubbase"
+  starters={{
+    title: 'Starter projects shaped like products',
+    intro: 'Every new project offers these on its first screen. Start from one that already looks like what you are building, and change it from there.',
+    items: [
+      {
+        title: 'Forkful recipes',
+        body: 'A whole product\'s worth of tables: browse recipes freely, sign in to review them and save collections.',
+        head: 'GET /recipes',
+        accent: '?_expand=cuisine',
+        rows: [['recipes', '6 rows'], ['reviews', '5 rows'], ['collections', '3 rows']],
+      },
+      {
+        title: 'Signet accounts',
+        body: 'Sign-in and user management for a SaaS: organizations, members and invites, with roles deciding who may promote whom.',
+        head: 'GET /organizations',
+        accent: '?_expand=plan',
+        rows: [['organizations', '4 rows'], ['memberships', '6 rows'], ['invitations', '4 rows']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Products, customers and orders: anyone can browse, and only a signed-in customer can place an order.',
+        head: 'POST /orders',
+        rows: [['without a token', '401'], ['after /auth/login', '201'], ['GET /products', '200']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More for shipping your MVP',
+    items: [
+      { tag: 'Use case', title: 'Auth, ownership and webhooks without running a server', href: '/use-cases/mvp-backend', tint: 'var(--syntax-bool)' },
+      { tag: 'Guide', title: 'How to get Google and GitHub OAuth keys', href: '/guides/google-github-oauth-keys', tint: 'var(--syntax-num)' },
+      { tag: 'Feature', title: 'Stage every edit as a draft, then swap it live with no downtime', href: '/features/instant-api-deployments', tint: 'var(--syntax-fn)' },
+    ],
+  }}
+  solutions={['/use-cases/mvp-backend', '/roles/frontend-developer', '/roles/ai-engineer']}
+  faqs={[
+    {
+      q: 'How fast can I have a working backend?',
+      a: 'Minutes. Paste a JSON file, start from a starter, or describe the app to the AI Co-Pilot, and every table becomes a REST resource with GET, POST, PUT and DELETE. New tables go live when you press Deploy.',
+    },
+    {
+      q: 'Do I have to build sign-up and login?',
+      a: 'No. Set AUTH_ENABLED=true and the project serves sign-up with email verification, login, refresh tokens, logout and password reset. Until you add a Resend key, verification and reset codes appear in your project\'s Logs tab, so you can test the whole flow on day one.',
+    },
+    {
+      q: 'Can my users see each other\'s data?',
+      a: 'Not by default. Once auth is on, a signed-in POST stamps the user\'s id on the record, users can change only their own records, and nobody can hand a record to someone else. For more than that, roles and permissions in rbac.json decide who reads and writes what.',
+    },
+    {
+      q: 'Can my frontend send email without exposing my API key?',
+      a: 'Yes. Put your Resend key (or Twilio credentials) in the project\'s settings and your signed-in users call _notify/email or _notify/sms; the key is added on the server and never reaches the browser.',
+    },
+    {
+      q: 'Can I run my own code when a record changes?',
+      a: 'Yes, with webhooks. A before-hook receives the payload first and can refuse the write; an after-hook is told about the result. Webhook URLs that resolve to private or reserved addresses are refused.',
+    },
+    {
+      q: 'What does it cost while nobody is using it?',
+      a: 'Nothing on the Free plan, which has every feature and 10,000 requests a month with no credit card. A project nobody is calling is put to sleep after a few minutes and wakes on its next request, so there is no idle server to keep warm.',
+    },
+  ]}
+  cta={{
+    title: 'Ship it this weekend',
+    body: 'Data, accounts, ownership and email behind one API. Start free and keep the weekend for the idea.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'See pricing', href: '/pricing' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A founder at night, launching the thing. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <ellipse cx="146" cy="304" rx="72" ry="9" fill="currentColor" stroke="none" />
+    <path d="M106 170 Q140 162 178 168 L184 298 Q144 304 102 299 Z" class="fill-primary" />
+    <circle cx="142" cy="236" r="16" class="fill-background" stroke-width="2.5" />
+    <path d="M134 236 L140 242 L151 230" stroke-width="2.5" />
+    {/* Arm up, cheering. */}
+    <path d="M110 190 C80 176 76 140 90 118" />
+    <circle cx="92" cy="112" r="8" class="fill-background" />
+    <path d="M140 82 C166 81 184 100 183 124 C182 150 164 168 140 167 C114 166 97 148 98 123 C99 98 116 83 140 82 Z" class="fill-background" />
+    <path d="M126 122 Q131 116 136 122 M146 122 Q151 116 156 122" />
+    <path d="M128 140 Q141 154 154 140 Z" fill="currentColor" />
+    {/* Beanie. */}
+    <path d="M100 108 Q140 52 180 108 Z" fill="currentColor" />
+    <circle cx="140" cy="62" r="8" class="fill-primary" />
+    {/* Other arm, pressing launch on a laptop. */}
+    <path d="M176 194 Q200 212 206 232" />
+    <path d="M196 214 L272 208 L276 260 L200 266 Z" class="fill-background" />
+    <text x="236" y="243" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">deploy</text>
+    <path d="M188 268 L286 262 L280 272 L192 278 Z" fill="currentColor" />
+    {/* The rocket, away. */}
+    <g transform="rotate(35 340 130)">
+      <path d="M340 60 Q366 96 362 150 H318 Q314 96 340 60 Z" class="fill-background" />
+      <circle cx="340" cy="108" r="9" class="fill-primary" />
+      <path d="M318 132 L302 156 L318 152 M362 132 L378 156 L362 152" class="fill-background" />
+      <path d="M326 152 Q340 190 354 152" class="fill-primary" />
+    </g>
+    <path d="M250 196 Q270 186 282 170" stroke-dasharray="4 7" class="stroke-primary" />
+    {/* Night: a moon and stars. */}
+    <path d="M70 30 A20 20 0 1 0 92 62 A16 16 0 1 1 70 30 Z" class="fill-primary stroke-primary" stroke-width="2" />
+    <path d="M220 40 L223 50 L233 53 L223 56 L220 66 L217 56 L207 53 L217 50 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <path d="M390 250 L392 257 L399 259 L392 261 L390 268 L388 261 L381 259 L388 257 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <text x="236" y="318" class="doodle-note" fill="currentColor" stroke="none" font-size="22" transform="rotate(-4 236 318)">live by sunday!</text>
+  </svg>
+
+  {/* 1. Weekend one — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center gap-6 overflow-hidden rounded-3xl border border-border-c p-8 sm:gap-10 sm:p-12">
+      <div class="w-64 shrink-0 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
+        <p class="mb-2 flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
+        <p class="text-sm leading-relaxed text-foreground">A waitlist app: products, signups and referral codes.</p>
+        <div class="mt-3 flex items-center justify-between">
+          <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables · drafts</span>
+          <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><ArrowRight class="h-4 w-4" /></span>
+        </div>
+      </div>
+      <ArrowRight class="hidden h-8 w-8 shrink-0 text-primary-accent sm:block" />
+      <div class="hidden w-64 shrink-0 space-y-2 sm:block">
+        {['/products', '/signups', '/referrals'].map((path) => (
+          <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-3 py-2 font-mono text-xs text-foreground">
+            {path}
+            <span class="flex items-center gap-1.5 rounded-full border border-primary-soft-border bg-primary-soft px-2 py-0.5 text-[10px] text-primary-soft-ink">
+              <span class="h-1.5 w-1.5 rounded-full bg-primary"></span> live
+            </span>
+          </p>
+        ))}
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">saturday morning</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">Weekend one</p>
+        <h3 class="text-2xl font-semibold text-foreground">From a sentence to live endpoints</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Describe the product to the AI Co-Pilot, or paste a JSON file. You get the tables, the
+          links between them and sample records as drafts; press Deploy and every one is a live
+          REST resource — before you have picked a component library.
+        </p>
+        <a href="/features/ai-rest-api-generation" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Accounts. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
+        <div class="absolute top-8 left-6 rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-xs">
+          <p class="text-subtle"># .env</p>
+          <p><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-fn">true</span></p>
+        </div>
+        <ul class="absolute right-6 bottom-6 w-56 space-y-1.5 rounded-xl border border-border-c bg-background p-3 font-mono text-[11px] text-muted-foreground">
+          {['signup', 'signup/verify', 'login', 'refresh', 'logout', 'forgot-password'].map((route) => (
+            <li class="flex items-center gap-2"><span class="rounded border border-border-c px-1 text-[9px] text-subtle">POST</span> /auth/{route}</li>
+          ))}
+        </ul>
+      </div>
+      <p class="feature-label mt-8">Accounts</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Accounts, in one setting</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Turn auth on and sign-up with email verification, login, refresh tokens and password
+        reset appear. Add a Google or GitHub client id and secret and social login mounts beside
+        them — no auth library to install, no signing key on disk.
+      </p>
+      <a href="/features/google-github-social-login" class="explore-btn mt-auto">Explore now</a>
+    </article>
+
+    {/* 3. Ownership. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6 font-mono text-[11px]">
+        <p class="rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span class="text-subtle">POST</span> /orders <span class="text-subtle">as Ada →</span> <span class="text-primary-ink">"userId": "u_38fa"</span>
+        </p>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span><span class="text-subtle">PUT</span> /orders/o_7c21 <span class="text-subtle">· Ada's</span></span>
+          <span class="rounded bg-primary-soft px-1.5 py-0.5 text-primary-soft-ink">200</span>
+        </p>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span><span class="text-subtle">PUT</span> /orders/o_9f04 <span class="text-subtle">· someone else's</span></span>
+          <span class="rounded bg-muted px-1.5 py-0.5 text-foreground">403</span>
+        </p>
+      </div>
+      <p class="feature-label mt-8">Ownership</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Ownership you did not have to write</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A signed-in POST stamps its author on the record, and from there the rules apply
+        themselves: users change only their own rows and cannot hand one to somebody else. When
+        you need more, roles and permissions take over.
+      </p>
+      <a href="/use-cases/mvp-backend" class="explore-btn mt-auto">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Scale to zero — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 flex-col justify-center gap-3 p-8 sm:p-10">
+      <div class="flex h-28 items-end gap-1.5 rounded-xl border border-border-c bg-background px-4 pt-4 pb-3">
+        {traffic.map((n) => (
+          n === 0
+            ? <span class="h-1 flex-1 rounded-full bg-border-strong"></span>
+            : <span class="flex-1 rounded-t bg-primary" style={`height: ${n * 4}px`}></span>
+        ))}
+      </div>
+      <p class="flex items-center gap-2 font-mono text-[11px] text-subtle">
+        <Moon class="h-3.5 w-3.5 text-primary-accent" /> asleep after 5 min idle · wakes on the next request
+      </p>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Scale to zero</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Asleep while nobody is using it</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A project nobody has called for a few minutes is put to sleep and wakes on its next
+        request. There is no instance to keep warm, which is what makes a Free plan with every
+        feature possible.
+      </p>
+      <a href="/pricing" class="explore-btn">See pricing</a>
+    </div>
+  </article>
+</RoleLayout>

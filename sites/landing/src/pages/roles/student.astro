@@ -1,0 +1,282 @@
+---
+/*
+  The students' role page, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  This page is about learning REST; /uses/ai-backend-generator-for-students is
+  about building a class project, and the two link to each other. Status codes
+  are the core's: 200 for reads, updates and deletes (which return the removed
+  record), 201 for a create, 404 for a missing record, 401 for a protected
+  route without a token.
+*/
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+const verbs = [
+  { method: 'GET', path: '/todos', what: 'list them', status: '200' },
+  { method: 'GET', path: '/todos/1', what: 'read one', status: '200' },
+  { method: 'POST', path: '/todos', what: 'create, id generated', status: '201' },
+  { method: 'PUT', path: '/todos/1', what: 'replace one', status: '200' },
+  { method: 'DELETE', path: '/todos/1', what: 'delete one', status: '200' },
+  { method: 'GET', path: '/todos/999', what: 'not there', status: '404' },
+];
+
+const query = [
+  { part: '?completed=false', label: 'filter' },
+  { part: '&_sort=title&_direction=asc', label: 'sort' },
+  { part: '&_page=1&_limit=10', label: 'page' },
+];
+---
+
+<RoleLayout
+  title="Stubbase for Students — Learn REST Against a Real API"
+  description="Practise real REST — verbs, status codes, pagination, auth — against a live API you created, with nothing to install and no database to configure."
+  active="roles"
+  crumb={{ group: 'Roles', path: '/roles/student' }}
+  eyebrow="Stubbase for students"
+  h1="Learn REST against an API you actually made"
+  subhead="Real verbs, real status codes, real auth — with nothing to install, no database to configure and no credit card to hand over first."
+  primary={{ label: 'Create your first API free', href: APP_URL }}
+  secondary={{ label: 'Try the free APIs', href: '/free-api' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-str)' },
+    { label: 'Study group', initial: 'S', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-bool)' },
+  ]}
+  clientsLabel="Practise with any HTTP client"
+  clients={['curl', 'Postman', 'Insomnia', 'Bruno', 'HTTPie', 'Hoppscotch', 'Thunder Client', 'fetch', 'Axios', 'Python requests', 'Java HttpClient']}
+  challengesTitle="Where do students get stuck learning REST?"
+  challenges={[
+    {
+      art: 'terminal',
+      title: 'Stuck three steps before REST',
+      body: 'Most people learning to build software do not get stuck on REST. They get stuck installing a database, and never reach the part they wanted to learn.',
+    },
+    {
+      art: 'fixture',
+      title: 'Tutorials that fake the server',
+      body: 'A teaching simulator answers 200 to everything and forgets every write. What you learn there does not survive contact with a real API — or a job interview.',
+    },
+    {
+      art: 'portfolio',
+      title: 'Nothing to show for it',
+      body: 'A course ends with a screenshot of something that once ran on your laptop. A portfolio needs a URL someone else can open.',
+    },
+  ]}
+  whyTitle="Why students learn REST on Stubbase"
+  starters={{
+    title: 'Starter projects to learn from',
+    intro: 'Every new project offers these on its first screen, ordered from simplest to richest — a tour of REST from one list to sign-in.',
+    items: [
+      {
+        title: 'Issue tracker',
+        body: 'One resource, ten tasks. Practise every verb, then filters, sorting and paging on a list.',
+        head: 'GET /tasks',
+        accent: '?status=in_progress',
+        rows: [['Wire up the log stream', 'in_progress'], ['Add pagination', 'in_progress'], ['Chase the reconnect bug', 'in_progress']],
+      },
+      {
+        title: 'Blog',
+        body: 'Posts belong to authors and comments to posts — the first relationship, and the reason _expand exists.',
+        head: 'GET /posts',
+        accent: '?_expand=author',
+        rows: [['Why we dropped the ORM', 'Sam Reyes'], ['Argon2 in practice', 'Mira Haddad'], ['Testing without mocks', 'Sam Reyes']],
+      },
+      {
+        title: 'Sign-in basics',
+        body: 'Sign-up with an emailed code, login, refresh and password reset — and one resource to prove the token works.',
+        head: 'POST /auth/signup',
+        accent: ' → verify → login',
+        rows: [['/auth/signup', 'code sent'], ['/auth/signup/verify', 'account made'], ['/auth/login', 'token']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More resources for learning APIs',
+    items: [
+      { tag: 'Free API', title: 'Six free practice APIs, with every field, filter and query', href: '/free-api', tint: 'var(--syntax-fn)' },
+      { tag: 'Students', title: 'Building a class project? The AI backend generator for students', href: '/uses/ai-backend-generator-for-students', tint: 'var(--syntax-str)' },
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
+    ],
+  }}
+  solutions={['/roles/frontend-developer', '/use-cases/mock-apis', '/roles/qa-engineer']}
+  faqs={[
+    {
+      q: 'Is Stubbase a real API or a simulation?',
+      a: 'A real one. Your project is a hosted REST API at a public URL: GET, POST, PUT and DELETE do what they are supposed to, writes are saved, and the status codes are the real ones — 201 when you create, 404 when you ask for something that is not there.',
+    },
+    {
+      q: 'Do I need to install anything?',
+      a: 'No. No database, no Docker, no local server. If you can open a browser and run curl, your machine is already set up.',
+    },
+    {
+      q: 'What can I learn beyond the basic verbs?',
+      a: 'Query parameters that compose (filters, _sort with _direction, _page and _limit), headers that carry data (X-Total-Count holds the total behind a page), relationships (_expand nests a related record), authentication with bearer tokens, and reading the openapi.json spec every project generates.',
+    },
+    {
+      q: 'How do I learn authentication?',
+      a: 'Set AUTH_ENABLED=true and watch the same routes start answering 401. Sign up, verify the emailed code (it shows in the Logs tab until you add an email provider), log in, and send the token as Authorization: Bearer — then they work again.',
+    },
+    {
+      q: 'Can I use it for coursework and share it?',
+      a: 'Yes. Your endpoints are public URLs, so a React assignment, an Android app, a Postman collection or a classmate can all point at the same project, and it works as a link in a portfolio README.',
+    },
+    {
+      q: 'Is it free?',
+      a: 'Yes. The Free plan has every feature with no credit card: 10,000 requests a month, 5 a second with bursts of 20, and 1,000 AI credits when you sign up, valid for 3 months.',
+    },
+  ]}
+  cta={{
+    title: 'Make your first API, then call it',
+    body: 'A JSON file is the whole setup. Five endpoints a minute later, real status codes from the first request.',
+    label: 'Create your first API free',
+    href: APP_URL,
+    secondary: { label: 'Try the free APIs', href: '/free-api' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A student with a REST textbook, and the API answering back. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <ellipse cx="176" cy="304" rx="72" ry="9" fill="currentColor" stroke="none" />
+    <path d="M136 170 Q170 162 208 168 L214 298 Q174 304 132 299 Z" class="fill-primary" />
+    {/* The open book, held in both hands. */}
+    <path d="M118 214 Q150 202 172 216 Q194 202 226 214 L226 262 Q194 250 172 264 Q150 250 118 262 Z" class="fill-background" />
+    <path d="M172 216 V264" />
+    <text x="145" y="242" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="13">REST</text>
+    <path d="M184 232 H214 M184 244 H210" stroke-width="2" />
+    <path d="M140 192 Q122 204 122 222" />
+    <path d="M204 192 Q222 204 222 222" />
+    <path d="M170 82 C196 81 214 100 213 124 C212 150 194 168 170 167 C144 166 127 148 128 123 C129 98 146 83 170 82 Z" class="fill-background" />
+    <circle cx="158" cy="122" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="184" cy="122" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M160 142 Q171 150 182 141" />
+    <path d="M132 100 Q160 64 206 92 Q190 84 170 86 Q148 88 132 100 Z" fill="currentColor" />
+    {/* A light bulb: it clicked. */}
+    <path d="M118 58 Q118 36 138 34 Q158 36 158 58 Q158 68 150 76 V84 H126 V76 Q118 68 118 58 Z" class="fill-primary" />
+    <path d="M128 92 H148" />
+    <path d="M100 30 L108 38 M138 14 V24 M176 30 L168 38" class="stroke-primary" />
+    {/* The API answering. */}
+    <rect x="252" y="96" width="136" height="44" rx="10" class="fill-background" />
+    <path d="M262 140 L252 154 L276 140" class="fill-background" />
+    <text x="320" y="124" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="14">201 Created</text>
+    <rect x="270" y="170" width="118" height="40" rx="8" class="fill-background" />
+    <text x="329" y="195" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">POST /todos</text>
+    <path d="M230 186 Q250 176 268 186" stroke-dasharray="4 6" class="stroke-primary" />
+    <text x="250" y="262" class="doodle-note" fill="currentColor" stroke="none" font-size="22" transform="rotate(-5 250 262)">it's real!</text>
+    <path d="M370 40 L374 52 L386 56 L374 60 L370 72 L366 60 L354 56 L366 52 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+  </svg>
+
+  {/* 1. REST basics — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-8 sm:p-12">
+      <ul class="w-full max-w-xl divide-y divide-border-c rounded-xl border border-border-c bg-background">
+        {verbs.map(({ method, path, what, status }) => (
+          <li class="flex items-center gap-3 px-4 py-2 font-mono text-xs">
+            <span class="w-14 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
+            <span class="w-24 shrink-0 text-foreground">{path}</span>
+            <span class="hidden flex-1 font-sans text-muted-foreground sm:block">{what}</span>
+            <span class={`ml-auto rounded px-1.5 py-0.5 text-[11px] ${status === '404' ? 'bg-muted text-foreground' : 'bg-primary-soft text-primary-soft-ink'}`}>{status}</span>
+          </li>
+        ))}
+      </ul>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">the ones you'll use forever</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">REST basics</p>
+        <h3 class="text-2xl font-semibold text-foreground">Every verb does what the textbook says</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Give it a JSON file — a list of objects — and you have five endpoints. Run them with curl,
+          Postman or the app you are building. The answers carry real status codes, so what you
+          learn here is what you will meet at work.
+        </p>
+        <a href="/quick-start" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Queries. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6">
+        <p class="font-mono text-xs text-foreground">GET /todos</p>
+        {query.map(({ part, label }) => (
+          <p class="flex items-center justify-between gap-3 rounded-xl border border-border-c bg-background px-4 py-2 font-mono text-[11px]">
+            <span class="truncate text-primary-ink">{part}</span>
+            <span class="doodle-note shrink-0 text-base text-muted-foreground">{label}</span>
+          </p>
+        ))}
+      </div>
+      <p class="feature-label mt-8">Query parameters</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Filter, sort and page in one URL</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Once the basics are boring, the same project teaches what comes up in a job: parameters
+        that compose in a fixed order — filter, then sort, then paginate — and
+        {' '}<code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=user</code> to bring a
+        related record along.
+      </p>
+      <a href="/free-api" class="explore-btn mt-auto">Explore now</a>
+    </article>
+
+    {/* 3. Headers. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-6">
+        <div class="w-full max-w-xs rounded-xl border border-border-c bg-background font-mono text-[11px]">
+          <p class="border-b border-border-c px-4 py-2 text-foreground">200 OK</p>
+          <div class="space-y-1.5 px-4 py-3">
+            <p><span class="text-syntax-str">X-Total-Count</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">24</span></p>
+            <p><span class="text-syntax-str">x-correlation-id</span><span class="text-syntax-punct">:</span> <span class="text-subtle">9b20…4e</span></p>
+            <p><span class="text-syntax-str">Access-Control-Allow-Origin</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">*</span></p>
+          </div>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Headers</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Headers carry data too</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A list returns one page; <code class="font-mono text-sm whitespace-nowrap text-emphasis">X-Total-Count</code> says
+        how many exist. CORS headers are why your fetch works from localhost. Plenty of developers
+        meet both ideas for the first time on the job — you can meet them here.
+      </p>
+      <a href="/free-api" class="explore-btn mt-auto">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Auth — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 flex-col justify-center gap-3 p-8 font-mono text-[11px] sm:p-10">
+      <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+        <span><span class="text-subtle">1</span> GET /todos</span>
+        <span class="rounded bg-muted px-1.5 py-0.5 text-foreground">401</span>
+      </p>
+      <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+        <span><span class="text-subtle">2</span> POST /auth/login</span>
+        <span class="rounded bg-primary-soft px-1.5 py-0.5 text-primary-soft-ink">token</span>
+      </p>
+      <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+        <span class="truncate"><span class="text-subtle">3</span> GET /todos <span class="text-primary-ink">+ Bearer</span></span>
+        <span class="rounded bg-primary-soft px-1.5 py-0.5 text-primary-soft-ink">200</span>
+      </p>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Authentication</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Watch auth refuse you, then let you in</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Switch auth on and the same routes start returning 401. Sign up, log in, send the token —
+        and they work again. That one loop teaches what a bearer token actually does better than
+        any diagram.
+      </p>
+      <a href="/features/google-github-social-login" class="explore-btn">Explore now</a>
+    </div>
+  </article>
+</RoleLayout>

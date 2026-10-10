@@ -1,0 +1,339 @@
+---
+/*
+  The frontend developers' page, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's: _page/_limit and X-Total-Count (exposed
+  through CORS), _expand from <name>Id keys, QA_MODE's x-stubbase-* headers,
+  and openapi.json's schemas, which are inferred from each resource's records.
+*/
+import { ArrowRight, FileJson, Check, AlertTriangle, RotateCw } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+const rows = [
+  { id: 118, title: 'Suspense boundaries', author: 'Ada' },
+  { id: 117, title: 'Optimistic updates', author: 'Sam' },
+  { id: 116, title: 'Route-level data', author: 'Ada' },
+];
+---
+
+<RoleLayout
+  title="Stubbase for Frontend Developers — Build the Real UI Today"
+  description="Stop waiting on the backend. Get a persistent, relational REST API with pagination, filtering and real error states, so the UI code you write now is the code you keep."
+  active="roles"
+  crumb={{ group: 'Roles', path: '/roles/frontend-developer' }}
+  eyebrow="Stubbase for frontend developers"
+  h1="Build the real UI before the backend exists"
+  subhead="A persistent, relational API with the pagination, filtering and failure states your components actually have to handle — in the time it takes to paste a JSON file."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'Read the API reference', href: '/quick-start' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-fn)' },
+    { label: 'Designer', initial: 'D', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-bool)' },
+  ]}
+  clientsLabel="Call it from the stack you already use"
+  clients={['React', 'Next.js', 'Vue', 'Nuxt', 'Angular', 'Svelte', 'SolidJS', 'Remix', 'Astro', 'TanStack Query', 'SWR', 'Axios']}
+  challengesTitle="What slows frontend developers down?"
+  challenges={[
+    {
+      art: 'waiting',
+      title: 'Waiting on an API that is not built',
+      body: 'The usual order of work is that the API gets designed, built and deployed, and only then can the UI talk to something real. Until then the screens you build are a guess.',
+    },
+    {
+      art: 'fixture',
+      title: 'Fixtures that behave nothing like production',
+      body: 'A hard-coded array never paginates, never returns a total, never persists a write and never fails. The fetch layer written against it gets thrown away the day the real API arrives.',
+    },
+    {
+      art: 'states',
+      title: 'Loading and error states nobody sees',
+      body: 'Skeletons, retries and error boundaries are the hardest parts of a UI to test, because a working backend refuses to be slow or broken on cue. They ship untested and get found on incident day.',
+    },
+  ]}
+  whyTitle="Why frontend developers build on Stubbase"
+  starters={{
+    title: 'Starter projects for real screens',
+    intro: 'Every new project offers these on its first screen — real sample data shaped for the screens you build most: lists, detail pages and forms behind a login.',
+    items: [
+      {
+        title: 'Issue tracker',
+        body: 'One resource with statuses, priorities and assignees: a list screen with filters, sort and a pager, nothing else in the way.',
+        head: 'GET /tasks',
+        accent: '?status=in_progress',
+        rows: [['Wire up the log stream', 'high'], ['Add pagination', 'high'], ['Chase the reconnect bug', 'medium']],
+      },
+      {
+        title: 'Blog',
+        body: 'Posts, authors and comments linked by id — the detail page that needs its author and its comments in one render.',
+        head: 'GET /posts/2',
+        accent: '?_expand=author',
+        rows: [['title', 'Why we dropped the ORM'], ['author.name', 'Sam Reyes'], ['views', '3120']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Products, customers and orders, with reads open and writes behind a sign-in — a checkout form that has to handle a 401.',
+        head: 'POST /orders',
+        rows: [['without a token', '401'], ['after /auth/login', '201'], ['GET /products', '200']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More for building against an API',
+    items: [
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
+      { tag: 'Use case', title: 'A JSON file becomes a relational REST API you can build against', href: '/use-cases/mock-apis', tint: 'var(--syntax-fn)' },
+      { tag: 'Guide', title: 'How to get Google and GitHub OAuth keys for your login screen', href: '/guides/google-github-oauth-keys', tint: 'var(--syntax-num)' },
+    ],
+  }}
+  solutions={['/roles/qa-engineer', '/roles/indie-hacker', '/roles/ai-engineer']}
+  faqs={[
+    {
+      q: 'Can I build the frontend before the backend exists?',
+      a: 'Yes — that is what Stubbase is for. Paste a JSON file with the collections your screens need and every one becomes a REST resource with GET, POST, PUT and DELETE. The fetch layer you write against it is the one you keep, because it is talking to real HTTP with real status codes, headers and persistence.',
+    },
+    {
+      q: 'Will it work from localhost?',
+      a: 'Yes. Public routes answer with Access-Control-Allow-Origin: *, so the same fetch runs from your dev server, a preview deploy and production. X-Total-Count is exposed through CORS too, so the browser can read it.',
+    },
+    {
+      q: 'How does pagination work?',
+      a: 'Add _page (1-based, 10 per page by default) and _limit to any list, or _offset with _limit for a raw index. The response carries X-Total-Count with the unpaginated total — the number a pager needs. Filters and _sort with _direction compose in the same request.',
+    },
+    {
+      q: 'How do I load related records in one request?',
+      a: 'Name a field after the related resource — userId for users — and ?_expand=user nests the matching user inside each record. One request returns the shape your component renders, instead of a list request followed by a request per row.',
+    },
+    {
+      q: 'How do I test loading and error states?',
+      a: 'Set QA_MODE=true in the project\'s .env, then send x-stubbase-delay to hold a response for a number of milliseconds, x-stubbase-status for a status code of your choice, x-stubbase-error-rate for a fraction of failures, or x-stubbase-empty for an empty list. Without QA_MODE the headers are ignored.',
+    },
+    {
+      q: 'Can I generate TypeScript types from my API?',
+      a: 'Every project serves its own openapi.json at /<project>/openapi.json, with a schema for each resource inferred from its records. Point a generator such as openapi-typescript at it and you get types without hand-writing a spec.',
+    },
+    {
+      q: 'Is it free?',
+      a: 'The Free plan has every feature, with no credit card: 10,000 requests a month at 5 requests a second, bursts of 20. Plans differ only in how many requests you can make.',
+    },
+  ]}
+  cta={{
+    title: 'Your API is two minutes away',
+    body: 'Drop in a JSON file, get REST endpoints back. No database to configure.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'Read the API reference', href: '/quick-start' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A developer at a monitor with a list screen on it, headphones on. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    {/* Desk. */}
+    <path d="M30 266 H390" />
+    <path d="M60 266 V312 M360 266 V312" />
+    {/* Monitor with a list screen and a pager. */}
+    <rect x="52" y="112" width="182" height="118" rx="8" class="fill-background" />
+    <path d="M52 130 H234" />
+    <circle cx="66" cy="121" r="2" fill="currentColor" stroke="none" />
+    <circle cx="76" cy="121" r="2" fill="currentColor" stroke="none" />
+    <circle cx="86" cy="121" r="2" fill="currentColor" stroke="none" />
+    <rect x="68" y="142" width="62" height="10" rx="3" class="fill-primary" stroke-width="2" />
+    <path d="M68 168 H214 M68 184 H198 M68 200 H206" stroke-width="2.5" />
+    <text x="196" y="221" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="10">‹ 2 / 43 ›</text>
+    <path d="M182 146 L182 170 L188 164 L194 176 L198 174 L192 162 L200 162 Z" class="fill-primary" stroke-width="2" />
+    <path d="M143 230 V258 M116 260 H170" />
+    {/* Keyboard. */}
+    <path d="M188 258 H276" stroke-width="7" />
+    {/* The developer: body, reaching arm, head, headphones. */}
+    <path d="M270 168 Q306 160 342 168 L350 266 H262 Z" class="fill-primary" />
+    <path d="M276 192 Q250 222 248 250" />
+    <circle cx="248" cy="254" r="7" class="fill-background" />
+    <path d="M306 84 C332 83 346 102 345 126 C344 150 328 166 306 165 C282 164 267 148 268 124 C269 100 282 85 306 84 Z" class="fill-background" />
+    <circle cx="292" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="314" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M296 142 Q304 148 312 141" />
+    <path d="M264 118 Q306 52 348 118" stroke-width="5" />
+    <rect x="257" y="110" width="13" height="24" rx="5" class="fill-primary" />
+    <rect x="342" y="110" width="13" height="24" rx="5" class="fill-primary" />
+    {/* A component tree, a tag, sparkles and an arrow. */}
+    <circle cx="372" cy="34" r="8" class="fill-primary" />
+    <path d="M366 40 L350 60 M378 40 L394 60" />
+    <circle cx="348" cy="66" r="7" class="fill-background" />
+    <circle cx="396" cy="66" r="7" class="fill-background" />
+    <text x="34" y="78" class="doodle-mono fill-primary" stroke="none" font-size="30">&lt;/&gt;</text>
+    <path d="M222 36 L226 50 L240 54 L226 58 L222 72 L218 58 L204 54 L218 50 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <path d="M130 70 Q160 40 196 52" class="stroke-primary" />
+    <path d="M184 44 L196 52 L186 62" class="stroke-primary" />
+    <text x="108" y="326" class="doodle-note" fill="currentColor" stroke="none" font-size="22" transform="rotate(-4 108 326)">no backend yet? fine.</text>
+  </svg>
+
+  {/* 1. List screens — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-8 sm:p-12">
+      <div class="w-full max-w-2xl">
+        <p class="mb-3 truncate rounded-xl border border-border-c bg-background px-4 py-2.5 font-mono text-xs text-muted-foreground">
+          <span class="text-subtle">GET</span> /posts<span class="text-primary-ink">?_sort=createdAt&amp;_direction=desc&amp;_page=2&amp;_limit=3</span>
+        </p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <div class="rounded-xl border border-border-c bg-background">
+            <p class="flex items-center justify-between border-b border-border-c px-4 py-2 text-xs font-semibold text-foreground">
+              Posts <span class="font-normal text-subtle">newest first</span>
+            </p>
+            <ul class="divide-y divide-border-c">
+              {rows.map((row) => (
+                <li class="flex items-center gap-3 px-4 py-2 text-xs">
+                  <span class="font-mono text-subtle">#{row.id}</span>
+                  <span class="flex-1 truncate text-foreground">{row.title}</span>
+                  <span class="text-muted-foreground">{row.author}</span>
+                </li>
+              ))}
+            </ul>
+            <p class="flex items-center justify-between border-t border-border-c px-4 py-2 text-xs text-muted-foreground">
+              <span>4–6 of 128</span>
+              <span class="flex gap-1">
+                <span class="rounded border border-border-c px-2">‹</span>
+                <span class="rounded bg-primary px-2 text-primary-foreground">2</span>
+                <span class="rounded border border-border-c px-2">3</span>
+                <span class="rounded border border-border-c px-2">›</span>
+              </span>
+            </p>
+          </div>
+          <div class="hidden flex-col justify-center gap-2 sm:flex">
+            <p class="rounded-lg border border-primary-soft-border bg-primary-soft px-3 py-2 font-mono text-xs text-primary-soft-ink">X-Total-Count: 128</p>
+            <p class="rounded-lg border border-border-c bg-background px-3 py-2 font-mono text-xs text-subtle">200 OK · 3 rows</p>
+          </div>
+        </div>
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">the number your pager needs</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">List screens</p>
+        <h3 class="text-2xl font-semibold text-foreground">Pagination, sort and filters in one request</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Filter, multi-key sort and paging compose in a single query string, and
+          {" "}<code class="font-mono text-sm whitespace-nowrap text-emphasis">X-Total-Count</code> returns the
+          unpaginated total — the number a pager needs and a fixture never has. Write the list screen
+          once, against the real thing.
+        </p>
+        <a href="/quick-start" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Relations. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
+        <div class="absolute top-6 left-6 rounded-lg border border-border-c bg-background px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          <span class="text-subtle">GET</span> /posts/100<span class="text-primary-ink">?_expand=user</span>
+        </div>
+        <pre class="absolute top-20 left-6 w-60 rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">{'{'}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">100</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"React State"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"user"</span><span class="text-syntax-punct">: {'{'}</span>
+    <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
+    <span class="text-syntax-str">"name"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Alice"</span>
+  <span class="text-syntax-punct">{'}'}</span>
+<span class="text-syntax-punct">{'}'}</span></pre>
+        <div class="absolute right-6 bottom-6 flex flex-col items-end gap-2 text-xs">
+          <span class="rounded-full border border-border-c bg-background px-3 py-1 text-subtle line-through">1 + N requests</span>
+          <span class="flex items-center gap-1.5 rounded-full border border-primary-soft-border bg-primary-soft px-3 py-1 font-medium text-primary-soft-ink"><Check class="h-3.5 w-3.5" /> 1 request</span>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Relations</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Nested data without the waterfall</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Name a foreign key <code class="font-mono text-sm text-emphasis">userId</code> and the relation is
+        inferred. One request returns the row and its author together, so your component gets the
+        shape it renders in one round trip instead of a list request and one more per row.
+      </p>
+      <a href="/use-cases/mock-apis" class="explore-btn mt-auto">Explore now</a>
+    </article>
+
+    {/* 3. Error states. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
+        <div class="absolute top-6 left-6 w-44 rounded-xl border border-border-c bg-background p-3">
+          <p class="mb-2 font-mono text-[10px] text-subtle">x-stubbase-delay: 800</p>
+          <div class="space-y-2">
+            <div class="skeleton h-3 w-3/4 rounded"></div>
+            <div class="skeleton h-3 w-full rounded"></div>
+            <div class="skeleton h-3 w-2/3 rounded"></div>
+          </div>
+        </div>
+        <div class="absolute right-6 bottom-6 w-52 rotate-2 rounded-xl border border-border-c bg-background p-4">
+          <p class="mb-1 font-mono text-[10px] text-subtle">x-stubbase-status: 503</p>
+          <p class="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground"><AlertTriangle class="h-4 w-4 text-syntax-num" /> Something went wrong</p>
+          <p class="mb-3 text-xs text-muted-foreground">We could not load your posts.</p>
+          <span class="inline-flex items-center gap-1.5 rounded-lg border border-border-c px-2.5 py-1 text-xs font-medium text-foreground"><RotateCw class="h-3 w-3" /> Try again</span>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Error states</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Make it slow or fail, deliberately</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Switch on QA mode and ask for the behaviour you want with a request header. Your skeleton
+        renders for exactly 800ms; your error boundary catches an actual 503. Neither is a mock — it
+        is the same route, told to behave badly.
+      </p>
+      <a href="/roles/qa-engineer" class="explore-btn mt-auto">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Types — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 items-center justify-center gap-4 p-8 sm:p-10">
+      <p class="flex shrink-0 items-center gap-2 rounded-xl border border-border-c bg-background px-3 py-2 font-mono text-xs text-foreground">
+        <FileJson class="h-4 w-4 text-primary-accent" /> openapi.json
+      </p>
+      <ArrowRight class="h-5 w-5 shrink-0 text-primary-accent" />
+      <pre class="min-w-0 rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-bool">type</span> <span class="text-syntax-fn">Post</span> <span class="text-syntax-punct">= {'{'}</span>
+  <span class="text-syntax-str">id</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">number</span>
+  <span class="text-syntax-str">title</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">string</span>
+  <span class="text-syntax-str">userId</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">number</span>
+<span class="text-syntax-punct">{'}'}</span></pre>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Typed contract</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Types from your own OpenAPI spec</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Every project serves an <code class="font-mono text-sm text-emphasis">openapi.json</code> with a
+        schema for each resource, inferred from its records. Point your client generator at it and
+        your components are typed against the API they actually call — no spec to hand-write.
+      </p>
+      <a href={APP_URL} class="explore-btn">Generate an API free</a>
+    </div>
+  </article>
+</RoleLayout>
+
+<style>
+  /* The loading skeleton in the error-states picture: a slow shimmer. */
+  .skeleton {
+    background: linear-gradient(90deg, var(--muted), var(--muted-strong), var(--muted));
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+</style>

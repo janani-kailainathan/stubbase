@@ -363,8 +363,8 @@ html.dark {
 }
 
 /* ---------------------------------------------------------------------------
-   Markdown body styling, shared by MarkdownLayout (features / compare) and
-   SegmentLayout (use cases / roles). Hand-written instead of
+   Markdown body styling, used by MarkdownLayout (features / compare) and the
+   guides. Hand-written instead of
    @tailwindcss/typography so the design tokens stay in one place and the site
    gains no dependency. Reads the semantic tokens above only — no zinc/emerald
    literals — so both themes follow from this one file.

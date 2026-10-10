@@ -1,0 +1,503 @@
+---
+/*
+  The solution pages (every role, every use case, and the students page),
+  laid out after xmind.com/roles/*: a left-aligned hero with a drawing beside it and the
+  dashboard underneath, a strip of what it works with, three problems, four
+  reasons, starters, further reading, the other roles and a FAQ.
+
+  A page hands over its words as props and its pictures as slots:
+    art      the hero drawing (an inline SVG; RoleLayout sizes it)
+    default  the four reasons, under the "why" heading — built from the
+             global .feature-canvas / .feature-label / .explore-btn classes
+    extra    an optional band after the starters (the students page's free APIs)
+  The styles are global because slotted markup belongs to the page, not to
+  this component, and scoped styles would never reach it. Only these pages
+  use this layout, so only they load them.
+*/
+import { ArrowRight, ChevronRight, MousePointer2, Bot, Plus, Minus } from 'lucide-astro';
+// The handwritten face for the drawings' notes. Latin only, and imported here
+// so no page outside this layout downloads it.
+import '@fontsource/sedgwick-ave/latin-400.css';
+import Layout from './Layout.astro';
+import Doodle, { type DoodleName } from '../components/role/Doodle.astro';
+import { SOLUTION_GROUPS } from '../lib/nav';
+import type { FooterCta } from '../lib/cta';
+
+interface Link {
+  label: string;
+  href: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  active?: 'roles' | 'use-cases';
+  /** Set on a page that sits under a nav group, for its BreadcrumbList. */
+  crumb?: { group: string; path: string };
+  eyebrow: string;
+  h1: string;
+  subhead: string;
+  primary: Link;
+  secondary?: Link;
+  note?: string;
+  /** Name tags at the screenshot's edges: left, top right, bottom right. */
+  tags: { label: string; initial?: string; bot?: boolean; tint: string }[];
+  clientsLabel: string;
+  clients: string[];
+  challengesTitle: string;
+  challenges: { art: DoodleName; title: string; body: string }[];
+  whyTitle: string;
+  starters: {
+    title: string;
+    intro: string;
+    items: { title: string; body: string; head: string; accent?: string; rows: [string, string][] }[];
+  };
+  reading: { title: string; items: { tag: string; title: string; href: string; tint: string }[] };
+  /** Hrefs from the Solutions menu in nav.ts (roles and use cases) — the label comes from there. */
+  solutions: string[];
+  faqs: { q: string; a: string }[];
+  cta: FooterCta;
+}
+
+const {
+  title,
+  description,
+  active,
+  crumb,
+  eyebrow,
+  h1,
+  subhead,
+  primary,
+  secondary,
+  note,
+  tags,
+  clientsLabel,
+  clients,
+  challengesTitle,
+  challenges,
+  whyTitle,
+  starters,
+  reading,
+  solutions,
+  faqs,
+  cta,
+} = Astro.props;
+
+// Presentation only, keyed by href; a role missing here gets the browser.
+const ROLE_ART: Record<string, { art: DoodleName; tint: string }> = {
+  '/roles/frontend-developer': { art: 'browser', tint: 'var(--syntax-fn)' },
+  '/roles/qa-engineer': { art: 'bug', tint: 'var(--syntax-str)' },
+  '/roles/ai-engineer': { art: 'robot', tint: 'var(--syntax-num)' },
+  '/roles/indie-hacker': { art: 'rocket', tint: 'var(--syntax-bool)' },
+  '/roles/student': { art: 'cap', tint: 'var(--syntax-num)' },
+  '/use-cases/mock-apis': { art: 'braces', tint: 'var(--syntax-fn)' },
+  '/use-cases/mvp-backend': { art: 'layers', tint: 'var(--syntax-bool)' },
+};
+const solutionLinks = SOLUTION_GROUPS.flatMap((group) => group.links);
+// Read from nav.ts so a renamed page cannot leave a dead card here.
+const roleCards = solutions
+  .map((href) => solutionLinks.find((link) => link.href === href))
+  .filter((link) => link !== undefined)
+  .map((link) => ({ ...link, ...(ROLE_ART[link.href] ?? { art: 'browser' as const, tint: 'var(--syntax-fn)' }) }));
+
+const TAG_PLACES = [
+  'top-1/3 -left-10',
+  'top-[18%] -right-12',
+  '-right-8 bottom-1/4',
+];
+
+const schema: Record<string, unknown>[] = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.q,
+      acceptedAnswer: { '@type': 'Answer', text: faq.a },
+    })),
+  },
+];
+if (crumb) {
+  const url = new URL(crumb.path, Astro.site).toString();
+  schema.push(
+    {
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: h1,
+      name: title,
+      description,
+      url,
+      inLanguage: 'en',
+      isPartOf: { '@type': 'WebSite', name: 'Stubbase', url: Astro.site?.toString() },
+      publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: Astro.site?.toString() },
+        { '@type': 'ListItem', position: 2, name: crumb.group },
+        { '@type': 'ListItem', position: 3, name: h1, item: url },
+      ],
+    },
+  );
+}
+---
+
+<Layout title={title} description={description} active={active} schema={schema} cta={cta}>
+  {/*
+    Hero. The H1 is each page's keyword — an SEO target. No script: the
+    entrance and the tags' drift are CSS, and both stop under reduced motion.
+  */}
+  <section class="hero-wash relative">
+    <div class="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-6 pt-16 pb-14 sm:grid-cols-[1fr_auto] lg:pt-24 lg:pb-20">
+      <div class="max-w-2xl">
+        <p class="hero-rise mb-3 text-xl font-bold text-primary-ink lg:text-2xl">{eyebrow}</p>
+        <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground md:text-5xl lg:text-6xl [--d:0.05s]">
+          {h1}
+        </h1>
+        <p class="hero-rise mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground lg:text-xl [--d:0.1s]">{subhead}</p>
+        <div class="hero-rise mt-8 flex flex-wrap items-center gap-3 [--d:0.2s]">
+          <a href={primary.href} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
+            <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
+            {primary.label}
+          </a>
+          {secondary && (
+            <a href={secondary.href} class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+              {secondary.label}
+            </a>
+          )}
+        </div>
+        {note && <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">{note}</p>}
+      </div>
+
+      <div class="hero-rise hero-art hidden w-64 text-foreground sm:block lg:w-96 [--d:0.25s]">
+        <slot name="art" />
+      </div>
+    </div>
+
+    <div class="hero-rise relative mx-auto max-w-5xl px-6 pb-24 [--d:0.4s]">
+      <div class="relative">
+        <div class="absolute inset-0 translate-x-3 translate-y-3 rounded-2xl bg-primary sm:translate-x-4 sm:translate-y-4" aria-hidden="true"></div>
+        <div class="relative overflow-hidden rounded-2xl border border-border-c bg-background p-2">
+          <img src="/dashboard-ui.png" alt="Stubbase Dashboard UI" class="w-full rounded-lg border border-border-faint" />
+        </div>
+
+        <div aria-hidden="true" class="pointer-events-none hidden md:block">
+          {
+            tags.slice(0, 3).map((tag, i) => {
+              const chip = (
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
+                  <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">
+                    {tag.bot ? <Bot class="h-3 w-3" /> : tag.initial}
+                  </span>
+                  {tag.label}
+                </span>
+              );
+              return (
+                <div
+                  class={`hero-tag absolute flex items-center gap-1 ${TAG_PLACES[i]}`}
+                  style={`--c: ${tag.tint}; --drift: ${i === 1 ? -4 : 5}px`}
+                >
+                  {i === 0 ? (
+                    <>
+                      {chip}
+                      <MousePointer2 class="h-5 w-5 -scale-x-100 fill-current text-(--c)" />
+                    </>
+                  ) : (
+                    <>
+                      <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
+                      {chip}
+                    </>
+                  )}
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* What it works with, in xmind's logo-strip slot. Names only, never logos:
+      this lists what can call the API, not who uses it. The second copy only
+      makes the loop seamless, so assistive tech hears the list once. */}
+  <section>
+    <div class="mx-auto max-w-6xl px-6 pb-8">
+      <p class="mb-6 text-center text-sm font-medium text-subtle">{clientsLabel}</p>
+      <div class="marquee overflow-hidden">
+        <div class="marquee-track flex w-max">
+          {[0, 1].map((copy) => (
+            <ul class="flex shrink-0 items-center" aria-hidden={copy === 1 ? 'true' : undefined}>
+              {clients.map((name) => (
+                <li class="px-7 text-xl font-bold tracking-tight whitespace-nowrap text-faint">{name}</li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-16 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{challengesTitle}</h2>
+      <ul class="grid grid-cols-1 gap-12 md:grid-cols-3">
+        {
+          challenges.map(({ art, title, body }) => (
+            <li class="reveal text-center">
+              <Doodle name={art} class="mx-auto mb-6 h-24 w-28 text-subtle" />
+              <h3 class="mb-3 text-xl font-semibold text-foreground">{title}</h3>
+              <p class="leading-relaxed text-muted-foreground">{body}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{whyTitle}</h2>
+      <slot />
+    </div>
+  </section>
+
+  {/* Starters, in xmind's templates slot. Each is a card on a new project's
+      empty state (STARTERS in sites/dashboard/src/lib/starters.ts). */}
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-4 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{starters.title}</h2>
+      <p class="reveal mx-auto mb-14 max-w-2xl text-center font-medium text-muted-foreground">{starters.intro}</p>
+      <ul class="grid grid-cols-1 gap-5 md:grid-cols-3">
+        {
+          starters.items.map(({ title, body, head, accent, rows }) => (
+            <li class="reveal flex flex-col rounded-2xl border border-border-c bg-card p-2">
+              <div aria-hidden="true" class="rounded-xl bg-muted p-5">
+                <div class="rounded-lg border border-border-c bg-background">
+                  <p class="truncate border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
+                    {head}
+                    {accent && <span class="text-primary-ink">{accent}</span>}
+                  </p>
+                  <ul class="divide-y divide-border-c">
+                    {rows.map(([name, value]) => (
+                      <li class="flex items-center justify-between gap-3 px-3 py-2 text-[11px]">
+                        <span class="truncate text-foreground">{name}</span>
+                        <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-subtle">{value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div class="flex flex-1 flex-col p-4 pt-5">
+                <h3 class="mb-2 text-lg font-semibold text-foreground">{title}</h3>
+                <p class="mb-6 text-sm leading-relaxed text-muted-foreground">{body}</p>
+                <a href={primary.href} class="mt-auto self-start rounded-lg border border-border-c bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+                  Use this starter
+                </a>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <slot name="extra" />
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{reading.title}</h2>
+      <ul class="reveal grid grid-cols-1 gap-5 md:grid-cols-3">
+        {
+          reading.items.map(({ tag, title, href, tint }) => (
+            <li>
+              <a href={href} class="tinted group flex h-full min-h-48 flex-col rounded-2xl border border-border-c p-6" style={`--tint: ${tint}`}>
+                <span class="mb-4 self-start rounded-full bg-background px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{tag}</span>
+                <span class="mb-6 text-lg leading-snug font-semibold text-foreground">{title}</span>
+                <span class="mt-auto inline-flex items-center gap-1 text-sm font-medium text-foreground">
+                  Learn more <ChevronRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore more solutions</h2>
+      <ul class="reveal grid grid-cols-1 gap-5 md:grid-cols-3">
+        {
+          roleCards.map(({ href, label, art, tint }) => (
+            <li>
+              <a href={href} class="tinted group relative flex h-56 flex-col overflow-hidden rounded-2xl border border-border-c p-6" style={`--tint: ${tint}`}>
+                <span class="text-lg font-semibold text-foreground">{label}</span>
+                <span class="mt-auto flex h-9 w-9 items-center justify-center rounded-full bg-contrast text-contrast-foreground transition-colors group-hover:bg-contrast-hover">
+                  <ArrowRight class="h-4 w-4" />
+                </span>
+                <Doodle name={art} class="absolute right-4 bottom-4 h-28 w-32 text-foreground transition-transform duration-200 group-hover:-translate-y-1" />
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 py-24">
+      <h2 class="reveal mb-12 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Frequently asked questions</h2>
+      <div class="flex flex-col gap-3">
+        {
+          faqs.map((faq) => (
+            <details class="group rounded-xl border border-border-c bg-card" name="faq">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                <h3 class="font-semibold text-foreground">{faq.q}</h3>
+                <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+                <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
+              </summary>
+              <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style is:global>
+  /* The band behind the hero: a wash of emerald that fades into the page. */
+  .hero-wash {
+    background: linear-gradient(to bottom, var(--primary-soft), transparent 70%);
+  }
+  .hero-art > svg {
+    width: 100%;
+    height: auto;
+  }
+
+  /* The drawings' handwriting, and their code. */
+  .doodle-note {
+    font-family: 'Sedgwick Ave', cursive;
+  }
+  .doodle-mono {
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+
+  /* The logo mark in the button's own text colour, whatever the theme. */
+  .hero-mark {
+    mask: url('/stubbase-logo.svg') center / contain no-repeat;
+  }
+
+  /* A reason's picture: the card with a faint dot grid and an emerald glow. */
+  .feature-canvas {
+    background:
+      radial-gradient(var(--border-strong) 1px, transparent 1px) 0 0 / 18px 18px,
+      radial-gradient(80% 80% at 50% 100%, var(--primary-soft), transparent 70%),
+      var(--card);
+  }
+
+  .feature-label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--primary-ink);
+  }
+
+  .explore-btn {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    border-radius: 0.75rem;
+    background: var(--contrast);
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--contrast-foreground);
+    transition: background-color 150ms ease;
+  }
+  .explore-btn:hover {
+    background: var(--contrast-hover);
+  }
+
+  /* Resource and role cards: the card tinted with its own colour. */
+  .tinted {
+    background:
+      radial-gradient(90% 90% at 100% 100%, color-mix(in oklab, var(--tint) 18%, transparent), transparent 70%),
+      color-mix(in oklab, var(--tint) 8%, var(--card));
+    transition: border-color 150ms ease;
+  }
+  .tinted:hover {
+    border-color: var(--border-strong);
+  }
+
+  /* Entrance: the text rises out of a blur. `--d` staggers it. */
+  .hero-rise {
+    animation: hero-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s) both;
+  }
+  @keyframes hero-in {
+    from {
+      opacity: 0;
+      filter: blur(8px);
+      translate: 0 12px;
+    }
+  }
+
+  /* Name tags drift a few pixels, as if someone were holding them. */
+  .hero-tag {
+    animation: hero-drift 5s ease-in-out infinite alternate;
+  }
+  @keyframes hero-drift {
+    to {
+      translate: var(--drift, 5px) calc(var(--drift, 5px) * -0.6);
+    }
+  }
+
+  /* The client strip scrolls one copy's width, then repeats. */
+  .marquee {
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  }
+  .marquee-track {
+    animation: marquee 40s linear infinite;
+  }
+  @keyframes marquee {
+    to {
+      translate: -50% 0;
+    }
+  }
+
+  /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
+     no script; a browser without view timelines shows them as they are. */
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: hero-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal,
+    .hero-rise,
+    .hero-tag {
+      animation: none;
+    }
+    .marquee-track {
+      animation: none;
+      width: auto;
+      justify-content: center;
+    }
+    .marquee-track > ul + ul {
+      display: none;
+    }
+    .marquee-track > ul {
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+  }
+</style>

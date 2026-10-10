@@ -1,0 +1,290 @@
+---
+/*
+  The AI engineers' page, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's or the Dashboard API's: one MCP tool,
+  execute_sql_query, over a read-only SQLite projection of data/ only
+  (PRAGMA query_only plus the SELECT/WITH check), the live schema in
+  tools/list, SQL_MAX_ROWS rows per call, per-project sk_stub_ developer keys
+  stored hashed, and a session's project pinned from the URL at connect time.
+*/
+import { Check, X, KeyRound } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+const result = [
+  { author: 'Alice', posts: 42, views: 1180 },
+  { author: 'Marco', posts: 17, views: 2306 },
+  { author: 'Priya', posts: 9, views: 640 },
+];
+---
+
+<RoleLayout
+  title="Stubbase for AI Engineers — Give an Agent a Real Datastore over MCP"
+  description="Connect Claude, ChatGPT or your IDE to a live project over the Model Context Protocol and query it with read-only SQL — real joins and aggregates, not paged REST calls."
+  active="roles"
+  crumb={{ group: 'Roles', path: '/roles/ai-engineer' }}
+  eyebrow="Stubbase for AI engineers"
+  h1="Give your agent a datastore it can actually query"
+  subhead="Connect over the Model Context Protocol and let the model run real SQL — joins, aggregates, CTEs — against live project data, without ever being able to write to it."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'See the AI Co-Pilot', href: '/features/ai-rest-api-generation' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-num)' },
+    { label: 'Claude Desktop', bot: true, tint: 'var(--syntax-bool)' },
+    { label: 'Your agent', bot: true, tint: 'var(--syntax-fn)' },
+  ]}
+  clientsLabel="Connect from any MCP client"
+  clients={['Claude Desktop', 'Claude Code', 'Cursor', 'Windsurf', 'VS Code', 'Zed', 'Cline', 'Continue', 'mcp-remote']}
+  challengesTitle="What gets in the way of agents that use data?"
+  challenges={[
+    {
+      art: 'pages',
+      title: 'Agents page through REST',
+      body: 'Ask a model an analytical question over a REST API and it does the only thing it can: it pages. Two hundred calls later it has spent its budget and still has to do the join itself — badly.',
+    },
+    {
+      art: 'guess',
+      title: 'Models guess at the schema',
+      body: 'Without the real tables and columns in front of it, a model invents plausible ones. The query looks right, names a field that does not exist, and the agent spends its next turns apologising.',
+    },
+    {
+      art: 'drop',
+      title: 'A database login can write',
+      body: 'Handing an agent a connection string hands it every statement the role allows. One injected instruction in the data it reads is enough to turn a question into a DELETE.',
+    },
+  ]}
+  whyTitle="Why AI engineers connect agents to Stubbase"
+  starters={{
+    title: 'Starter projects worth querying',
+    intro: 'Every new project offers these on its first screen — related tables with enough rows for a join or a GROUP BY to mean something.',
+    items: [
+      {
+        title: 'Blog',
+        body: 'Posts by authors, comments on posts. The classic first join: posts per author, views per post, the most-discussed post.',
+        head: 'FROM posts JOIN authors',
+        rows: [['posts', '8 rows'], ['authors', '3 rows'], ['comments', '8 rows']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Orders that point at customers and products — revenue by city, best sellers, what is still pending.',
+        head: 'FROM orders JOIN products',
+        rows: [['orders', '8 rows'], ['customers', '4 rows'], ['products', '6 rows']],
+      },
+      {
+        title: 'Deskline helpdesk',
+        body: 'Tickets by topic, articles and ratings — the kind of support data an agent is asked to summarise every Monday.',
+        head: 'FROM tickets JOIN topics',
+        rows: [['tickets', '8 rows'], ['articles', '6 rows'], ['topics', '4 rows']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More on AI and your API',
+    items: [
+      { tag: 'Feature', title: 'Describe a domain in one sentence and get tables, seed data and endpoints', href: '/features/ai-rest-api-generation', tint: 'var(--syntax-bool)' },
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-fn)' },
+      { tag: 'Free API', title: 'Six read-only practice APIs for an agent to fetch from', href: '/free-api', tint: 'var(--syntax-num)' },
+    ],
+  }}
+  solutions={['/roles/frontend-developer', '/roles/indie-hacker', '/use-cases/mvp-backend']}
+  faqs={[
+    {
+      q: 'What can an agent do over MCP?',
+      a: 'Run read-only SQL. A project exposes one tool, execute_sql_query, over an SQLite view of its resources, so a model can join, filter, group and aggregate in a single call. Each call returns up to 500 rows and says when a result was cut short.',
+    },
+    {
+      q: 'Can the agent change or delete my data?',
+      a: 'No. The connection runs with PRAGMA query_only, which refuses writes, and every statement must begin with SELECT or WITH, which refuses ATTACH. Writes still go through the REST API, with its validation, ownership rules and webhooks.',
+    },
+    {
+      q: 'How does the model know my tables and columns?',
+      a: 'The tool\'s description in tools/list carries the live table and column list, so the model reads your schema instead of guessing it. Columns are the union across every record, so a field only some rows carry is still there; nested values are JSON text you can reach with json_extract().',
+    },
+    {
+      q: 'Is the SQL data up to date?',
+      a: 'Yes. The JSON resources stay the source of truth; the SQL view is derived from them on the first query, dropped the moment the data changes, and rebuilt on the next query in about a millisecond. There is no sync step to fall behind.',
+    },
+    {
+      q: 'Can an agent see user accounts or settings?',
+      a: 'No. Only your resources are ever mounted. Accounts, sessions, sign-up and reset codes, and the project\'s settings live elsewhere and are never turned into tables, so no SELECT can reach them.',
+    },
+    {
+      q: 'How do I connect Claude Desktop?',
+      a: 'Create a developer key in the project\'s dashboard — it is shown once and stored hashed — and copy the config block it generates. Claude Desktop reaches the project through the mcp-remote bridge with --transport sse-only.',
+    },
+    {
+      q: 'Can one key reach another project?',
+      a: 'No. A key is scoped to the project that issued it, and the project is fixed from the URL when the connection opens — nothing inside a message can select a different one. Revoking the key, or deleting the project, invalidates it immediately.',
+    },
+  ]}
+  cta={{
+    title: 'Give your agent a datastore today',
+    body: 'Create a project, mint a developer key, paste the config. Your agent runs its first JOIN a minute later.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    note: 'No credit card required',
+  }}
+>
+  {/* An engineer pointing at a database while their agent asks it a question. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <ellipse cx="156" cy="304" rx="72" ry="9" fill="currentColor" stroke="none" />
+    <path d="M116 170 Q150 162 188 168 L194 298 Q154 304 112 299 Z" class="fill-primary" />
+    <text x="152" y="246" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="20">SQL</text>
+    <path d="M150 82 C176 81 194 100 193 124 C192 150 174 168 150 167 C124 166 107 148 108 123 C109 98 126 83 150 82 Z" class="fill-background" />
+    <circle cx="142" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="168" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M146 142 Q155 148 164 141" />
+    <path d="M118 96 Q150 70 184 96" stroke-width="5" />
+    {/* Pointing arm. */}
+    <path d="M186 192 Q216 196 238 182" />
+    <circle cx="242" cy="179" r="7" class="fill-background" />
+    {/* The database. */}
+    <ellipse cx="310" cy="196" rx="42" ry="12" class="fill-primary" />
+    <path d="M268 196 V262 Q310 280 352 262 V196" class="fill-background" />
+    <path d="M268 218 Q310 234 352 218 M268 240 Q310 256 352 240" stroke-width="2.5" />
+    <text x="276" y="304" class="doodle-note" fill="currentColor" stroke="none" font-size="18">read-only</text>
+    {/* The agent, and what it asks. */}
+    <rect x="314" y="44" width="70" height="56" rx="12" class="fill-background" />
+    <path d="M349 44 V32" />
+    <circle cx="349" cy="27" r="5" class="fill-primary" />
+    <circle cx="336" cy="70" r="6" class="fill-primary" />
+    <circle cx="362" cy="70" r="6" class="fill-primary" />
+    <path d="M336 87 H362" />
+    <rect x="196" y="28" width="104" height="40" rx="10" class="fill-background" />
+    <path d="M286 68 L298 80 L300 64" class="fill-background" />
+    <text x="248" y="53" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="13">SELECT …</text>
+    <path d="M349 100 Q356 140 334 180" stroke-dasharray="5 6" class="stroke-primary" />
+    <path d="M60 136 L64 150 L78 154 L64 158 L60 172 L56 158 L42 154 L56 150 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <text x="14" y="52" class="doodle-note fill-primary" stroke="none" font-size="20" transform="rotate(-6 14 52)">one query, not 200!</text>
+  </svg>
+
+  {/* 1. SQL — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-8 sm:p-12">
+      <div class="grid w-full max-w-3xl grid-cols-1 items-center gap-4 sm:grid-cols-2">
+        <pre class="rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-bool">SELECT</span> a.name <span class="text-syntax-bool">AS</span> author,
+       <span class="text-syntax-fn">COUNT</span>(*) <span class="text-syntax-bool">AS</span> posts,
+       <span class="text-syntax-fn">AVG</span>(p.views) <span class="text-syntax-bool">AS</span> avg_views
+<span class="text-syntax-bool">FROM</span> posts p
+<span class="text-syntax-bool">JOIN</span> authors a <span class="text-syntax-bool">ON</span> a.id = p.authorId
+<span class="text-syntax-bool">GROUP BY</span> a.name
+<span class="text-syntax-bool">ORDER BY</span> posts <span class="text-syntax-bool">DESC</span>;</pre>
+        <div class="hidden rounded-xl border border-border-c bg-background sm:block">
+          <p class="grid grid-cols-3 border-b border-border-c px-4 py-2 font-mono text-[10px] text-subtle uppercase">
+            <span>author</span><span>posts</span><span>avg_views</span>
+          </p>
+          {result.map((row) => (
+            <p class="grid grid-cols-3 border-b border-border-c px-4 py-2 font-mono text-[11px] text-foreground last:border-0">
+              <span>{row.author}</span><span class="text-syntax-num">{row.posts}</span><span class="text-syntax-num">{row.views}</span>
+            </p>
+          ))}
+        </div>
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">one call, real joins</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">Read-only SQL</p>
+        <h3 class="text-2xl font-semibold text-foreground">The question was one line of SQL</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          So give the agent that line. One tool,
+          {' '}<code class="font-mono text-sm whitespace-nowrap text-emphasis">execute_sql_query</code>, runs over a
+          real SQLite view of your resources — joins, aggregates and CTEs in one call instead of a
+          paging loop over REST.
+        </p>
+        <a href={APP_URL} class="explore-btn">Try it free</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Schema. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-6">
+        <div class="w-full max-w-xs rounded-xl border border-border-c bg-background">
+          <p class="border-b border-border-c px-4 py-2 font-mono text-[11px] text-subtle">tools/list</p>
+          <div class="space-y-2 px-4 py-3 font-mono text-[11px]">
+            <p class="font-semibold text-foreground">execute_sql_query</p>
+            <p class="text-muted-foreground">Tables:</p>
+            <p><span class="text-primary-ink">posts</span> <span class="text-subtle">(id, authorId, title, views, …)</span></p>
+            <p><span class="text-primary-ink">authors</span> <span class="text-subtle">(id, name, email, role)</span></p>
+            <p><span class="text-primary-ink">comments</span> <span class="text-subtle">(id, postId, body, …)</span></p>
+          </div>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Live schema</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">The model reads your schema, not a guess</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        The tool's description carries the live tables and columns, so the first query names
+        fields that exist. Columns are the union across every record, and nested values come back
+        as JSON you can reach with <code class="font-mono text-sm whitespace-nowrap text-emphasis">json_extract()</code>.
+      </p>
+      <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>
+    </article>
+
+    {/* 3. Safety. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6">
+        {[
+          { sql: 'WITH x AS (…) DELETE FROM users', why: 'query_only' },
+          { sql: "ATTACH DATABASE 'app.sqlite'", why: 'SELECT or WITH only' },
+          { sql: 'SELECT COUNT(*) FROM posts', why: '8', ok: true },
+        ].map(({ sql, why, ok }) => (
+          <p class="flex items-center gap-3 rounded-xl border border-border-c bg-background px-4 py-2.5 font-mono text-[11px]">
+            <span class={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${ok ? 'bg-primary-soft text-primary-accent' : 'bg-muted text-foreground'}`}>
+              {ok ? <Check class="h-3 w-3" /> : <X class="h-3 w-3" />}
+            </span>
+            <span class={`flex-1 truncate ${ok ? 'text-foreground' : 'text-subtle line-through'}`}>{sql}</span>
+            <span class="shrink-0 text-primary-ink">{why}</span>
+          </p>
+        ))}
+      </div>
+      <p class="feature-label mt-8">Read-only</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Read-only, in two layers</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        <code class="font-mono text-sm whitespace-nowrap text-emphasis">PRAGMA query_only</code> stops writes,
+        even one hidden behind a <code class="font-mono text-sm text-emphasis">WITH</code>. Separately, every
+        statement must start with SELECT or WITH, which is what stops ATTACH. A prompt injection
+        in your data can ask; it cannot write.
+      </p>
+      <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>
+    </article>
+  </div>
+
+  {/* 4. Setup — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 items-center justify-center p-8 sm:p-10">
+      <pre class="w-full overflow-hidden rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-[10.5px] leading-relaxed text-code-fg"><span class="text-syntax-str">"stubbase_my_project"</span><span class="text-syntax-punct">: {'{'}</span>
+  <span class="text-syntax-str">"command"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"npx"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"args"</span><span class="text-syntax-punct">: [</span><span class="text-syntax-fn">"-y"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-fn">"mcp-remote"</span><span class="text-syntax-punct">,</span>
+    <span class="text-syntax-fn">"…/projects/my-project/mcp/sse"</span><span class="text-syntax-punct">,</span>
+    <span class="text-syntax-fn">"--transport"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-fn">"sse-only"</span><span class="text-syntax-punct">, …]</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"env"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"STUBBASE_API_KEY"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"sk_stub_…"</span> <span class="text-syntax-punct">{'}'}</span>
+<span class="text-syntax-punct">{'}'}</span></pre>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Setup</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Connect Claude Desktop in one paste</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Mint a developer key in the dashboard and it writes the config block for you, key
+        filled in. Keys are shown once, stored hashed, scoped to one project and revocable at any
+        time.
+      </p>
+      <p class="mb-6 flex items-center gap-2 text-sm text-subtle"><KeyRound class="h-4 w-4 text-primary-accent" /> One key, one project — never another.</p>
+      <a href={APP_URL} class="explore-btn">Try it free</a>
+    </div>
+  </article>
+</RoleLayout>

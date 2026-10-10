@@ -1,0 +1,277 @@
+---
+/*
+  The mock-APIs use case, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's: <name>Id keys and ?_expand=, write-through
+  persistence, filters/_sort/_page and X-Total-Count, openapi.json with a
+  schema per resource inferred from its records, and the save model — records
+  save live, a new table and settings wait for Deploy.
+*/
+import { FileJson, ArrowRight, RotateCw } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+---
+
+<RoleLayout
+  title="Persistent Relational Mock APIs for Frontend Developers — Stubbase"
+  description="Bypass backend dependencies. Turn a single JSON file into a fully relational REST API with instant pagination, filtering, and nested routing."
+  active="use-cases"
+  crumb={{ group: 'Use cases', path: '/use-cases/mock-apis' }}
+  eyebrow="Stubbase for mock APIs"
+  h1="Mock APIs that behave like the real thing"
+  subhead="Turn a single JSON file into a fully relational REST API with pagination, filtering and nested routing — and keep every write you make."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'Try the free APIs', href: '/free-api' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-fn)' },
+    { label: 'Teammate', initial: 'T', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-bool)' },
+  ]}
+  clientsLabel="Point any client at it"
+  clients={['React', 'Vue', 'Angular', 'Svelte', 'Flutter', 'Android', 'SwiftUI', 'Storybook', 'Playwright', 'Postman', 'Insomnia', 'curl']}
+  challengesTitle="What is wrong with most mock APIs?"
+  challenges={[
+    {
+      art: 'reset',
+      title: 'Mocks that forget every write',
+      body: 'The moment a mock resets, so does whatever state your UI had built up — and the code you wrote against it gets thrown away with it.',
+    },
+    {
+      art: 'unlinked',
+      title: 'Flat fixtures with no relations',
+      body: 'Real data points at other data. A fixture of disconnected arrays makes you stitch posts to authors in the client, and that code never matches the real API.',
+    },
+    {
+      art: 'server',
+      title: 'One more server to babysit',
+      body: 'A local mock server needs installing, starting and keeping in sync on every machine — and it is never running on the one your teammate is using.',
+    },
+  ]}
+  whyTitle="Why teams mock their APIs on Stubbase"
+  starters={{
+    title: 'Starter mocks with real relations',
+    intro: 'Every new project offers these on its first screen — related tables with sample data, ready for the screens you are about to build.',
+    items: [
+      {
+        title: 'Blog',
+        body: 'Posts by authors, comments on posts. One query brings back a post with its author nested inside.',
+        head: 'GET /posts',
+        accent: '?_expand=author',
+        rows: [['Why we dropped the ORM', 'Sam Reyes'], ['Argon2 in practice', 'Mira Haddad'], ['Testing without mocks', 'Sam Reyes']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Orders that point at a customer and a product — expand both in one request for an order history screen.',
+        head: 'GET /orders',
+        accent: '?_expand=customer,product',
+        rows: [['orders', '8 rows'], ['customers', '4 rows'], ['products', '6 rows']],
+      },
+      {
+        title: 'Forkful recipes',
+        body: 'Six related tables — recipes, cuisines, ingredients, steps, reviews and collections — for a mock as big as a real product.',
+        head: 'GET /recipes',
+        accent: '?difficulty=easy',
+        rows: [['recipes', '6 rows'], ['ingredients', '10 rows'], ['steps', '7 rows']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More for building against a mock',
+    items: [
+      { tag: 'Free API', title: 'Six read-only practice APIs, no sign-up needed', href: '/free-api', tint: 'var(--syntax-fn)' },
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
+      { tag: 'Feature', title: 'Describe a domain in one sentence and get a schema, seed data and endpoints', href: '/features/ai-rest-api-generation', tint: 'var(--syntax-num)' },
+    ],
+  }}
+  solutions={['/roles/frontend-developer', '/roles/qa-engineer', '/use-cases/mvp-backend']}
+  faqs={[
+    {
+      q: 'How do relations work?',
+      a: 'Name a field after another resource with Id on the end — userId for users — and the relation is inferred. Add ?_expand=user and the matching user is nested inside each record. There is no schema language and no join to configure.',
+    },
+    {
+      q: 'Do writes persist?',
+      a: 'Yes. Every POST, PUT and DELETE is saved to disk before the response returns, so the record your form created is still there after a refresh, on another machine and in your teammate\'s session. Nothing resets between runs unless you change it.',
+    },
+    {
+      q: 'Can I paginate, filter and sort?',
+      a: 'Yes, in one request: field=value for an exact match, field[contains|gt|gte|lt|lte]=value for the rest, _sort with _direction, and _page with _limit (or _offset). X-Total-Count carries the unpaginated total.',
+    },
+    {
+      q: 'What happens when I edit the data in the dashboard?',
+      a: 'Records you save in a live table go live at once — and the save is refused if the API wrote to that table since you opened it, so nothing it wrote is lost. A new table, and any settings, wait as drafts until you press Deploy.',
+    },
+    {
+      q: 'Is there a spec I can import?',
+      a: 'Every project serves its own openapi.json, with a schema for each resource inferred from its records, so Postman, Insomnia and client generators can read the API without you writing a spec.',
+    },
+    {
+      q: 'Can the mock fail on purpose?',
+      a: 'Yes. Set QA_MODE=true and send x-stubbase-delay, x-stubbase-status, x-stubbase-error-rate or x-stubbase-empty on a request to get latency, a chosen status code, random failures or an empty list.',
+    },
+  ]}
+  cta={{
+    title: 'Your mock API is two minutes away',
+    body: 'Drop in a JSON file, get relational REST endpoints back — and keep every write.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'Try the free APIs', href: '/free-api' },
+    note: 'No credit card required',
+  }}
+>
+  {/* Someone holding two JSON files that have just been linked together. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <ellipse cx="210" cy="304" rx="72" ry="9" fill="currentColor" stroke="none" />
+    <path d="M170 170 Q204 162 242 168 L248 298 Q208 304 166 299 Z" class="fill-primary" />
+    <text x="207" y="246" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="30">{'{ }'}</text>
+    {/* Arms out to either side, each holding a file. */}
+    <path d="M174 192 Q140 196 118 176" />
+    <path d="M238 192 Q272 196 294 176" />
+    <path d="M204 82 C230 81 248 100 247 124 C246 150 228 168 204 167 C178 166 161 148 162 123 C163 98 180 83 204 82 Z" class="fill-background" />
+    <circle cx="192" cy="122" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="218" cy="122" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M192 140 Q205 152 218 140" />
+    <path d="M166 104 Q170 76 204 76 Q238 76 242 104 Q224 92 204 94 Q184 92 166 104 Z" fill="currentColor" />
+    <g transform="rotate(-8 80 150)">
+      <rect x="30" y="110" width="96" height="80" rx="8" class="fill-background" />
+      <path d="M30 128 H126" />
+      <text x="40" y="123" class="doodle-mono" fill="currentColor" stroke="none" font-size="10">users.json</text>
+      <text x="40" y="150" class="doodle-mono" fill="currentColor" stroke="none" font-size="11">id: 1</text>
+      <text x="40" y="170" class="doodle-mono" fill="currentColor" stroke="none" font-size="11">"Alice"</text>
+    </g>
+    <circle cx="118" cy="178" r="7" class="fill-background" />
+    <g transform="rotate(8 340 150)">
+      <rect x="290" y="110" width="104" height="80" rx="8" class="fill-background" />
+      <path d="M290 128 H394" />
+      <text x="300" y="123" class="doodle-mono" fill="currentColor" stroke="none" font-size="10">posts.json</text>
+      <text x="300" y="150" class="doodle-mono" fill="currentColor" stroke="none" font-size="11">id: 100</text>
+      <text x="300" y="170" class="doodle-mono fill-primary" stroke="none" font-size="11">userId: 1</text>
+    </g>
+    <circle cx="294" cy="178" r="7" class="fill-background" />
+    {/* The link between them. */}
+    <path d="M96 100 Q204 10 330 100" stroke-dasharray="6 7" class="stroke-primary" />
+    <path d="M318 92 L330 100 L318 108" class="stroke-primary" />
+    <text x="150" y="44" class="doodle-note fill-primary" stroke="none" font-size="22" transform="rotate(-4 150 44)">linked for you</text>
+    <text x="270" y="300" class="doodle-note" fill="currentColor" stroke="none" font-size="20" transform="rotate(-4 270 300)">and it remembers!</text>
+  </svg>
+
+  {/* 1. Relations — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center gap-6 overflow-hidden rounded-3xl border border-border-c p-8 sm:gap-10 sm:p-12">
+      <div class="hidden shrink-0 space-y-3 sm:block">
+        {[
+          { file: 'users.json', body: '{ "id": 1, "name": "Alice" }' },
+          { file: 'posts.json', body: '{ "id": 100, "userId": 1 }' },
+        ].map(({ file, body }) => (
+          <div class="w-60 rounded-xl border border-border-c bg-background">
+            <p class="flex items-center gap-2 border-b border-border-c px-3 py-1.5 font-mono text-[11px] text-subtle"><FileJson class="h-3.5 w-3.5 text-primary-accent" /> {file}</p>
+            <p class="px-3 py-2 font-mono text-[11px] text-code-fg">{body}</p>
+          </div>
+        ))}
+      </div>
+      <ArrowRight class="hidden h-8 w-8 shrink-0 text-primary-accent sm:block" />
+      <div class="w-64 shrink-0 rounded-xl border border-border-c bg-background">
+        <p class="border-b border-border-c px-3 py-1.5 font-mono text-[11px] text-subtle">GET /posts<span class="text-primary-ink">?_expand=user</span></p>
+        <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">100</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"userId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"user"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"name"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Alice"</span> <span class="text-syntax-punct">{'}'}</span>
+<span class="text-syntax-punct">{'}'}]</span></pre>
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">no join to configure</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">Relations</p>
+        <h3 class="text-2xl font-semibold text-foreground">Two files in, a connected API out</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Append <code class="font-mono text-sm text-emphasis">Id</code> to a key and the relationship is
+          inferred, with <code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=</code> on top
+          of it. No schema language, no migration step — the shape of your file is the shape of
+          your API.
+        </p>
+        <a href="/free-api" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Persistence. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6 font-mono text-[11px]">
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span><span class="text-subtle">POST</span> /posts <span class="text-primary-ink">"Written from the UI"</span></span>
+          <span class="rounded bg-primary-soft px-1.5 py-0.5 text-primary-soft-ink">201</span>
+        </p>
+        <p class="flex items-center justify-center gap-2 text-subtle"><RotateCw class="h-3.5 w-3.5" /> hard refresh · another browser · tomorrow</p>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span><span class="text-subtle">GET</span> /posts/101</span>
+          <span class="rounded bg-primary-soft px-1.5 py-0.5 text-primary-soft-ink">200 · still there</span>
+        </p>
+      </div>
+      <p class="feature-label mt-8">Persistence</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Writes that stick</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Every write is saved before the response returns. The record your form just created is
+        still there after a refresh, on another machine and in your teammate's session — so
+        optimistic updates and refetches behave the way they will in production.
+      </p>
+      <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>
+    </article>
+
+    {/* 3. Query. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6">
+        <pre class="rounded-xl border border-border-c bg-background px-4 py-3 font-mono text-[11px] leading-relaxed text-muted-foreground">GET /posts
+  <span class="text-primary-ink">?status=published</span>
+  <span class="text-primary-ink">&amp;_sort=createdAt&amp;_direction=desc</span>
+  <span class="text-primary-ink">&amp;_page=2&amp;_limit=20</span></pre>
+        <p class="self-start rounded-lg border border-primary-soft-border bg-primary-soft px-3 py-1.5 font-mono text-[11px] text-primary-soft-ink">200 OK · X-Total-Count: 128</p>
+      </div>
+      <p class="feature-label mt-8">Query</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">The requests a real list screen makes</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A sort header, a filter chip and a pager need three things a static fixture cannot give
+        you. They compose in one request, and the total your pager needs comes back in a header.
+      </p>
+      <a href="/roles/frontend-developer" class="explore-btn mt-auto">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Contract — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 items-center justify-center gap-4 p-8 sm:p-10">
+      <p class="flex shrink-0 items-center gap-2 rounded-xl border border-border-c bg-background px-3 py-2 font-mono text-xs text-foreground">
+        <FileJson class="h-4 w-4 text-primary-accent" /> openapi.json
+      </p>
+      <ArrowRight class="h-5 w-5 shrink-0 text-primary-accent" />
+      <ul class="space-y-2 text-xs">
+        {['Postman', 'Insomnia', 'openapi-typescript'].map((tool) => (
+          <li class="rounded-lg border border-border-c bg-background px-3 py-1.5 text-foreground">{tool}</li>
+        ))}
+      </ul>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Contract</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">A spec your tools can read</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Every project serves its own <code class="font-mono text-sm text-emphasis">openapi.json</code>,
+        with a schema per resource inferred from its records. Import it into an API client or a
+        type generator without writing a spec by hand.
+      </p>
+      <a href="/quick-start" class="explore-btn">Explore now</a>
+    </div>
+  </article>
+</RoleLayout>

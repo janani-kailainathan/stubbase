@@ -1,9 +1,8 @@
 // Single source of truth for the hub-and-spoke navigation. Header, footer and
-// the segment pages all read it, so a new spoke needs one entry here plus one
-// Markdown file — that cheapness is the point, because this set is meant to
-// keep growing.
+// the solution pages (RoleLayout's "Explore more solutions") all read it, so a
+// new page needs one entry here — and a page missing from it is one nobody finds.
 
-/** The two audience-segmented collections. Both render through SegmentLayout. */
+/** The two audience-segmented groups. Each page in them renders through RoleLayout. */
 export type SegmentKey = 'use-cases' | 'roles';
 export type NavGroupKey = SegmentKey | 'features' | 'compare';
 

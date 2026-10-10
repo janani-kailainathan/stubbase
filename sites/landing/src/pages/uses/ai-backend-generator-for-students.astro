@@ -1,321 +1,343 @@
 ---
-import { Sparkles, FileJson, Terminal, Play, Check, Loader, ArrowRight, ArrowLeft, ArrowUpRight, MousePointer2, Bot, KeyRound, LockOpen, Globe, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Zap } from 'lucide-astro';
-// The handwritten accent in the hero headline. Latin only, and imported here so
-// no other page downloads it.
-import '@fontsource/sedgwick-ave/latin-400.css';
-import Layout from '../../layouts/Layout.astro';
-import StudentsStart from '../../components/students/StudentsStart.astro';
-import StudentsQuery from '../../components/students/StudentsQuery.astro';
-import StudentsPipeline from '../../components/students/StudentsPipeline.astro';
-import StudentsAuth from '../../components/students/StudentsAuth.astro';
-import StudentsAgents from '../../components/students/StudentsAgents.astro';
-import StudentsWorkspace from '../../components/students/StudentsWorkspace.astro';
-import StudentsPlans from '../../components/students/StudentsPlans.astro';
+/*
+  The students page, on RoleLayout (after xmind.com/roles/student). This file
+  holds the words, the hero drawing, the four reasons and the free practice
+  APIs; the layout holds the shape. Plan figures in the FAQ are PLANS and
+  GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
+  differ by request limits alone, so never describe a feature here as paid.
+*/
+import { FileJson, Sparkles, ArrowRight, ArrowUpRight, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
-import { NAV_GROUPS } from '../../lib/nav';
 
 const publicResources = [
-  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper, tint: 'var(--syntax-fn)' },
-  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare, tint: 'var(--syntax-bool)' },
-  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3, tint: 'var(--syntax-num)' },
-  { path: '/photos', count: 5000, noun: 'photos', Icon: Image, tint: 'var(--syntax-fn)' },
-  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks, tint: 'var(--primary)' },
-  { path: '/users', count: 10, noun: 'users', Icon: Users, tint: 'var(--syntax-num)' },
+  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper },
+  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare },
+  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3 },
+  { path: '/photos', count: 5000, noun: 'photos', Icon: Image },
+  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks },
+  { path: '/users', count: 10, noun: 'users', Icon: Users },
 ];
-
-// Read straight from the nav rather than restating the three spokes here: nav.ts
-// is the single source of truth, so a new feature page shows up in this section
-// the moment it is added there, with no second list to keep in step.
-const features = NAV_GROUPS.find((group) => group.key === 'features')!;
-// Presentation only, like the nav's icons: a feature added to nav.ts without an
-// entry here still renders, with the fallback arrow.
-const FEATURE_ICONS: Record<string, typeof ArrowRight> = {
-  '/features/ai-rest-api-generation': Sparkles,
-  '/features/google-github-social-login': KeyRound,
-  '/features/instant-api-deployments': Zap,
-};
-const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)'];
-
 ---
 
-<Layout
+<RoleLayout
+  title="AI Backend Generator for Students — Stubbase"
+  description="Chat with AI or write one JSON file, your data model and database in one, and get a REST API with relationships linked automatically. Built for student projects."
+  eyebrow="Stubbase for students"
+  h1="The AI Backend Generator for Students"
+  subhead="No database to install, no server to deploy. Built for class projects, hackathons and portfolio apps."
+  primary={{ label: 'Generate API (Free)', href: APP_URL }}
+  secondary={{ label: 'Use Public APIs', href: '#free-resources' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-str)' },
+    { label: 'Lab partner', initial: 'L', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-bool)' },
+  ]}
+  clientsLabel="Works with whatever your course uses"
+  clients={['React', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Flutter', 'React Native', 'Android', 'SwiftUI', 'Python', 'Postman', 'curl']}
+  challengesTitle="What gets in the way of a student project?"
+  challenges={[
+    {
+      art: 'database',
+      title: 'A database to set up before anything else',
+      body: 'Most class projects stall before the interesting part: installing a database, writing a server, and wiring the two together. By the time it runs, the week you had for the frontend is gone.',
+    },
+    {
+      art: 'frontend',
+      title: 'A frontend with nothing real to call',
+      body: 'Hard-coded arrays get a screen drawn, but they never save, never page and never fail the way a real API does. The demo works until someone refreshes it.',
+    },
+    {
+      art: 'deadline',
+      title: 'Login and hosting eat the deadline',
+      body: 'Sign-up, passwords, tokens and somewhere to host it all are each a project of their own. On a hackathon clock, they are usually the part that does not ship.',
+    },
+  ]}
+  whyTitle="Why students build on Stubbase"
+  starters={{
+    title: 'Starter projects to learn from',
+    intro: 'Every new project offers these on its first screen, with real sample data and a query that shows what each one is for.',
+    items: [
+      {
+        title: 'Issue tracker',
+        body: 'One resource, ten tasks. The place to learn filtering, sorting and pagination on a list.',
+        head: 'GET /tasks',
+        accent: '?status=in_progress',
+        rows: [['Wire up the log stream', 'in_progress'], ['Add pagination', 'in_progress'], ['Chase the reconnect bug', 'in_progress']],
+      },
+      {
+        title: 'Blog',
+        body: 'Posts belong to authors and comments to posts, so one query brings back a post with its author nested inside.',
+        head: 'GET /posts',
+        accent: '?_expand=author',
+        rows: [['Why we dropped the ORM', 'Sam Reyes'], ['Argon2 in practice', 'Mira Haddad'], ['Testing without mocks', 'Sam Reyes']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Products, customers and orders that point at both, with anyone able to read and only a signed-in user able to write.',
+        head: 'GET /orders',
+        accent: '?status=shipped',
+        rows: [['#1 · 1 × product 3', 'shipped'], ['#2 · 2 × product 1', 'shipped'], ['#5 · 1 × product 4', 'shipped']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More resources for learning APIs',
+    items: [
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
+      { tag: 'Guide', title: 'How to get Google and GitHub OAuth keys', href: '/guides/google-github-oauth-keys', tint: 'var(--syntax-num)' },
+      { tag: 'Free API', title: 'Every field, filter and query of the practice APIs', href: '/free-api', tint: 'var(--syntax-fn)' },
+    ],
+  }}
+  solutions={['/roles/frontend-developer', '/roles/indie-hacker', '/roles/ai-engineer']}
+  faqs={[
+    {
+      q: 'Is Stubbase free for students?',
+      a: 'Yes. The Free plan has every feature, with no credit card and no trial that runs out: 10,000 requests a month, 5 requests a second with bursts of 20, and 1,000 AI credits when you sign up, valid for 3 months. That covers a class project or a hackathon demo.',
+    },
+    {
+      q: 'Do I need to install a database or run a server?',
+      a: 'No. You describe your data as a JSON file, or in a sentence to the AI Co-Pilot, and Stubbase serves it as a REST API at a public URL. Everything happens in the browser, and every write is saved as it happens.',
+    },
+    {
+      q: 'Can the AI build the backend for me?',
+      a: 'The AI Co-Pilot turns a description like "a study planner with courses, assignments and grades" into tables, the relations between them and sample records. New tables are staged as drafts, so nothing goes live until you press Deploy.',
+    },
+    {
+      q: 'Which languages and frameworks does it work with?',
+      a: 'Anything that can make an HTTP request: React, Vue, Angular, Flutter, Android, iOS, Python, Postman or curl. Public routes send Access-Control-Allow-Origin: *, so a fetch works from localhost and from your deployed app alike.',
+    },
+    {
+      q: 'Can I add sign-up and login to my project?',
+      a: "Yes. Set AUTH_ENABLED=true in your project's .env and you get sign-up with email verification, login, refresh tokens and password reset. Google and GitHub login need their client id and secret on top.",
+    },
+    {
+      q: 'What is the difference between the free practice APIs and my own project?',
+      a: 'The practice APIs are one shared, read-only project, so everyone sees the same data and no account is needed. Your own project gives you full CRUD — GET, POST, PUT and DELETE on every resource — over data only you control.',
+    },
+  ]}
   cta={{
     title: 'Generate your first API in seconds.',
-    body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free resources. No database to run, no server to deploy.',
+    body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free practice APIs. No database to run, no server to deploy.',
     label: 'Generate API (Free)',
     href: APP_URL,
     secondary: { label: 'Use Public APIs', href: '#free-resources' },
     note: 'No credit card required',
   }}
-  title="AI Backend Generator for Students — Stubbase"
-  description="Chat with AI or write one JSON file, your data model and database in one, and get a REST API with relationships linked automatically. Built for student projects."
 >
-  {/*
-    Hero, after xmind.com's: a centred two-line headline with two handwritten
-    accent words, on a dot-grid canvas with pieces of a working project pinned
-    around it and teammates' cursors pointing at them. The pieces are
-    decoration (aria-hidden, desktop only); everything they say is also said
-    in the page's own text. The H1 is the URL's keyword — it is an SEO target.
-    No script: the entrance and the cursors' drift are CSS, and both stop
-    under prefers-reduced-motion.
-  */}
-  <section class="hero relative overflow-hidden">
-    <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
+  {/* A student, mid-thought, with the pieces of a project around them. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    {/* Ground. */}
+    <ellipse cx="196" cy="304" rx="78" ry="9" fill="currentColor" stroke="none" />
+    {/* Body, with braces on the shirt. */}
+    <path d="M156 170 Q190 162 228 168 L234 298 Q194 304 152 299 Z" class="fill-primary" />
+    <text x="193" y="248" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="34">{'{ }'}</text>
+    {/* Arm up, scratching the head. */}
+    <path d="M160 190 C130 182 122 152 138 134" />
+    <circle cx="142" cy="128" r="8" class="fill-background" />
+    {/* Head. */}
+    <path d="M190 82 C216 81 234 100 233 124 C232 150 214 168 190 167 C164 166 147 148 148 123 C149 98 166 83 190 82 Z" class="fill-background" />
+    <circle cx="177" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="204" cy="124" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M182 142 Q192 149 202 141" />
+    {/* Mortarboard and tassel. */}
+    <path d="M162 92 L162 104 Q192 116 222 104 L222 92" fill="currentColor" />
+    <path d="M138 84 L192 62 L246 84 L192 104 Z" fill="currentColor" />
+    <path d="M192 83 L238 90 L240 116" stroke-width="2.5" />
+    <rect x="235" y="114" width="10" height="14" rx="2" class="fill-primary" stroke-width="2" />
+    {/* Other arm, holding a laptop that shows a request. */}
+    <path d="M226 192 Q252 206 258 228" />
+    <path d="M250 194 L332 188 L336 246 L254 252 Z" class="fill-background" />
+    <text x="292" y="218" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="13">GET</text>
+    <text x="294" y="236" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">200 OK</text>
+    <path d="M242 254 L346 247 L340 258 L246 264 Z" fill="currentColor" />
+    {/* A paper plane, and the line it flew in on. */}
+    <path d="M30 196 L104 166 L80 222 L70 202 Z" class="fill-background" />
+    <path d="M70 202 L104 166" />
+    <path d="M22 156 Q40 126 78 134" class="stroke-primary" />
+    <path d="M68 126 L80 134 L70 145" class="stroke-primary" />
+    {/* A database, which is the thing nobody has to install. */}
+    <ellipse cx="364" cy="128" rx="28" ry="9" class="fill-primary" />
+    <path d="M336 128 L336 168 Q364 182 392 168 L392 128" class="fill-background" />
+    <path d="M336 148 Q364 160 392 148" stroke-width="2.5" />
+    <path d="M346 98 L382 194" class="stroke-primary" stroke-width="3.5" />
+    {/* Sparkles and an arrow up and away. */}
+    <path d="M96 52 L100 66 L114 70 L100 74 L96 88 L92 74 L78 70 L92 66 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <path d="M374 262 L377 272 L387 275 L377 278 L374 288 L371 278 L361 275 L371 272 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <path d="M282 64 Q300 40 318 30" class="stroke-primary" />
+    <path d="M304 28 L320 28 L318 44" class="stroke-primary" />
+    <text x="44" y="276" class="doodle-note" fill="currentColor" stroke="none" font-size="22" transform="rotate(-6 44 276)">due friday!</text>
+  </svg>
 
-    <div class="relative mx-auto max-w-7xl px-6 pt-16 pb-16 lg:pt-24 xl:pt-32 xl:pb-40">
-      {/* Only from xl: below that the headline needs the width the pieces sit in. */}
-      <div aria-hidden="true" class="pointer-events-none absolute inset-0 mx-6 hidden xl:block">
-        {/* Top left: a class project's resource file, wired to what it becomes. */}
-        <div class="hero-piece absolute top-12 left-0 w-56 [--d:0.35s]">
-          <div class="rounded-xl border border-border-c bg-card">
-            <div class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
-              <FileJson class="h-3.5 w-3.5 text-primary-accent" />
-              assignments.json
-            </div>
-            <pre class="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{"{"}</span>
+  {/* Four reasons, in xmind's three shapes: one wide block with its words split
+      under the picture, two cards side by side, one with the picture on its
+      left. Each picture is a drawn piece of the dashboard, not a screenshot. */}
+  {/* 1. JSON to REST — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center gap-6 overflow-hidden rounded-3xl border border-border-c p-8 sm:gap-10 sm:p-12">
+      <div class="w-56 shrink-0 -rotate-2 rounded-xl border border-border-c bg-background">
+        <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-xs text-subtle">
+          <FileJson class="h-3.5 w-3.5 text-primary-accent" /> assignments.json
+        </p>
+        <pre class="px-3 py-2.5 font-mono text-xs leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
   <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
   <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
-<span class="text-syntax-punct">{"}"}]</span></pre>
-          </div>
-          <div class="ml-6 h-6 w-px border-l border-dashed border-border-strong"></div>
-          <div class="ml-6 flex items-center">
-            <div class="w-5 border-t border-dashed border-border-strong"></div>
-            <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-              A REST API for your<br />class project, in seconds
-            </div>
-          </div>
-          <div class="hero-cursor absolute top-3 -right-20 [--c:var(--syntax-str)] [--drift:6px]">
-            <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
-            <span class="mt-0.5 ml-3 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Y</span>
-              You
-            </span>
-          </div>
-        </div>
-
-        {/* Top right: a write, and where it went. */}
-        <div class="hero-piece absolute top-20 right-4 w-36 [--d:0.5s]">
-          <div class="rounded-lg border border-primary-soft-border bg-primary-soft p-3">
-            <p class="font-mono text-xs text-subtle">201</p>
-            <p class="text-3xl font-extrabold text-foreground">POST</p>
-            <p class="font-mono text-xs text-muted-foreground">/assignments</p>
-            <p class="font-mono text-[11px] text-subtle">[saved]</p>
-          </div>
-          <div class="ml-10 h-6 w-px bg-border-strong"></div>
-          <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-            Still there<br />after a refresh
-          </div>
-          <div class="hero-cursor absolute -top-10 -left-32 flex flex-col items-end [--c:var(--syntax-num)] [--drift:-5px]">
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">L</span>
-              Lab partner
-            </span>
-            <MousePointer2 class="mt-0.5 mr-1 h-5 w-5 -scale-x-100 rotate-180 fill-current text-(--c)" />
-          </div>
-        </div>
-
-        {/* Bottom left: a read, with a loose curve back towards the buttons. */}
-        <div class="hero-piece absolute bottom-6 left-10 flex items-end gap-2 [--d:0.65s]">
-          <div class="w-32 rounded-lg border border-border-c bg-card p-3">
-            <p class="font-mono text-xs text-subtle">200</p>
-            <p class="text-3xl font-extrabold text-foreground">GET</p>
-            <p class="font-mono text-xs text-muted-foreground">/courses</p>
-            <p class="font-mono text-[11px] text-subtle">[12 records]</p>
-          </div>
-          <svg class="mb-6 h-14 w-24 text-border-strong" viewBox="0 0 96 56" fill="none">
-            <path d="M4 48 H44 Q72 48 76 24 V10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" stroke-linecap="round" />
-            <path d="M70 16 L76 8 L82 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </div>
-
-        {/* Bottom right: a sign-in, with nothing to build behind it. */}
-        <div class="hero-piece absolute right-0 bottom-4 [--d:0.8s]">
-          <div class="ml-auto w-fit rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-            Sign-up and login<br />already built in
-          </div>
-          <div class="mr-12 ml-auto h-5 w-px bg-border-strong"></div>
-          <div class="flex items-stretch gap-2">
-            <div class="rounded-lg border border-border-c bg-card px-3 py-2 font-mono text-[11px] leading-relaxed">
-              <span class="text-syntax-punct">POST</span> <span class="text-syntax-str">/auth/login</span><br />
-              <span class="text-syntax-str">email</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"ana@uni.edu"</span>
-            </div>
-            <div class="flex flex-col justify-center rounded-lg border border-border-c bg-card px-3 text-center">
-              <p class="text-xl font-extrabold text-foreground">200</p>
-              <p class="font-mono text-[10px] text-subtle">token issued</p>
-            </div>
-          </div>
-          <div class="hero-cursor absolute top-2 -left-24 [--c:var(--syntax-bool)] [--drift:4px]">
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-background"><Bot class="h-3 w-3" /></span>
-              AI Co-Pilot
-            </span>
-            <MousePointer2 class="mt-0.5 ml-auto h-5 w-5 -scale-x-100 fill-current text-(--c)" />
-          </div>
-        </div>
+  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"due"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"2026-12-04"</span>
+<span class="text-syntax-punct">{'}'}]</span></pre>
       </div>
-
-      <div class="relative mx-auto max-w-4xl text-center">
-        <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground md:text-5xl lg:text-6xl">
-          The <span class="hero-accent">AI</span> Backend Generator{' '}<br class="hidden sm:inline" />
-          for <span class="hero-accent">Students</span>
-        </h1>
-        <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">
-          No database to install, no server to deploy. Built for class projects, hackathons and
-          portfolio apps.
+      <ArrowRight class="hidden h-8 w-8 shrink-0 text-primary-accent sm:block" />
+      <div class="hidden w-80 shrink-0 rounded-xl border border-border-c bg-background p-2 sm:block">
+        {
+          [
+            ['GET', '/assignments'],
+            ['GET', '/assignments/1'],
+            ['POST', '/assignments'],
+            ['PUT', '/assignments/1'],
+            ['DELETE', '/assignments/1'],
+            ['GET', '/assignments?_expand=course'],
+          ].map(([method, path]) => (
+            <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs text-muted-foreground">
+              <span class="w-14 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
+              <span class={path.includes('_expand') ? 'text-primary-ink' : ''}>{path}</span>
+            </p>
+          ))
+        }
+      </div>
+      <span class="doodle-note absolute right-8 bottom-6 hidden -rotate-3 text-xl text-primary-ink lg:block">relations, linked for you</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">JSON to REST</p>
+        <h3 class="text-2xl font-semibold text-foreground">One JSON file becomes a REST API</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Write your data as a list of objects and every resource gets GET, POST, PUT and DELETE at
+          a public URL. Name a field <code class="font-mono text-sm whitespace-nowrap text-emphasis">courseId</code> and
+          {" "}<code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=course</code> nests the course inside
+          — the relation is the data model, with no schema to write first.
         </p>
-
-        <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
-          <a href={APP_URL} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
-            <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
-            Generate API (Free)
-          </a>
-          <a href="#free-resources" class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
-            Use Public APIs
-          </a>
-        </div>
-        <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">
-          No credit card required
-        </p>
+        <a href="/use-cases/mock-apis" class="explore-btn">Explore now</a>
       </div>
     </div>
+  </article>
 
-    <div class="hero-rise relative mx-auto max-w-5xl px-6 pb-20 [--d:0.4s]">
-      <div class="rounded-2xl bg-muted-hover p-1.5">
-        <div class="overflow-hidden rounded-xl border border-border-c bg-background p-2">
-          <img
-            src="/dashboard-ui.png"
-            alt="Stubbase Dashboard UI"
-            class="w-full rounded-lg border border-border-faint"
-          />
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. AI Co-Pilot. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
+        <div class="absolute top-8 left-6 w-64 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
+          <p class="mb-2 flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
+          <p class="text-sm leading-relaxed text-foreground">A study planner with courses, assignments and grades.</p>
+          <div class="mt-3 flex items-center justify-between">
+            <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables</span>
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><ArrowRight class="h-4 w-4" /></span>
+          </div>
+        </div>
+        <div class="absolute right-6 bottom-6 flex gap-2">
+          {
+            [
+              { name: 'courses', fields: ['id', 'name', 'term'] },
+              { name: 'assignments', fields: ['id', 'title', 'courseId'] },
+              { name: 'grades', fields: ['id', 'score', 'assignmentId'] },
+            ].map((table, i) => (
+              <div class={`w-28 rounded-xl border border-border-c bg-background ${i === 1 ? '-translate-y-5' : ''} ${i === 0 ? 'hidden sm:block' : ''}`}>
+                <p class="border-b border-border-c px-3 py-1.5 font-mono text-[11px] font-semibold text-foreground">{table.name}</p>
+                <ul class="px-3 py-1.5 font-mono text-[11px] leading-5">
+                  {table.fields.map((field) => (
+                    <li class={field.endsWith('Id') ? 'text-primary-ink' : 'text-muted-foreground'}>{field}</li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          }
         </div>
       </div>
+      <p class="feature-label mt-8">AI Co-Pilot</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Describe your app, get the backend</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Tell the Co-Pilot what you are building in one sentence. It designs the tables, links
+        them and fills them with sample records, staged as drafts until you press Deploy — so
+        you stay in charge of what goes live.
+      </p>
+      <a href="/features/ai-rest-api-generation" class="explore-btn mt-auto self-start">Explore now</a>
+    </article>
+
+    {/* 3. Sign-in. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
+        <div class="absolute top-8 left-6 w-56 rounded-2xl border border-border-c bg-background p-4">
+          <p class="mb-3 text-sm font-semibold text-foreground">Sign in to Study Planner</p>
+          <p class="mb-2 rounded-lg border border-border-c px-3 py-1.5 text-xs text-subtle">ana@uni.edu</p>
+          <p class="mb-3 rounded-lg border border-border-c px-3 py-1.5 text-xs text-subtle">••••••••••</p>
+          <p class="mb-2 rounded-lg bg-primary py-1.5 text-center text-xs font-semibold text-primary-foreground">Log in</p>
+          <div class="grid grid-cols-2 gap-2 text-center text-[11px] font-medium text-muted-foreground">
+            <span class="rounded-lg border border-border-c py-1">Google</span>
+            <span class="rounded-lg border border-border-c py-1">GitHub</span>
+          </div>
+        </div>
+        <div class="absolute right-6 bottom-8 w-48 rotate-2 rounded-xl border border-border-c bg-background px-3 py-2.5 font-mono text-[11px] leading-relaxed">
+          <span class="text-syntax-punct">POST</span> <span class="text-syntax-str">/auth/login</span><br />
+          <span class="text-subtle">200 ·</span> <span class="text-syntax-fn">token</span><span class="text-syntax-punct">,</span> <span class="text-syntax-fn">refreshToken</span>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Authentication</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Sign-up and login, already built</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Switch on auth with one setting and your API gets sign-up with email verification, login,
+        password reset and Google or GitHub sign-in. Each user's records are their own, with no
+        password hashing for you to get wrong.
+      </p>
+      <a href="/features/google-github-social-login" class="explore-btn mt-auto self-start">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Deploy — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 flex-col items-start justify-center gap-4 p-8 sm:p-10">
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"><Rocket class="h-4 w-4" /> Deploy</span>
+        <span class="flex items-center gap-1.5 rounded-full border border-primary-soft-border bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary-soft-ink">
+          <span class="h-1.5 w-1.5 rounded-full bg-primary"></span> Live
+        </span>
+      </div>
+      <p class="max-w-full truncate rounded-xl border border-border-c bg-background px-3 py-2 font-mono text-xs text-emphasis">
+        {CORE_URL}/study-planner/assignments
+      </p>
+      <ul class="space-y-1.5 text-xs text-muted-foreground">
+        {['Your React app', 'Your teammate\'s Android build', 'The marker\'s Postman'].map((who) => (
+          <li class="flex items-center gap-2"><Check class="h-3.5 w-3.5 text-primary-accent" /> {who}</li>
+        ))}
+      </ul>
     </div>
-  </section>
-
-  <StudentsStart />
-
-  <StudentsQuery />
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Deploy</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">One URL your whole team can call</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A new table waits as a draft until you press Deploy, then goes live with no downtime.
+        Every endpoint is a public URL, so a web app, a phone app and whoever grades it all point
+        at the same project.
+      </p>
+      <a href="/features/instant-api-deployments" class="explore-btn self-start">Explore now</a>
+    </div>
+  </article>
 
   {/*
-    Try it live, after xmind's "Global security & privacy" grid: white cards
-    around one tall dark card. Here the tall card is the terminal the Run
-    button fills, so the answer lands where the eye already is. The runner
-    script below owns #run-script-btn, #output-container, #script-output,
-    #success-msg and #output-placeholder — keep the ids.
+    The public demo project's six resources, each opening its live endpoint.
+    The hero's and the footer's "Use Public APIs" land here — keep the id.
   */}
-  <section>
-    <div class="mx-auto max-w-6xl px-6 py-24">
-      <div class="reveal mx-auto mb-12 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Try it live</h2>
-        <p class="font-medium text-muted-foreground">
-          Run this code here, in your console, or from any frontend application.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:grid-rows-[auto_1fr] [&>*]:min-w-0">
-        {/* The request. */}
-        <div class="reveal flex flex-col rounded-3xl border border-border-c bg-card p-6 sm:p-8 lg:col-span-2">
-          <h3 class="mb-2 text-xl font-semibold text-foreground">One call to a live API</h3>
-          <p class="mb-6 max-w-lg text-muted-foreground">
-            A real request to the public demo project, answered by the same engine that serves yours.
-          </p>
-          <div class="overflow-hidden rounded-2xl border border-border-c bg-code-bg text-left">
-            <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
-              <Terminal class="h-4 w-4 text-subtle" />
-              <span class="font-mono text-xs text-subtle">fetch.js</span>
-            </div>
-            <pre
-              class="overflow-x-auto p-5 font-mono text-sm leading-relaxed text-emphasis"><code><span class="text-syntax-fn">fetch</span>(<span class="text-syntax-str">'{CORE_URL}/public/users/1'</span>)
-  .<span class="text-syntax-fn">then</span>(response =&gt; response.<span class="text-syntax-fn">json</span>())
-  .<span class="text-syntax-fn">then</span>(json =&gt; console.<span class="text-syntax-fn">log</span>(json))</code></pre>
-          </div>
-          <div class="mt-6">
-            <span class="inline-block rounded-2xl bg-muted-hover p-1">
-              <button
-                id="run-script-btn"
-                class="flex items-center gap-2 rounded-xl bg-contrast px-5 py-2.5 text-sm font-semibold text-contrast-foreground transition-colors hover:bg-contrast-hover"
-              >
-                <span class="flex items-center gap-2 data-[hidden]:hidden" data-state="idle">
-                  <Play class="h-4 w-4" /> Run script
-                </span>
-                <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="loading">
-                  <Loader class="h-4 w-4 animate-spin" /> Running...
-                </span>
-                <span class="hidden items-center gap-2 data-[hidden]:hidden" data-state="done">
-                  <Check class="h-4 w-4 text-primary-accent" /> Done
-                </span>
-              </button>
-            </span>
-          </div>
-        </div>
-
-        {/* The answer: the tall dark card. */}
-        <div class="reveal try-terminal relative flex min-h-96 flex-col overflow-hidden rounded-3xl border border-border-c p-6 sm:p-8 lg:row-span-2">
-          <h3 class="relative mb-2 text-xl font-semibold text-foreground">The response</h3>
-          <p class="relative mb-6 text-muted-foreground">Straight from the API, highlighted as it lands.</p>
-
-          <div id="output-placeholder" class="relative flex flex-1 flex-col items-center justify-center text-center">
-            <div class="try-badge relative mb-5 flex h-28 w-28 items-center justify-center rounded-full">
-              <span class="flex h-16 w-16 items-center justify-center rounded-2xl border border-primary-soft-border bg-primary-soft text-primary-accent">
-                <Play class="h-7 w-7" />
-              </span>
-            </div>
-            <p class="font-mono text-xs text-subtle">GET /public/users/1</p>
-            <p class="mt-1 text-sm text-muted-foreground">Press Run script to call it.</p>
-          </div>
-
-          <div
-            id="output-container"
-            class="relative hidden overflow-hidden rounded-2xl border border-border-c bg-code-bg text-left"
-          >
-            <div class="flex items-center gap-2 border-b border-border-c bg-chrome px-4 py-3">
-              <FileJson class="h-4 w-4 text-subtle" />
-              <span class="font-mono text-xs text-subtle">Output</span>
-            </div>
-            <div
-              id="script-output"
-              class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-emphasis"
-            >
-            </div>
-          </div>
-
-          <p id="success-msg" class="relative mt-5 hidden text-sm text-muted-foreground">
-            Congrats! You've made your first call to Stubbase. 🎉
-          </p>
-        </div>
-
-        {/* Two small cards: why that call works from anywhere. */}
-        <div class="reveal rounded-3xl border border-border-c bg-card p-6 sm:p-8">
-          <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary-accent">
-            <LockOpen class="h-6 w-6" />
-          </span>
-          <h3 class="mb-2 text-lg font-semibold text-foreground">No login, no API key</h3>
-          <p class="text-sm leading-relaxed text-muted-foreground">
-            The demo project is public, so this call needs nothing from you. Paste it into your
-            console and it answers there too.
-          </p>
-        </div>
-        <div class="reveal rounded-3xl border border-border-c bg-card p-6 sm:p-8">
-          <span class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-(--syntax-fn)/15 text-syntax-fn">
-            <Globe class="h-6 w-6" />
-          </span>
-          <h3 class="mb-2 text-lg font-semibold text-foreground">Open to every origin</h3>
-          <p class="text-sm leading-relaxed text-muted-foreground">
-            Public routes answer with <code class="font-mono text-xs text-emphasis">Access-Control-Allow-Origin: *</code>,
-            so the same fetch runs from localhost or your deployed app.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  {/*
-    Free Resources: the public demo project's six resources as plain link
-    cards, each opening the live endpoint; /free-api is the full reference.
-    The project is read-only, so CRUD is a student's own project.
-  */}
-  <section id="free-resources">
+  <section slot="extra" id="free-resources" class="scroll-mt-24">
     <div class="mx-auto max-w-5xl px-6 py-24">
       <div class="reveal mx-auto mb-10 max-w-2xl text-center">
         <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free APIs to practise with</h2>
@@ -332,14 +354,13 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
 
       <ul class="reveal grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {
-          publicResources.map(({ path, count, noun, Icon, tint }) => (
+          publicResources.map(({ path, count, noun, Icon }) => (
             <li>
               <a
                 href={`${CORE_URL}/public${path}`}
                 class="group flex items-center gap-4 rounded-2xl border border-border-c bg-card p-4 transition-colors hover:bg-muted"
-                style={`--tint: ${tint}`}
               >
-                <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)">
+                <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-accent">
                   <Icon class="h-5 w-5" />
                 </span>
                 <span class="min-w-0 flex-1">
@@ -353,12 +374,6 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
         }
       </ul>
 
-      <p class="reveal mt-8 flex justify-center">
-        <a href="/free-api" class="inline-flex items-center gap-2 rounded-xl border border-border-c bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
-          See every field, filter and query <ArrowRight class="h-4 w-4" />
-        </a>
-      </p>
-
       <p class="reveal mt-10 text-center text-sm text-muted-foreground">
         These are read-only, so everyone sees the same data.{' '}
         <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
@@ -368,140 +383,7 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
       </p>
     </div>
   </section>
-
-  <StudentsPipeline />
-
-  <StudentsAuth />
-
-  <StudentsAgents />
-
-  <StudentsWorkspace />
-
-  <StudentsPlans />
-
-  {/*
-    Hub-to-spoke internal links, and deliberately the last band on the page: a
-    reader who has run the demo and seen the free resources is the one with a
-    reason to go deeper. Rendered as link cards rather than the icon-chip cards
-    used higher up, so the affordance reads as navigation rather than as a third
-    identical feature grid.
-  */}
-  <section>
-    <div class="mx-auto max-w-6xl px-6 py-24">
-      <div class="reveal mx-auto mb-14 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore Stubbase Features</h2>
-        <p class="font-medium leading-relaxed text-muted-foreground">
-          Each feature has a page of its own — how it works, the exact configuration it takes, and
-          what it replaces.
-        </p>
-      </div>
-      {/*
-        After xmind's "Trusted by top industry evaluators": a row of shields,
-        each with a ribbon across it. They say "Feature", never an award — the
-        shape is borrowed, the claim is not. The blurb and link sit under each
-        shield so no copy is lost to the drawing.
-      */}
-      <ul class="reveal flex flex-wrap justify-center gap-x-10 gap-y-14">
-        {
-          features.links.map((link, i) => {
-            const Icon = FEATURE_ICONS[link.href] ?? ArrowUpRight;
-            return (
-              <li class="w-full max-w-72 sm:w-72" style={`--tint: ${FEATURE_TINTS[i % FEATURE_TINTS.length]}`}>
-                <a href={link.href} class="group flex flex-col items-center text-center">
-                  <span class="feature-badge relative mb-6 block h-44 w-36 transition-transform duration-200 group-hover:-translate-y-1">
-                    <span class="feature-shield absolute inset-0 bg-border-strong"></span>
-                    <span class="feature-shield absolute inset-px flex flex-col items-center bg-card pt-4">
-                      <span class="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-subtle uppercase">
-                        <span class="hero-mark h-3 w-3 bg-current" aria-hidden="true"></span>
-                        Stubbase
-                      </span>
-                      <span class="mt-3 flex h-11 w-11 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint)">
-                        <Icon class="h-6 w-6" />
-                      </span>
-                    </span>
-                    <span class="absolute inset-x-[-10px] top-[62%] flex h-7 items-center justify-center rounded-sm bg-(--tint) text-[11px] font-bold tracking-widest text-background uppercase">
-                      Feature
-                    </span>
-                  </span>
-                  <h3 class="mb-2 font-semibold text-foreground">{link.label}</h3>
-                  <p class="mb-4 text-sm leading-relaxed text-muted-foreground">{link.blurb}</p>
-                  <span class="inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink transition-colors group-hover:text-primary-ink-hover">
-                    Read more
-                    <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </a>
-              </li>
-            );
-          })
-        }
-      </ul>
-    </div>
-  </section>
-
-</Layout>
-
-<script>
-  import { CORE_URL } from '../../lib/urls';
-
-  const btn = document.getElementById('run-script-btn') as HTMLButtonElement | null;
-  const outContainer = document.getElementById('output-container');
-  const outText = document.getElementById('script-output');
-  const successMsg = document.getElementById('success-msg');
-  const placeholder = document.getElementById('output-placeholder');
-
-  const FALLBACK_USER = { id: 1, name: 'Ava Chen', role: 'admin', active: true };
-
-  function setButtonState(state: 'idle' | 'loading' | 'done') {
-    btn?.querySelectorAll<HTMLElement>('[data-state]').forEach((span) => {
-      span.classList.toggle('hidden', span.dataset.state !== state);
-      span.classList.toggle('flex', span.dataset.state === state);
-    });
-    if (state === 'done' && btn) {
-      btn.classList.remove('bg-contrast', 'hover:bg-contrast-hover', 'text-contrast-foreground');
-      btn.classList.add('border', 'border-border-c', 'bg-card', 'text-foreground');
-    }
-  }
-
-  function highlightJson(value: unknown): string {
-    const json = JSON.stringify(value, null, 2)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    const tokenRe =
-      /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
-    return json.replace(tokenRe, (match, str, colon, boolNull, num, punct) => {
-      if (str) {
-        const cls = colon ? 'text-syntax-str' : 'text-syntax-fn';
-        return `<span class="${cls}">${str}</span>${colon ?? ''}`;
-      }
-      if (boolNull) return `<span class="text-syntax-bool">${boolNull}</span>`;
-      if (num) return `<span class="text-syntax-num">${num}</span>`;
-      if (punct) return `<span class="text-subtle">${punct}</span>`;
-      return match;
-    });
-  }
-
-  btn?.addEventListener('click', async () => {
-    btn.disabled = true;
-    setButtonState('loading');
-
-    let data: unknown;
-    try {
-      const response = await fetch(`${CORE_URL}/public/users/1`);
-      if (!response.ok) throw new Error(String(response.status));
-      data = await response.json();
-    } catch {
-      data = FALLBACK_USER;
-    }
-
-    if (outText) outText.innerHTML = `<pre class="whitespace-pre-wrap">${highlightJson(data)}</pre>`;
-    placeholder?.classList.add('hidden');
-    outContainer?.classList.remove('hidden');
-    successMsg?.classList.remove('hidden');
-    setButtonState('done');
-    btn.disabled = false;
-  });
-</script>
+</RoleLayout>
 
 <script>
   import { GOOGLE_CLIENT_ID } from '../../lib/urls';
@@ -614,191 +496,3 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
 
   void startOneTap();
 </script>
-
-{/*
-  Global, not scoped: the sections in components/students/ share these classes
-  (reveal, bento, the pipeline tabs, the cursors). The page is the only one that
-  imports them, so they load on this page alone.
-*/}
-<style is:global>
-  /* The canvas: a dot grid that fades out towards the edges. */
-  .hero-dots {
-    background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
-    background-size: 20px 20px;
-    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 75%);
-    opacity: 0.6;
-  }
-
-  /* The handwritten words, each on a tinted card like a sticky note. */
-  .hero-accent {
-    display: inline-block;
-    padding: 0 0.12em;
-    font-family: 'Sedgwick Ave', cursive;
-    font-weight: 400;
-    color: var(--primary-ink);
-    background: var(--primary-soft);
-    rotate: -2deg;
-  }
-
-  /* The logo mark in the button's own text colour, whatever the theme. */
-  .hero-mark {
-    mask: url('/stubbase-logo.svg') center / contain no-repeat;
-  }
-
-  /* Entrance: the text rises out of a blur, then the canvas pieces follow.
-     `--d` staggers them. */
-  .hero-rise,
-  .hero-piece {
-    animation: hero-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s) both;
-  }
-  @keyframes hero-in {
-    from {
-      opacity: 0;
-      filter: blur(8px);
-      translate: 0 12px;
-    }
-  }
-
-  /* Teammates' cursors drift a few pixels, as if someone were holding them. */
-  .hero-cursor {
-    animation: hero-drift 5s ease-in-out infinite alternate;
-  }
-  @keyframes hero-drift {
-    to {
-      translate: var(--drift, 5px) calc(var(--drift, 5px) * -0.6);
-    }
-  }
-
-  /* Capability cards: the card surface with a wash of its own colour rising
-     from the bottom right, where the drawing sits. */
-  .bento {
-    background:
-      radial-gradient(90% 80% at 100% 100%, color-mix(in oklab, var(--tint) 16%, transparent), transparent 70%),
-      var(--card);
-  }
-  .bento-link {
-    position: absolute;
-    right: 1.25rem;
-    bottom: 1.25rem;
-    z-index: 10;
-    display: flex;
-    height: 2.25rem;
-    width: 2.25rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    background: var(--contrast);
-    color: var(--contrast-foreground);
-    transition: background-color 150ms ease;
-  }
-  .bento-link:hover {
-    background: var(--contrast-hover);
-  }
-  .bento-link:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-
-  /* Pipeline tabs. The checked radio picks its tab's look and its panel; the
-     first panel is also the fallback if nothing is checked. */
-  .pipe-panel {
-    display: none;
-    background: color-mix(in oklab, var(--tint) 9%, var(--card));
-    border: 1px solid color-mix(in oklab, var(--tint) 18%, var(--border-c));
-  }
-  .pipeline:has(input[value='auth']:checked) [data-stage='auth'],
-  .pipeline:has(input[value='chaos']:checked) [data-stage='chaos'],
-  .pipeline:has(input[value='validation']:checked) [data-stage='validation'],
-  .pipeline:has(input[value='hooks']:checked) [data-stage='hooks'],
-  .pipeline:has(input[value='notify']:checked) [data-stage='notify'] {
-    display: block;
-  }
-
-  /* Query section: the open item picks the preview; with every item closed,
-     the first preview stays up rather than leaving an empty frame. */
-  .q-preview {
-    display: none;
-  }
-  .query:has(details[data-q='filter'][open]) .q-preview[data-q='filter'],
-  .query:has(details[data-q='sort'][open]) .q-preview[data-q='sort'],
-  .query:has(details[data-q='page'][open]) .q-preview[data-q='page'],
-  .query:has(details[data-q='expand'][open]) .q-preview[data-q='expand'],
-  .query:has(details[data-q='time'][open]) .q-preview[data-q='time'],
-  .query:has(details[data-q='openapi'][open]) .q-preview[data-q='openapi'],
-  .query:not(:has(details[open])) .q-preview[data-q='filter'] {
-    display: flex;
-  }
-  .q-item[open] {
-    border-color: var(--border-strong);
-  }
-
-  /* Agent cards: a picture on a wash of the card's own colour, as xmind's
-     integration cards sit on their brand colours. */
-  .agent-art {
-    background:
-      radial-gradient(90% 90% at 100% 0%, color-mix(in oklab, var(--tint) 22%, transparent), transparent 70%),
-      color-mix(in oklab, var(--tint) 7%, var(--card));
-  }
-  .pipe-tab:has(:checked) {
-    background: var(--card);
-    border-color: var(--border-c);
-    color: var(--foreground);
-  }
-  .pipe-tab:has(:focus-visible) {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-  /* The held-open request: a striped bar that fills to the delay. */
-  .chaos-wait {
-    background: repeating-linear-gradient(
-      -45deg,
-      color-mix(in oklab, var(--syntax-num) 45%, transparent) 0 4px,
-      color-mix(in oklab, var(--syntax-num) 20%, transparent) 4px 8px
-    );
-  }
-
-  /* Try it live's tall card: the code surface with an emerald glow rising
-     behind the badge, as xmind's dark certificate card. */
-  .try-terminal {
-    background:
-      radial-gradient(70% 55% at 50% 60%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 70%),
-      var(--code-bg);
-  }
-  /* Two soft rings around the badge, breathing slowly. */
-  .try-badge {
-    border: 1px solid color-mix(in oklab, var(--primary) 25%, transparent);
-    box-shadow: 0 0 0 14px color-mix(in oklab, var(--primary) 6%, transparent);
-    animation: try-breathe 3.2s ease-in-out infinite;
-  }
-  @keyframes try-breathe {
-    50% {
-      box-shadow: 0 0 0 22px color-mix(in oklab, var(--primary) 3%, transparent);
-    }
-  }
-
-  /* Feature badges: a shield, drawn twice — the outer copy is the border, the
-     inner one inset by a pixel is the face — so the outline follows the point. */
-  .feature-shield {
-    clip-path: polygon(0 0, 100% 0, 100% 80%, 50% 100%, 0 80%);
-  }
-
-  /* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
-     no script; a browser without view timelines shows them as they are. */
-  @supports (animation-timeline: view()) {
-    .reveal {
-      animation: hero-in linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 40%;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .try-badge,
-    .reveal,
-    .hero-rise,
-    .hero-piece,
-    .hero-cursor {
-      animation: none;
-    }
-  }
-</style>

@@ -1,0 +1,273 @@
+---
+/*
+  The MVP-backend use case, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's (see ENVIRONMENT.md): the AUTH_* routes, with
+  sign-up answering a verificationId while email verification is on;
+  ownership without rules and rbac.json with it; HOOK_BEFORE_/HOOK_AFTER_
+  webhooks (a before-hook's non-200 aborts with 422) behind the SSRF guard;
+  and _notify/email|sms behind a user JWT, with the provider key server-side.
+  Tenants have no /auth/me — do not add one here.
+*/
+import { Check, ArrowRight, Mail, ShieldCheck } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+const flow = [
+  { step: 'POST /auth/signup', result: 'code emailed' },
+  { step: 'POST /auth/signup/verify', result: 'account + token' },
+  { step: 'POST /auth/login', result: 'token + refreshToken' },
+  { step: 'POST /auth/refresh', result: 'new token' },
+];
+---
+
+<RoleLayout
+  title="The Zero-Config Headless Backend for MVPs — Stubbase"
+  description="Ship your MVP faster. A complete backend-in-a-box offering relational data, secure webhook proxying, and JWT auth without managing servers."
+  active="use-cases"
+  crumb={{ group: 'Use cases', path: '/use-cases/mvp-backend' }}
+  eyebrow="Stubbase for MVP backends"
+  h1="A whole backend, without the infrastructure phase"
+  subhead="Relational data, JWT auth, record ownership and secure webhook proxying — without a database, a server, or a devops afternoon."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'See pricing', href: '/pricing' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-bool)' },
+    { label: 'First customer', initial: 'F', tint: 'var(--syntax-num)' },
+    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-fn)' },
+  ]}
+  clientsLabel="Put any frontend in front of it"
+  clients={['Next.js', 'Remix', 'SvelteKit', 'Nuxt', 'Astro', 'Expo', 'Flutter', 'SwiftUI', 'Kotlin', 'Vercel', 'Netlify', 'Cloudflare Pages']}
+  challengesTitle="What slows an MVP down?"
+  challenges={[
+    {
+      art: 'stack',
+      title: 'Rebuilding the same backend again',
+      body: 'The first week of a project goes to work that has nothing to do with the idea — connection pools, migrations, an auth library, a staging environment nobody visits.',
+    },
+    {
+      art: 'lock',
+      title: 'Ownership rules written by hand',
+      body: 'Which user owns which row is the layer most MVPs write in week two and get subtly wrong — usually in the one endpoint that let somebody edit someone else\'s order.',
+    },
+    {
+      art: 'key',
+      title: 'Secrets that end up in the browser',
+      body: 'Sending a welcome email or an SMS from a frontend means either shipping the provider key to every visitor or standing up a server just to hide it.',
+    },
+  ]}
+  whyTitle="Why MVPs run on Stubbase"
+  starters={{
+    title: 'Starter backends to build on',
+    intro: 'Every new project offers these on its first screen, with auth, ownership and roles already wired — change the tables, keep the rules.',
+    items: [
+      {
+        title: 'Storefront',
+        body: 'Products, customers and orders: anyone can browse, and placing an order needs a token.',
+        head: 'POST /orders',
+        rows: [['without a token', '401'], ['after /auth/login', '201'], ['GET /products', '200']],
+      },
+      {
+        title: 'Deskline helpdesk',
+        body: 'A support desk with roles: customers see their own tickets, agents the whole queue, a lead can promote agents.',
+        head: 'GET /tickets',
+        accent: ' as each role',
+        rows: [['guest', '401'], ['customer', 'own'], ['agent', 'all']],
+      },
+      {
+        title: 'Signet accounts',
+        body: 'Sign-in and user management in the spirit of a SaaS: organizations, members, invites, and roles that decide who may promote whom.',
+        head: 'GET /organizations',
+        accent: '?_expand=plan',
+        rows: [['organizations', '4 rows'], ['memberships', '6 rows'], ['invitations', '4 rows']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More for building your MVP',
+    items: [
+      { tag: 'Guide', title: 'How to get Google and GitHub OAuth keys', href: '/guides/google-github-oauth-keys', tint: 'var(--syntax-num)' },
+      { tag: 'Feature', title: 'Google and GitHub sign-in from four config values', href: '/features/google-github-social-login', tint: 'var(--syntax-bool)' },
+      { tag: 'Feature', title: 'Stage every edit as a draft, then swap it live with no downtime', href: '/features/instant-api-deployments', tint: 'var(--syntax-fn)' },
+    ],
+  }}
+  solutions={['/roles/indie-hacker', '/use-cases/mock-apis', '/roles/frontend-developer']}
+  faqs={[
+    {
+      q: 'What does authentication include?',
+      a: 'Set AUTH_ENABLED=true and the project serves sign-up with an emailed verification code, login, refresh tokens, logout, change password and password reset. Google and GitHub sign-in mount beside them once you add a client id and secret for each.',
+    },
+    {
+      q: 'Where are signing keys and passwords kept?',
+      a: 'Each project\'s token-signing key is derived on the server and never written to disk. Passwords are hashed, and accounts live outside your resources, so no API route, filter or SQL query can read them.',
+    },
+    {
+      q: 'Can users edit each other\'s records?',
+      a: 'No. With auth on, a signed-in POST stamps the user\'s id on the record, users can change only their own records, and nobody can reassign a record by editing userId. Turn on roles and an rbac.json decides, per resource and action, whether a role sees its own records or all of them.',
+    },
+    {
+      q: 'How do webhooks work?',
+      a: 'Set HOOK_BEFORE_INSERT_ORDERS (or any action and resource) to a URL and the payload is sent there first; anything but a 200 stops the write with a 422. HOOK_AFTER_… is told about the result. URLs that resolve to private or reserved addresses are refused.',
+    },
+    {
+      q: 'Can my frontend send email or SMS?',
+      a: 'Yes. Add your Resend key, or Twilio credentials, to the project\'s settings and a signed-in user can call _notify/email or _notify/sms. The key is added on the server and never reaches the browser.',
+    },
+    {
+      q: 'What does it cost?',
+      a: 'The Free plan has every feature and 10,000 requests a month, with no credit card. Plans differ only in how many requests you can make, and a project nobody is calling sleeps until its next request.',
+    },
+  ]}
+  cta={{
+    title: 'Skip the infrastructure phase',
+    body: 'Data, accounts, ownership, webhooks and email behind one API. Start free; nothing to run.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'See pricing', href: '/pricing' },
+    note: 'No credit card required',
+  }}
+>
+  {/* Someone carrying a whole backend in one box. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <ellipse cx="200" cy="304" rx="80" ry="9" fill="currentColor" stroke="none" />
+    <path d="M166 170 Q200 162 238 168 L244 298 Q204 304 162 299 Z" class="fill-primary" />
+    <path d="M200 64 C226 63 244 82 243 106 C242 132 224 150 200 149 C174 148 157 130 158 105 C159 80 176 65 200 64 Z" class="fill-background" />
+    <circle cx="188" cy="104" r="3.5" fill="currentColor" stroke="none" />
+    <circle cx="214" cy="104" r="3.5" fill="currentColor" stroke="none" />
+    <path d="M190 122 Q201 130 212 121" />
+    <path d="M162 86 Q170 58 200 58 Q232 58 240 86 Q222 74 200 76 Q178 74 162 86 Z" fill="currentColor" />
+    {/* The box, carried in front. */}
+    <path d="M110 186 L290 186 L290 272 L110 272 Z" class="fill-background" />
+    <path d="M110 186 L136 166 H316 L290 186 M290 272 L316 252 V166" class="fill-background" />
+    <text x="200" y="218" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="26">backend</text>
+    {[
+      { x: 126, label: 'auth' },
+      { x: 180, label: 'data' },
+      { x: 234, label: 'hooks' },
+    ].map(({ x, label }) => (
+      <>
+        <rect x={x} y="234" width="46" height="24" rx="5" class="fill-primary" stroke-width="2" />
+        <text x={x + 23} y="250" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="10">{label}</text>
+      </>
+    ))}
+    <circle cx="112" cy="230" r="8" class="fill-background" />
+    <circle cx="288" cy="230" r="8" class="fill-background" />
+    {/* Sparkles and a lightning bolt: already wired. */}
+    <path d="M60 60 L40 98 H56 L46 130 L84 84 H66 L76 60 Z" class="fill-primary" />
+    <path d="M330 70 L334 82 L346 86 L334 90 L330 102 L326 90 L314 86 L326 82 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <path d="M360 200 L363 209 L372 212 L363 215 L360 224 L357 215 L348 212 L357 209 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <text x="276" y="40" class="doodle-note fill-primary" stroke="none" font-size="22" transform="rotate(-6 276 40)">already built!</text>
+  </svg>
+
+  {/* 1. Auth — the wide block. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center gap-6 overflow-hidden rounded-3xl border border-border-c p-8 sm:gap-10 sm:p-12">
+      <ol class="w-full max-w-md space-y-2">
+        {flow.map(({ step, result }, i) => (
+          <li class="flex items-center gap-3 rounded-xl border border-border-c bg-background px-4 py-2.5 font-mono text-[11px]">
+            <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[10px] text-primary-soft-ink">{i + 1}</span>
+            <span class="flex-1 truncate text-foreground">{step}</span>
+            <span class="hidden shrink-0 text-subtle sm:inline">{result}</span>
+          </li>
+        ))}
+      </ol>
+      <div class="hidden shrink-0 space-y-2 lg:block">
+        <p class="rounded-xl border border-border-c bg-background px-4 py-2 text-center text-xs font-medium text-foreground">Continue with Google</p>
+        <p class="rounded-xl border border-border-c bg-background px-4 py-2 text-center text-xs font-medium text-foreground">Continue with GitHub</p>
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">one setting</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">Authentication</p>
+        <h3 class="text-2xl font-semibold text-foreground">Turnkey authentication</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          Enable auth and sign-up with email verification, login, refresh tokens and password reset
+          appear. Tokens are signed with a key derived per project and never written to disk; add a
+          Google or GitHub client id and secret and social login mounts alongside.
+        </p>
+        <a href="/features/google-github-social-login" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Ownership and roles. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6 font-mono text-[11px]">
+        <pre class="rounded-xl border border-border-c bg-background px-4 py-3 leading-relaxed text-code-fg"><span class="text-subtle">201 Created</span>
+<span class="text-syntax-punct">{'{'}</span> <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"o_7c21"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"item"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Lifetime license"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"userId"</span><span class="text-syntax-punct">:</span> <span class="text-primary-ink">"u_38fa"</span> <span class="text-syntax-punct">{'}'}</span></pre>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-background px-4 py-2.5 text-muted-foreground">
+          <span><span class="text-subtle">PUT</span> /orders/o_9f04 <span class="text-subtle">· not yours</span></span>
+          <span class="rounded bg-muted px-1.5 py-0.5 text-foreground">403</span>
+        </p>
+      </div>
+      <p class="feature-label mt-8">Ownership</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Records that know who owns them</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A POST from a signed-in user stamps their id on the record, and from then on the rules
+        apply themselves. When customers and staff need different powers, roles and permissions
+        decide who reads and writes what — enforced by the server, not the UI.
+      </p>
+      <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>
+    </article>
+
+    {/* 3. Webhooks. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col justify-center gap-3 overflow-hidden rounded-3xl border border-border-c p-6 font-mono text-[11px]">
+        <p class="rounded-xl border border-border-c bg-background px-4 py-2.5">
+          <span class="text-syntax-str">HOOK_BEFORE_INSERT_ORDERS</span><span class="text-syntax-punct">=</span><span class="text-syntax-fn">https://you.dev/check</span>
+        </p>
+        <div class="flex items-center gap-2 text-muted-foreground">
+          <span class="rounded-lg border border-border-c bg-background px-3 py-1.5">POST /orders</span>
+          <ArrowRight class="h-4 w-4 text-primary-accent" />
+          <span class="rounded-lg border border-border-c bg-background px-3 py-1.5">your server</span>
+        </div>
+        <p class="flex items-center gap-2 text-muted-foreground"><Check class="h-3.5 w-3.5 text-primary-accent" /> 200 → the order is saved</p>
+        <p class="flex items-center gap-2 text-muted-foreground"><ShieldCheck class="h-3.5 w-3.5 text-primary-accent" /> anything else → 422, nothing written</p>
+      </div>
+      <p class="feature-label mt-8">Webhooks</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Run your logic before or after a write</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        A before-hook gets the payload first and can refuse it; an after-hook is told the result.
+        Hook URLs are resolved before each call and refused if they point at a private address, so
+        a mistyped hook cannot probe anyone's network.
+      </p>
+      <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>
+    </article>
+  </div>
+
+  {/* 4. Notifications — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 flex-col justify-center gap-3 p-8 font-mono text-[11px] sm:p-10">
+      <pre class="rounded-xl border border-border-c bg-background px-4 py-3 leading-relaxed text-code-fg"><span class="text-subtle">POST</span> /my-app/_notify/email
+<span class="text-syntax-str">Authorization</span><span class="text-syntax-punct">:</span> <span class="text-subtle">Bearer eyJhbGci…</span>
+
+<span class="text-syntax-punct">{'{'}</span> <span class="text-syntax-str">"to"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"ada@example.com"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"subject"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Welcome"</span> <span class="text-syntax-punct">{'}'}</span></pre>
+      <p class="flex items-center gap-2 text-subtle"><Mail class="h-3.5 w-3.5 text-primary-accent" /> RESEND_API_KEY is added on the server</p>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Email and SMS</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Send email without shipping a key</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Add your Resend key or Twilio credentials to the project's settings. Signed-in users call
+        the notify routes, the credential is injected on the server, and nothing secret ever
+        reaches the browser.
+      </p>
+      <a href={APP_URL} class="explore-btn">Try it free</a>
+    </div>
+  </article>
+</RoleLayout>

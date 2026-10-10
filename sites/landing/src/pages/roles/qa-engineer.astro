@@ -1,0 +1,330 @@
+---
+/*
+  The QA engineers' page, on RoleLayout (after xmind.com/roles/*). It was a Markdown spoke once; the title,
+  description and H1 are that spoke's, kept because they are SEO targets.
+  Every claim here is the core's: the four x-stubbase-* headers act only under
+  QA_MODE, chaosGuard runs after authGuard, the delay is capped by
+  MAX_CHAOS_DELAY_MS, the headers are allowed in the public CORS preflight,
+  every public response carries x-correlation-id and a live-log entry, and a
+  simulated status is metered like any other response (see ENVIRONMENT.md).
+*/
+import { Check, X, Activity, ShieldCheck } from 'lucide-astro';
+import RoleLayout from '../../layouts/RoleLayout.astro';
+import { APP_URL } from '../../lib/urls';
+
+// One run of ten at error-rate 0.3: which ones failed is chance, the rate is not.
+const run = [true, true, false, true, true, true, false, true, false, true];
+
+const matrix = [
+  { role: 'guest', answer: '401', note: 'no token' },
+  { role: 'customer', answer: '200', note: 'own tickets' },
+  { role: 'agent', answer: '200', note: 'every ticket' },
+];
+
+const log = [
+  { status: 200, method: 'GET', path: '/transactions', ms: 14, id: '7f3a…c1' },
+  { status: 503, method: 'GET', path: '/transactions', ms: 802, id: '9b20…4e' },
+  { status: 201, method: 'POST', path: '/transactions', ms: 21, id: 'e81d…07' },
+];
+---
+
+<RoleLayout
+  title="Stubbase for QA Engineers — Deterministic API Failure Injection"
+  description="Deterministic control over backend failure states. Inject 503 responses, latency spikes and fractional error rates into Cypress or Playwright pipelines with a request header."
+  active="roles"
+  crumb={{ group: 'Roles', path: '/roles/qa-engineer' }}
+  eyebrow="Stubbase for QA engineers"
+  h1="Make the API fail the same way every run"
+  subhead="Inject latency, HTTP errors and fractional flakiness from your test runner with a request header — no proxy to maintain, no live traffic to intercept."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'See the chaos headers', href: '/quick-start' }}
+  note="No credit card required"
+  tags={[
+    { label: 'You', initial: 'Y', tint: 'var(--syntax-str)' },
+    { label: 'Playwright', initial: 'P', tint: 'var(--syntax-fn)' },
+    { label: 'CI run #482', initial: 'C', tint: 'var(--syntax-num)' },
+  ]}
+  clientsLabel="Send the headers from any test runner"
+  clients={['Playwright', 'Cypress', 'Selenium', 'WebdriverIO', 'Jest', 'Vitest', 'pytest', 'REST Assured', 'Postman', 'Newman', 'k6', 'curl']}
+  challengesTitle="What makes API testing hard for QA engineers?"
+  challenges={[
+    {
+      art: 'flaky',
+      title: 'Red runs nobody can reproduce',
+      body: 'A shared staging API fails on its own schedule. The suite goes red, the rerun goes green, and the bug report says "could not reproduce" because nothing about the failure was chosen.',
+    },
+    {
+      art: 'unplugged',
+      title: 'Failure paths you cannot trigger',
+      body: 'A healthy backend will not return a 503 or time out on cue, so retry, backoff and timeout code ships with no test that ever ran it. The first real outage is the first test.',
+    },
+    {
+      art: 'collision',
+      title: 'Global switches break parallel suites',
+      body: 'A mocking proxy or a chaos toggle in shared config has to be switched on, used and switched off again. Two specs running at once leak into each other, so the suite cannot parallelise.',
+    },
+  ]}
+  whyTitle="Why QA engineers test against Stubbase"
+  starters={{
+    title: 'Starter projects with something to test',
+    intro: 'Every new project offers these on its first screen. Each comes with flows worth a test plan — sign-up codes, ownership rules and a permission matrix — already wired.',
+    items: [
+      {
+        title: 'Sign-in basics',
+        body: 'The whole email-and-password lifecycle: sign-up with a verification code, login, refresh, logout and password reset. Codes show in the Logs tab until email is set up.',
+        head: 'POST /auth/signup',
+        accent: ' → verify → login',
+        rows: [['/auth/signup', 'code sent'], ['/auth/signup/verify', 'account made'], ['/auth/login', 'token']],
+      },
+      {
+        title: 'Deskline helpdesk',
+        body: 'Roles and permissions: customers see only their own tickets, agents work the whole queue, a lead can promote agents. A permission matrix ready to assert on.',
+        head: 'GET /tickets',
+        accent: ' as each role',
+        rows: [['guest', '401'], ['customer', 'own'], ['agent', 'all']],
+      },
+      {
+        title: 'Storefront',
+        body: 'Products, customers and orders, readable by anyone and writable only with a token — the negative tests write themselves.',
+        head: 'POST /orders',
+        rows: [['without a token', '401'], ['after /auth/login', '201'], ['GET /products', '200']],
+      },
+    ],
+  }}
+  reading={{
+    title: 'More for testing against an API',
+    items: [
+      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
+      { tag: 'Use case', title: 'Auth, ownership and webhooks without running a server', href: '/use-cases/mvp-backend', tint: 'var(--syntax-fn)' },
+      { tag: 'Free API', title: 'Six read-only practice APIs to point a smoke test at', href: '/free-api', tint: 'var(--syntax-num)' },
+    ],
+  }}
+  solutions={['/roles/frontend-developer', '/roles/ai-engineer', '/roles/indie-hacker']}
+  faqs={[
+    {
+      q: 'How do I make the API return a 503 or respond slowly?',
+      a: 'Set QA_MODE=true in the project\'s .env, then send x-stubbase-status: 503 for that status code, or x-stubbase-delay: 800 to hold the response for 800 milliseconds. The delay is capped server-side. Headers apply to the one request that carries them.',
+    },
+    {
+      q: 'How do I test retry and backoff logic?',
+      a: 'Send x-stubbase-error-rate with a fraction: 0.3 makes roughly three requests in ten answer 503, and 1.0 makes every one fail. A client that always fails and one that always succeeds both look fine; retry logic only shows itself somewhere in between.',
+    },
+    {
+      q: 'Can the chaos headers be used to get past authentication?',
+      a: 'No. They do nothing unless the project has QA mode switched on, and the simulation runs after authentication and permission checks — so no combination of headers returns data to a caller who was not already allowed to have it.',
+    },
+    {
+      q: 'Do they work from Cypress or Playwright in a browser?',
+      a: 'Yes. The x-stubbase-* headers are allowed in the public CORS preflight, so a browser-based test can set them on a cross-origin request. Playwright\'s route.continue can add one to a single request while every other call in the same page succeeds.',
+    },
+    {
+      q: 'How do I test empty states?',
+      a: 'Send x-stubbase-empty: true. A list answers [] and a single record answers null, without touching the stored data — the case UIs most often forget.',
+    },
+    {
+      q: 'How do I find a failed request after a CI run?',
+      a: 'Every response from your project\'s API carries an x-correlation-id header, and every request appears in the project\'s live log in the dashboard. Log the correlation id in your test output and you can find the exact request afterwards.',
+    },
+    {
+      q: 'Do simulated failures count towards my request limit?',
+      a: 'Yes. A response produced by a chaos header is real traffic as far as metering is concerned, exactly like any other response. The Free plan includes 10,000 requests a month, and every feature, QA mode included, is on every plan.',
+    },
+  ]}
+  cta={{
+    title: 'Make your first failure on purpose',
+    body: 'Create a project, switch on QA mode, and send a header. Your API answers 503 after 800ms, every run.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'See the chaos headers', href: '/quick-start' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A tester with a checklist in one hand and a magnifier on a bug in the other. */}
+  <svg
+    slot="art"
+    viewBox="0 0 420 340"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    {/* Ground and body. */}
+    <ellipse cx="214" cy="304" rx="74" ry="9" fill="currentColor" stroke="none" />
+    <path d="M178 170 Q212 162 250 168 L256 298 Q216 304 174 299 Z" class="fill-primary" />
+    {/* Arm out to the clipboard. */}
+    <path d="M182 192 Q156 208 152 230" />
+    <g transform="rotate(-6 120 232)">
+      <rect x="84" y="188" width="72" height="94" rx="6" class="fill-background" />
+      <rect x="104" y="181" width="32" height="13" rx="3" fill="currentColor" />
+      <path d="M94 214 L99 219 L108 208" class="stroke-primary" />
+      <path d="M116 214 H144" stroke-width="2.5" />
+      <path d="M94 238 L99 243 L108 232" class="stroke-primary" />
+      <path d="M116 238 H140" stroke-width="2.5" />
+      <path d="M95 256 L105 266 M105 256 L95 266" />
+      <path d="M116 262 H138" stroke-width="2.5" />
+    </g>
+    <circle cx="152" cy="234" r="7" class="fill-background" />
+    {/* Head, with glasses and a focused brow. */}
+    <path d="M212 82 C238 81 256 100 255 124 C254 150 236 168 212 167 C186 166 169 148 170 123 C171 98 188 83 212 82 Z" class="fill-background" />
+    <circle cx="199" cy="124" r="10" stroke-width="2.5" />
+    <circle cx="225" cy="124" r="10" stroke-width="2.5" />
+    <path d="M209 124 H215" stroke-width="2.5" />
+    <circle cx="199" cy="125" r="2.5" fill="currentColor" stroke="none" />
+    <circle cx="225" cy="125" r="2.5" fill="currentColor" stroke="none" />
+    <path d="M190 106 L206 109 M218 109 L234 106" />
+    <path d="M205 147 H219" />
+    {/* Arm up, holding a magnifier over a bug. */}
+    <path d="M248 190 Q282 178 290 150" />
+    <circle cx="292" cy="146" r="8" class="fill-background" />
+    <path d="M298 138 L312 118" stroke-width="5" />
+    <circle cx="332" cy="90" r="32" class="fill-background" stroke-width="4" />
+    <path d="M322 92 L313 87 M322 102 L313 106 M342 92 L351 87 M342 102 L351 106" stroke-width="2.5" />
+    <ellipse cx="332" cy="98" rx="10" ry="13" class="fill-primary" stroke-width="2.5" />
+    <circle cx="332" cy="81" r="5" class="fill-background" stroke-width="2.5" />
+    <path d="M329 77 L324 70 M335 77 L340 70" stroke-width="2" />
+    {/* A lightning bolt, a 503 tag and a stopwatch: the failures it asked for. */}
+    <path d="M70 34 L50 72 H66 L56 104 L94 58 H76 L86 34 Z" class="fill-primary" />
+    <rect x="290" y="206" width="66" height="32" rx="7" class="fill-background" />
+    <text x="323" y="228" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="16">503</text>
+    <circle cx="372" cy="276" r="20" class="fill-background" />
+    <path d="M372 250 V256 M365 248 H379 M372 276 L381 267" />
+    <text x="312" y="324" class="doodle-note" fill="currentColor" stroke="none" font-size="18">800ms</text>
+    <path d="M140 46 L143 56 L153 59 L143 62 L140 72 L137 62 L127 59 L137 56 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+    <text x="196" y="44" class="doodle-note fill-primary" stroke="none" font-size="22" transform="rotate(-5 196 44)">same every run!</text>
+  </svg>
+
+  {/* 1. Chaos headers — the wide block: two requests, same route, different weather. */}
+  <article class="reveal">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-8 sm:p-12">
+      <div class="grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="rounded-xl border border-border-c bg-background">
+          <p class="border-b border-border-c px-4 py-2 font-mono text-[11px] text-subtle">spec A · GET /transactions</p>
+          <div class="space-y-1 px-4 py-3 font-mono text-[11px]">
+            <p class="text-primary-ink">x-stubbase-delay: 800</p>
+            <p class="text-primary-ink">x-stubbase-status: 503</p>
+          </div>
+          <p class="flex items-center justify-between border-t border-border-c px-4 py-2.5 text-xs">
+            <span class="font-mono font-semibold text-foreground">503</span>
+            <span class="font-mono text-subtle">after 800 ms</span>
+          </p>
+        </div>
+        <div class="rounded-xl border border-border-c bg-background">
+          <p class="border-b border-border-c px-4 py-2 font-mono text-[11px] text-subtle">spec B · GET /transactions</p>
+          <div class="space-y-1 px-4 py-3 font-mono text-[11px] text-faint">
+            <p>no chaos headers</p>
+            <p>&nbsp;</p>
+          </div>
+          <p class="flex items-center justify-between border-t border-border-c px-4 py-2.5 text-xs">
+            <span class="font-mono font-semibold text-foreground">200</span>
+            <span class="font-mono text-subtle">real records</span>
+          </p>
+        </div>
+      </div>
+      <span class="doodle-note absolute right-8 bottom-5 hidden -rotate-3 text-xl text-primary-ink lg:block">same route, same moment</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="feature-label">Failure injection</p>
+        <h3 class="text-2xl font-semibold text-foreground">Ask for the failure, one request at a time</h3>
+      </div>
+      <div>
+        <p class="mb-6 leading-relaxed text-muted-foreground">
+          With QA mode on, <code class="font-mono text-sm whitespace-nowrap text-emphasis">x-stubbase-status</code>,
+          {" "}<code class="font-mono text-sm whitespace-nowrap text-emphasis">x-stubbase-delay</code> and
+          {" "}<code class="font-mono text-sm whitespace-nowrap text-emphasis">x-stubbase-empty</code> act on the one
+          request that carries them. Nothing is left switched on for the next test, so specs that
+          need a failure and specs that need the real thing run side by side.
+        </p>
+        <a href="/quick-start" class="explore-btn">Explore now</a>
+      </div>
+    </div>
+  </article>
+
+  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
+    {/* 2. Flakiness. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 flex-col items-center justify-center gap-5 overflow-hidden rounded-3xl border border-border-c p-6">
+        <p class="rounded-lg border border-border-c bg-background px-3 py-1.5 font-mono text-[11px] text-primary-ink">x-stubbase-error-rate: 0.3</p>
+        <ol class="grid grid-cols-5 gap-2 sm:grid-cols-10">
+          {run.map((ok) => (
+            <li class={`flex h-8 w-8 items-center justify-center rounded-lg border ${ok ? 'border-primary-soft-border bg-primary-soft text-primary-accent' : 'border-border-strong bg-background text-foreground'}`}>
+              {ok ? <Check class="h-4 w-4" /> : <X class="h-4 w-4" />}
+            </li>
+          ))}
+        </ol>
+        <p class="font-mono text-[11px] text-subtle">3 of 10 answered 503 · retry with backoff → 10 of 10</p>
+      </div>
+      <p class="feature-label mt-8">Flakiness</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Prove your retries with an error rate</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        <code class="font-mono text-sm whitespace-nowrap text-emphasis">error-rate: 0.3</code> fails roughly three
+        calls in ten; <code class="font-mono text-sm whitespace-nowrap text-emphasis">1.0</code> fails them all.
+        That in-between shape is the one that exercises exponential backoff — the code path a
+        healthy backend never reaches.
+      </p>
+      <a href="/quick-start" class="explore-btn mt-auto">Explore now</a>
+    </article>
+
+    {/* 3. Permissions. */}
+    <article class="reveal flex flex-col">
+      <div aria-hidden="true" class="feature-canvas relative flex h-72 items-center justify-center overflow-hidden rounded-3xl border border-border-c p-6">
+        <div class="w-full max-w-xs rounded-xl border border-border-c bg-background">
+          <p class="flex items-center gap-2 border-b border-border-c px-4 py-2 font-mono text-[11px] text-subtle">
+            <ShieldCheck class="h-3.5 w-3.5 text-primary-accent" /> GET /tickets
+          </p>
+          <ul class="divide-y divide-border-c">
+            {matrix.map(({ role, answer, note }) => (
+              <li class="flex items-center gap-3 px-4 py-2.5 text-xs">
+                <span class="w-16 font-medium text-foreground">{role}</span>
+                <span class={`rounded px-1.5 py-0.5 font-mono text-[10px] ${answer === '200' ? 'bg-primary-soft text-primary-soft-ink' : 'bg-muted text-foreground'}`}>{answer}</span>
+                <span class="text-muted-foreground">{note}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <p class="feature-label mt-8">Auth and roles</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Test the whole permission matrix</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Switch on auth and roles and every rule is enforced by the server: a visitor gets 401, an
+        account outside its role gets 403, and a record outside its scope reads as 404. Write one
+        spec per role and assert on real answers, not on what the UI chose to hide.
+      </p>
+      <a href="/use-cases/mvp-backend" class="explore-btn mt-auto">Explore now</a>
+    </article>
+  </div>
+
+  {/* 4. Observability — picture on the left, words on the right. */}
+  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
+    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 items-center justify-center p-8 sm:p-10">
+      <div class="w-full rounded-xl border border-border-c bg-background">
+        <p class="flex items-center gap-2 border-b border-border-c px-4 py-2 text-xs font-semibold text-foreground">
+          <Activity class="h-3.5 w-3.5 text-primary-accent" /> Live log
+        </p>
+        <ul class="divide-y divide-border-c font-mono text-[11px]">
+          {log.map(({ status, method, path, ms, id }) => (
+            <li class={`flex items-center gap-3 px-4 py-2 ${status >= 500 ? 'bg-primary-soft' : ''}`}>
+              <span class="w-8 font-semibold text-foreground">{status}</span>
+              <span class="w-10 text-subtle">{method}</span>
+              <span class="flex-1 truncate text-muted-foreground">{path}</span>
+              <span class="text-subtle">{ms}ms</span>
+              <span class="hidden text-primary-ink sm:inline">{id}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+    <div class="flex flex-col justify-center p-8 sm:p-10">
+      <p class="feature-label">Observability</p>
+      <h3 class="mb-3 text-2xl font-semibold text-foreground">Every request leaves a trace</h3>
+      <p class="mb-6 leading-relaxed text-muted-foreground">
+        Each response carries an <code class="font-mono text-sm whitespace-nowrap text-emphasis">x-correlation-id</code>,
+        and each request lands in the project's live log in the dashboard. Print the id in your test
+        output and a red pipeline run has something to read afterwards.
+      </p>
+      <a href={APP_URL} class="explore-btn">Generate an API free</a>
+    </div>
+  </article>
+</RoleLayout>
