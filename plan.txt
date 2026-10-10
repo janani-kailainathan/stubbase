@@ -71,3 +71,60 @@ I need assets for these topics, how do I get these from canva ?
 - on payment related - think of atomicity ( like when it's updated by manually and api ask user which one to use ? )
 
 - when I refresh only the first project is shown, add project to url
+
+
+-- live url
+   - playground
+   - auto fill token field with valid token
+   - what to with token ( should we consider it in token count ? )
+   - url cannot be changed
+   - GraphQL, websockets, RPC clients later
+
+-- form post support ***
+
+-- don't count ( or what to do ) refresh token ( or all auth token )
+
+-- what to do when the key is stolen, how are we going to handle it
+
+-- session login
+
+-- reset password
+   -- logs otp to console
+   -- send email
+
+I would like to add more than 9 templates, and I want to create a market place where others can sell or share their starter templates and
+  others could buy. I have so many question reagarding this approach,
+   - where should I let this happen within dashboard or public pages
+   - is this a good idea
+   - what if someone wants to import from github
+   - what if he wants to export and import again or duplicate
+   - is this a good idea
+
+
+-- refresh token api
+
+-- session and jwt
+
+-- limit based on number of parallel request per plan
+
+-- two plans only and the third is calculated
+
+-- hooks and usecases, write their own code ( logic )
+
+-- logs for errors ( such as posthog or something suitable )
+
+-- purchases to settings page
+
+-- test delete account in settings
+
+-- delete account only changes states, so when they try again free credits are not allowed again
+
+-- how are we going to handle support ?
+
+-- chat them with email
+
+-- store chat in session ( like logs ) so atleast it's there when the tabs are open
+
+-- how about 1000 ( or 500 ) for free user and 10K for paid users ?
+
+what is " webhooks and ChaosGuard"
