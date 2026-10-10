@@ -1,3 +1,18 @@
 {
-  "buildPath": "code"
+  "buildPath": "code",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "codex-grid-background",
+        "value": "*",
+        "files": [
+          "sites/landing/src/styles/showcase.css"
+        ],
+        "createdAt": "2026-10-10T21:48:29.760Z",
+        "reason": "user confirmed: 'feature page heroes, leave it as it is' — the faint grid copies xmind.com/ai's hero, masked to fade, used only behind hero sections"
+      }
+    ]
+  }
 }
