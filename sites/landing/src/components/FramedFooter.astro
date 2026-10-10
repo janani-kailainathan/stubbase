@@ -21,13 +21,11 @@ const { cta } = Astro.props;
 // Read the groups by name, not by position: this list grows, and destructuring
 // it once silently re-labelled a whole column when an entry was added.
 const features = NAV_GROUPS.find((group) => group.key === 'features')!;
-const compare = NAV_GROUPS.find((group) => group.key === 'compare')!;
 
 const columns = [
   { heading: 'Use cases', links: USE_CASES.links },
   { heading: 'Roles', links: ROLES.links },
   { heading: 'Features', links: features.links },
-  { heading: 'Compare', links: compare.links },
   { heading: 'Resources', links: RESOURCE_LINKS },
   {
     heading: 'Pricing',
@@ -97,7 +95,7 @@ const columns = [
         <p class="text-sm text-subtle">An AI-powered, zero-config, instant backend engine.</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-5">
         {
           columns.map((column) => (
             <nav aria-label={column.heading}>

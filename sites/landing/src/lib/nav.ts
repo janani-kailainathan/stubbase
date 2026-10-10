@@ -102,22 +102,25 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  {
-    key: 'compare',
-    label: 'Compare',
-    links: [
-      {
-        href: '/compare/stubbase-vs-json-server',
-        label: 'vs. JSON Server',
-        blurb: 'The same JSON-file workflow, deployed and persistent instead of local.',
-      },
-      {
-        href: '/compare/stubbase-vs-firebase',
-        label: 'vs. Firebase',
-        blurb: 'A zero-config REST API against a NoSQL document store.',
-      },
-    ],
-  },
+  // Compare is hidden (2026-10-06): its route and Markdown are kept as .bak
+  // files under src/pages/compare and src/content/compare. To bring it back,
+  // restore those and this entry, and the Compare menu and footer column.
+  // {
+  //   key: 'compare',
+  //   label: 'Compare',
+  //   links: [
+  //     {
+  //       href: '/compare/stubbase-vs-json-server',
+  //       label: 'vs. JSON Server',
+  //       blurb: 'The same JSON-file workflow, deployed and persistent instead of local.',
+  //     },
+  //     {
+  //       href: '/compare/stubbase-vs-firebase',
+  //       label: 'vs. Firebase',
+  //       blurb: 'A zero-config REST API against a NoSQL document store.',
+  //     },
+  //   ],
+  // },
 ];
 
 /** Groups that live inside the Solutions mega-menu rather than their own trigger. */
@@ -125,7 +128,7 @@ export const SOLUTION_GROUPS: NavGroup[] = [USE_CASES, ROLES];
 
 /** Groups that keep their own top-level dropdown. */
 export const MENU_GROUPS: NavGroup[] = NAV_GROUPS.filter(
-  (group) => group.key === 'features' || group.key === 'compare',
+  (group) => group.key === 'features',
 );
 
 /** Flat pages that sit alongside the grouped spokes. */

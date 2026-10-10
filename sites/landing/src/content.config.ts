@@ -75,5 +75,5 @@ export const collections = {
     loader: glob({ pattern: '**/[^_]*.md', base: './src/content/guides' }),
     schema: guideSchema,
   }),
-  compare: spokeCollection('compare'),
+  // compare: spokeCollection('compare'), — hidden 2026-10-06; its .md files are kept as .md.bak
 };
