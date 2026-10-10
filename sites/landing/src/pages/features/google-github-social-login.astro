@@ -1,0 +1,198 @@
+---
+/*
+  The social login feature page, on FeatureLayout (after xmind.com/ai, with
+  the trust cards of xmind.com/security). It was a Markdown spoke once; the
+  title and H1 are that spoke's, kept because they are SEO targets.
+
+  Every claim is the core's (features/auth/oauth.ts, ENVIRONMENT.md): both
+  halves of a pair mount a provider, the callback is <origin>/<project>/auth/
+  <provider>/callback, the state is HMAC-signed and lives 10 minutes, a first
+  sign-in creates an account in system/users.json — never a resource — with
+  the project's default role, later ones match it by email, the email-domain
+  rules apply only where an account would be created, and the answer is
+  issueTokens' { token, refreshToken, expiresIn, user } or, with
+  AUTH_OAUTH_REDIRECT, the same in a URL fragment.
+
+  Do not claim that only provider-verified addresses are accepted: the core's
+  OAuth does not check email_verified (Google) or require GitHub's verified
+  address yet. The Dashboard API does; the project plane should.
+*/
+import { KeyRound, Lock, Users, ShieldCheck, Check, X } from 'lucide-astro';
+import FeatureLayout from '../../layouts/FeatureLayout.astro';
+import FeatureSection from '../../components/feature/FeatureSection.astro';
+import FeatureCard from '../../components/feature/FeatureCard.astro';
+import FeatureTabs from '../../components/feature/FeatureTabs.astro';
+import { APP_URL, CORE_URL } from '../../lib/urls';
+---
+
+<FeatureLayout
+  title="Google and GitHub Social Login for Your REST API — Stubbase"
+  description="Add Sign in with Google and Sign in with GitHub to a Stubbase API with two config keys per provider. One account per email, signed JWTs with refresh tokens, and per-record ownership, with no auth server to run."
+  path="/features/google-github-social-login"
+  eyebrow="Social login"
+  h1="Google and GitHub social login, without an auth server"
+  subhead="Bring your own OAuth app, paste four values into your project, and every request arrives with a signed identity attached. Accounts, sessions and record ownership are already part of the engine."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'Get your OAuth keys', href: '/guides/google-github-oauth-keys' }}
+  note="On every plan · no credit card"
+  tiles={[
+    { Icon: KeyRound, tint: 'var(--syntax-fn)' },
+    { Icon: Lock, tint: 'var(--syntax-str)' },
+    { Icon: Users, tint: 'var(--syntax-num)' },
+    { Icon: ShieldCheck, tint: 'var(--syntax-bool)' },
+  ]}
+  faqs={[
+    {
+      q: 'What do I need to add Google or GitHub login?',
+      a: 'AUTH_ENABLED=true, plus your OAuth app\'s client id and secret for each provider you want. Register the callback URL — your API base, then /auth/google/callback or /auth/github/callback — in the provider\'s console. The guide walks through both consoles.',
+    },
+    {
+      q: 'Can I offer only one of them?',
+      a: 'Yes. A provider\'s routes appear only when both halves of its pair are set, so you can ship Google alone and add GitHub later with two more lines.',
+    },
+    {
+      q: 'Does it work alongside email and password?',
+      a: 'Yes. Password sign-up, login and reset share the same accounts, so someone who signed up with a password and later clicks "Sign in with Google" with the same email is still one account with one id.',
+    },
+    {
+      q: 'How does my single-page app get the token?',
+      a: 'Set AUTH_OAUTH_REDIRECT to a page of your app. After sign-in the browser lands there with token, refreshToken and expiresIn in the URL fragment, which is never sent to a server. Without it, the callback answers the same values as JSON.',
+    },
+    {
+      q: 'Can I control who is allowed to sign up?',
+      a: 'Yes. AUTH_EMAIL_DOMAINS_ONLY limits accounts to your domains, AUTH_EMAIL_DOMAINS_BLOCKED refuses some, and AUTH_BLOCK_DISPOSABLE_EMAIL refuses throwaway providers. They apply to social sign-up too, and only where an account would be created — an existing user always signs in.',
+    },
+    {
+      q: 'Where are the accounts stored?',
+      a: 'Outside your resources, so no API route, filter or SQL query can read them. You can see who has signed up in the dashboard\'s read-only system folder and change an account\'s role there; with roles and permissions on, the role decides what each account may do.',
+    },
+  ]}
+  cta={{
+    title: 'Add "Sign in with Google" today',
+    body: 'Four values in your project and your API knows who is calling. No auth server, no session store, no user table to run.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'Get your OAuth keys', href: '/guides/google-github-oauth-keys' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A sign-in screen on the left; what the API hands back on the right. */}
+  <div slot="hero" class="grid grid-cols-1 md:grid-cols-2">
+    <div class="flex items-center justify-center border-b border-border-c p-8 md:border-r md:border-b-0">
+      <div class="w-full max-w-xs rounded-2xl border border-border-c bg-(--mock) p-5">
+        <p class="mb-4 text-center text-sm font-semibold text-foreground">Sign in to Clinic</p>
+        <p class="mb-2 rounded-xl border border-border-c px-3 py-2 text-center text-sm font-medium text-foreground">Continue with Google</p>
+        <p class="mb-3 rounded-xl border border-border-c px-3 py-2 text-center text-sm font-medium text-foreground">Continue with GitHub</p>
+        <p class="mb-3 text-center text-[11px] text-subtle">or</p>
+        <p class="mb-2 rounded-lg border border-border-c px-3 py-1.5 text-xs text-subtle">ada@example.com</p>
+        <p class="rounded-lg bg-primary py-1.5 text-center text-xs font-semibold text-primary-foreground">Log in</p>
+      </div>
+    </div>
+    <div class="feature-canvas relative flex min-h-80 flex-col items-center justify-center gap-3 p-6 sm:p-8">
+      <pre class="w-full max-w-sm rounded-xl border border-border-c bg-(--mock) px-4 py-3 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">{'{'}</span>
+  <span class="text-syntax-str">"token"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"eyJhbGciOiJIUzI1NiIs…"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"refreshToken"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"7c21….9f04…"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"expiresIn"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">86400</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"user"</span><span class="text-syntax-punct">: {'{'}</span> <span class="text-syntax-str">"email"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"ada@example.com"</span><span class="text-syntax-punct">,</span>
+            <span class="text-syntax-str">"role"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"user"</span><span class="text-syntax-punct">,</span> <span class="text-syntax-str">"provider"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"google"</span> <span class="text-syntax-punct">{'}'}</span>
+<span class="text-syntax-punct">{'}'}</span></pre>
+      <span class="doodle-note -rotate-2 text-lg text-primary-ink">signed for your project alone</span>
+    </div>
+  </div>
+
+  <FeatureSection title="Four values, two providers" intro="Your OAuth app, your consent screen, your branding. Stubbase only needs the client id and secret.">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <FeatureCard title="Sign in with Google" body="Paste your Google OAuth client's id and secret and <code class='font-mono text-sm text-emphasis'>/auth/google</code> goes live. Register the callback below in Google Cloud Console." art="h-48">
+        <pre class="w-full max-w-sm rounded-xl border border-border-c bg-(--mock) px-4 py-3 font-mono text-[11px] leading-relaxed"><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-fn">true</span>
+<span class="text-syntax-str">AUTH_GOOGLE_CLIENT_ID</span><span class="text-syntax-punct">=</span><span class="text-subtle">…apps.googleusercontent.com</span>
+<span class="text-syntax-str">AUTH_GOOGLE_SECRET</span><span class="text-syntax-punct">=</span><span class="text-subtle">GOCSPX-…</span>
+<span class="text-subtle"># callback: …/my-app/auth/google/callback</span></pre>
+      </FeatureCard>
+      <FeatureCard title="Sign in with GitHub" body="The same for a GitHub OAuth app: two values, and <code class='font-mono text-sm text-emphasis'>/auth/github</code> appears beside Google. Either works alone." art="h-48">
+        <pre class="w-full max-w-sm rounded-xl border border-border-c bg-(--mock) px-4 py-3 font-mono text-[11px] leading-relaxed"><span class="text-syntax-str">AUTH_ENABLED</span><span class="text-syntax-punct">=</span><span class="text-syntax-fn">true</span>
+<span class="text-syntax-str">AUTH_GITHUB_CLIENT_ID</span><span class="text-syntax-punct">=</span><span class="text-subtle">Ov23li…</span>
+<span class="text-syntax-str">AUTH_GITHUB_SECRET</span><span class="text-syntax-punct">=</span><span class="text-subtle">…</span>
+<span class="text-subtle"># callback: …/my-app/auth/github/callback</span></pre>
+      </FeatureCard>
+    </div>
+    <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+      <FeatureCard title="Ship one, add the other later" body="A provider mounts only when both halves of its pair are set, so a half-finished setup never shows a broken button." art="h-28">
+        <div class="flex gap-2 text-xs">
+          <span class="flex items-center gap-1.5 rounded-lg border border-primary-soft-border bg-primary-soft px-3 py-1.5 text-primary-soft-ink"><Check class="h-3.5 w-3.5" /> Google</span>
+          <span class="flex items-center gap-1.5 rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-subtle">GitHub · later</span>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Secrets stay on the server" body="The client secret lives in the project's server-side settings. The public API never serves it, and nothing ships it to a browser." art="h-28">
+        <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-[11px] text-subtle">AUTH_GOOGLE_SECRET=••••••••</p>
+      </FeatureCard>
+      <FeatureCard title="Forged callbacks are refused" body="Each sign-in carries a signed state that expires after 10 minutes, so a callback Stubbase did not start never signs anyone in." art="h-28">
+        <p class="flex items-center gap-2 rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-[11px] text-muted-foreground"><X class="h-3.5 w-3.5" /> invalid oauth state · 400</p>
+      </FeatureCard>
+    </div>
+  </FeatureSection>
+
+  <FeatureSection band title="What happens when someone clicks" intro="Send a browser to one URL. The provider, the account and the tokens are handled without a line of your code.">
+    <FeatureTabs
+      name="oauth-flow"
+      band
+      items={[
+        { title: 'Off to the consent screen', body: 'Link a button to <code class="font-mono text-xs text-emphasis">/auth/google</code> or <code class="font-mono text-xs text-emphasis">/auth/github</code>. The browser goes to the provider\'s consent screen with a signed state, and comes back to the callback.' },
+        { title: 'One account per email', body: 'The first sign-in creates an account with your project\'s default role. Every later sign-in with the same email — by password, Google or GitHub — lands on that same account and id.' },
+        { title: 'Tokens back to your app', body: 'The callback answers with a token, a refresh token and its lifetime. Set <code class="font-mono text-xs text-emphasis">AUTH_OAUTH_REDIRECT</code> and your app receives them in the URL fragment instead, which never reaches a server.' },
+        { title: 'You decide who may join', body: 'Domain rules and throwaway-address blocking apply to social sign-up too — but only where an account would be created, so nobody you already accepted is ever locked out.' },
+      ]}
+    >
+      <div slot="p1" class="w-full max-w-sm space-y-2 font-mono text-[11px]">
+        <p class="rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-foreground">GET /my-app/auth/google</p>
+        <p class="text-center text-primary-ink">↓ 302 · state=…</p>
+        <p class="rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-muted-foreground">accounts.google.com · consent</p>
+        <p class="text-center text-primary-ink">↓</p>
+        <p class="rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-foreground">GET /my-app/auth/google/callback</p>
+      </div>
+      <div slot="p2" class="w-full max-w-sm space-y-2 text-xs">
+        {[['password', 'March'], ['Google', 'June'], ['GitHub', 'today']].map(([how, when]) => (
+          <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">ada@example.com · {how}</span><span class="text-subtle">{when}</span></p>
+        ))}
+        <p class="text-center font-mono text-[11px] text-primary-ink">→ one account, one id</p>
+      </div>
+      <div slot="p3" class="w-full max-w-sm">
+        <p class="rounded-xl border border-border-c bg-(--mock) px-4 py-3 font-mono text-[11px] break-all text-muted-foreground">https://myapp.com/login<span class="text-primary-ink">#token=eyJ…&amp;refreshToken=…&amp;expiresIn=86400</span></p>
+      </div>
+      <div slot="p4" class="w-full max-w-sm space-y-2 font-mono text-[11px]">
+        <p class="rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-syntax-str">AUTH_EMAIL_DOMAINS_ONLY</span><span class="text-syntax-punct">=</span><span class="text-syntax-fn">clinic.org</span></p>
+        <p class="flex justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">new · ana@clinic.org</span><span class="text-primary-ink">joins</span></p>
+        <p class="flex justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">new · eve@mailinator.com</span><span class="text-subtle">403</span></p>
+      </div>
+    </FeatureTabs>
+  </FeatureSection>
+
+  <FeatureSection title="Signed tokens your API already understands" intro="Send the token as a bearer header and the engine knows who is asking — for ownership, roles and sessions alike.">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <FeatureCard title="Ownership, enforced" body="A signed-in POST stamps its author on the record. Users change their own records and get a 403 on anyone else's, with no rule to write." art="h-32">
+        <p class="flex w-full max-w-xs items-center justify-between rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-[11px] text-muted-foreground">PUT /orders/o_9f04 <span class="text-foreground">403</span></p>
+      </FeatureCard>
+      <FeatureCard title="Roles from the account" body="With roles and permissions on, the role is read from the account on every request — change it in the dashboard and it applies from the next call." art="h-32">
+        <div class="flex gap-2 text-xs">
+          {['customer', 'agent', 'admin'].map((role, i) => (
+            <span class={`rounded-lg border px-2.5 py-1 ${i === 1 ? 'border-primary-soft-border bg-primary-soft text-primary-soft-ink' : 'border-border-c bg-(--mock) text-foreground'}`}>{role}</span>
+          ))}
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Sessions you can end" body="Short-lived tokens renew through <code class='font-mono text-sm text-emphasis'>/auth/refresh</code>; <code class='font-mono text-sm text-emphasis'>/auth/logout</code> ends one device at once." art="h-32">
+        <div class="space-y-1.5 font-mono text-[11px]">
+          <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1 text-muted-foreground">POST /auth/refresh → new token</p>
+          <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1 text-muted-foreground">POST /auth/logout → session ended</p>
+        </div>
+      </FeatureCard>
+    </div>
+    <div class="reveal mt-10 rounded-3xl border border-border-c bg-card p-7">
+      <p class="mb-4 text-center text-sm font-semibold text-foreground">What you do not have to run</p>
+      <ul class="flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
+        {['An auth server', 'A session store', 'A user database', 'Password hashing', 'Password-reset logic', 'A library to keep patched'].map((item) => (
+          <li class="rounded-full border border-border-c bg-background px-4 py-1.5 line-through decoration-(--border-strong)">{item}</li>
+        ))}
+      </ul>
+      <p class="mt-5 text-center font-mono text-xs text-subtle">curl {CORE_URL}/my-app/orders -H "Authorization: Bearer &lt;token&gt;"</p>
+    </div>
+  </FeatureSection>
+</FeatureLayout>

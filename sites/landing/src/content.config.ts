@@ -75,6 +75,5 @@ export const collections = {
     loader: glob({ pattern: '**/[^_]*.md', base: './src/content/guides' }),
     schema: guideSchema,
   }),
-  features: spokeCollection('features'),
   compare: spokeCollection('compare'),
 };

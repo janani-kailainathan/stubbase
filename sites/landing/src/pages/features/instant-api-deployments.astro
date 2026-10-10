@@ -1,0 +1,186 @@
+---
+/*
+  The deployments feature page, on FeatureLayout (after xmind.com/ai). It was
+  a Markdown spoke once; the title and H1 are that spoke's, kept because they
+  are SEO targets. The spoke's description promised instant rollbacks and
+  global edge availability, neither of which exists, so it is rewritten.
+
+  Every claim follows the save model and the start/stop rules in CLAUDE.md:
+  a live table's records save straight to production, guarded by the revision
+  the edit started from (409 and Reload) and undoable from the toast; a new
+  table and the settings (.env, rbac.json) are drafts until Deploy; removing a
+  live table marks it and it keeps serving, with Restore, until the deploy;
+  Deploy starts a stopped project; Stop makes every public route 503 while the
+  dashboard stays reachable; READ_ONLY answers writes with 405; and an idle
+  project is evicted from RAM, which loses nothing because every write is
+  already on disk. There is no rollback — do not claim one.
+*/
+import { Rocket, Power, FileClock, Moon, Check, Undo2, RotateCcw, AlertTriangle } from 'lucide-astro';
+import FeatureLayout from '../../layouts/FeatureLayout.astro';
+import FeatureSection from '../../components/feature/FeatureSection.astro';
+import FeatureCard from '../../components/feature/FeatureCard.astro';
+import FeatureTabs from '../../components/feature/FeatureTabs.astro';
+import { APP_URL } from '../../lib/urls';
+
+const files = [
+  { name: 'appointments.json', state: 'live', note: 'records save live' },
+  { name: 'reviews.json', state: 'draft', note: 'new table' },
+  { name: '.env', state: 'draft', note: 'settings' },
+  { name: 'legacy_visits.json', state: 'removing', note: 'until Deploy' },
+];
+---
+
+<FeatureLayout
+  title="Instant API Deployments and State Management — Stubbase"
+  description="Move from draft to production with zero downtime. New tables and settings wait as drafts until you deploy, record edits save live with a guard against overwrites, and Stop takes the whole API offline in one click."
+  path="/features/instant-api-deployments"
+  eyebrow="Deployments"
+  h1="Instant API Deployments and State Management"
+  subhead="Records save live the moment you hit Save. New tables and settings wait as drafts, and one click puts them live with no downtime — or stops the whole API until you start it again."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'Read the API reference', href: '/quick-start' }}
+  note="On every plan · no credit card"
+  tiles={[
+    { Icon: Rocket, tint: 'var(--syntax-bool)' },
+    { Icon: FileClock, tint: 'var(--syntax-num)' },
+    { Icon: Power, tint: 'var(--syntax-fn)' },
+    { Icon: Moon, tint: 'var(--syntax-str)' },
+  ]}
+  faqs={[
+    {
+      q: 'What goes live when I press Save?',
+      a: 'Records in a table that is already live — the public API serves them at once. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
+    },
+    {
+      q: 'Can a save overwrite records the API wrote meanwhile?',
+      a: 'No. A save carries the version of the table it started from. If the API wrote to that table since you opened it, the save is refused and the editor offers to reload the latest records, so nothing your users wrote is lost.',
+    },
+    {
+      q: 'Can I roll back a deploy?',
+      a: 'There is no rollback of a whole deploy. A record save can be undone from the toast that confirms it — unless the table has changed since — and a change made by the AI Co-Pilot can be undone once, for 24 hours. A table marked for removal can be restored right up until you deploy.',
+    },
+    {
+      q: 'Is the API down while it deploys?',
+      a: 'No. Deploy promotes your drafts and the next request simply reads the new state, at the same URL. There is no build, no container and no restart.',
+    },
+    {
+      q: 'What does Stop do?',
+      a: 'Every public route of the project — its resources, sign-in and the rest — answers 503 until you start it again. Your data is untouched and the dashboard keeps working, which is how you start it again. Deploy also starts a stopped project.',
+    },
+    {
+      q: 'How do I freeze writes without going offline?',
+      a: 'Set READ_ONLY=true. The API keeps answering GET and HEAD, and every other method gets a 405 whoever sends it, while you can still edit the data from the dashboard.',
+    },
+    {
+      q: 'Does a project lose anything when it goes to sleep?',
+      a: 'No. Every write is saved to disk as it happens, so a project nobody has called for a few minutes can be put to sleep and wake on its next request with everything where it was.',
+    },
+  ]}
+  cta={{
+    title: 'Deploy without a pipeline',
+    body: 'Save records live, stage the structure, press Deploy. No build, no container, no downtime.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'Read the API reference', href: '/quick-start' },
+    note: 'No credit card required',
+  }}
+>
+  {/* The editor's files with their states on the left; Deploy on the right. */}
+  <div slot="hero" class="grid grid-cols-1 md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+    <div class="border-b border-border-c p-6 md:border-r md:border-b-0 sm:p-8">
+      <p class="mb-3 text-xs font-medium text-subtle">Files</p>
+      <ul class="space-y-2">
+        {files.map(({ name, state, note }) => (
+          <li class="flex items-center gap-3 rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-sm">
+            <span class={`flex-1 truncate font-mono text-xs ${state === 'removing' ? 'text-subtle line-through' : 'text-foreground'}`}>{name}</span>
+            <span class="hidden text-xs text-subtle sm:inline">{note}</span>
+            <span class={`rounded-full px-2 py-0.5 text-[10px] font-medium ${state === 'live' ? 'bg-primary-soft text-primary-soft-ink' : state === 'draft' ? 'bg-(--syntax-num)/15 text-syntax-num' : 'bg-muted text-subtle'}`}>{state}</span>
+            {state === 'removing' && <span class="flex items-center gap-1 text-xs font-medium text-foreground"><RotateCcw class="h-3 w-3" /> Restore</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+    <div class="feature-canvas relative flex min-h-72 flex-col items-center justify-center gap-4 p-6 sm:p-8">
+      <p class="flex items-center gap-2 rounded-xl border border-border-c bg-(--mock) px-4 py-2 text-xs text-foreground">
+        <AlertTriangle class="h-4 w-4 text-syntax-num" /> Your live API is behind
+      </p>
+      <span class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground"><Rocket class="h-5 w-5" /> Deploy</span>
+      <p class="flex items-center gap-2 font-mono text-[11px] text-subtle"><Check class="h-3.5 w-3.5 text-primary-accent" /> same URL · no restart</p>
+      <span class="doodle-note absolute right-6 bottom-4 hidden -rotate-3 text-lg text-primary-ink sm:block">one click</span>
+    </div>
+  </div>
+
+  <FeatureSection title="What saves live, and what waits for Deploy" intro="Data changes go straight to your API. Changes to the API's shape wait until you are ready, so a half-finished table never reaches your app.">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <FeatureCard title="Records save live" body="Edit a live table's records and Save: the public API serves them at once. The save is refused if the API wrote to the table since you opened it, and the toast that confirms it offers Undo." art="h-48">
+        <div class="w-full max-w-sm space-y-2">
+          <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-xs">
+            <span class="text-foreground">Saved appointments.json — live now</span>
+            <span class="flex items-center gap-1 rounded-lg border border-border-c px-2 py-0.5 font-medium text-foreground"><Undo2 class="h-3 w-3" /> Undo</span>
+          </p>
+          <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-xs">
+            <span class="text-muted-foreground">Changed since you opened it · 409</span>
+            <span class="rounded-lg border border-border-c px-2 py-0.5 font-medium text-foreground">Reload</span>
+          </p>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Structure waits for Deploy" body="A new table is saved as a draft and never served. Settings and roles are drafts too. Removing a live table only marks it — it keeps serving, with Restore, until you deploy." art="h-48">
+        <div class="w-full max-w-sm space-y-2 text-xs">
+          {[['reviews.json', 'draft · not served yet'], ['.env', 'draft · AUTH_ENABLED=true'], ['rbac.json', 'draft · 3 roles']].map(([name, note]) => (
+            <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="font-mono text-foreground">{name}</span><span class="text-subtle">{note}</span></p>
+          ))}
+        </div>
+      </FeatureCard>
+    </div>
+    <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+      <FeatureCard title="One click, no downtime" body="Deploy carries out removals, promotes every draft, and the next request reads the new state — at the same URL, with no build and no restart." art="h-32">
+        <div class="flex items-center gap-2 text-xs">
+          <span class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-subtle">drafts</span>
+          <span class="text-primary-ink">→</span>
+          <span class="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground">live</span>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Know when you are behind" body="While anything is staged, the dashboard says your live API is behind — and it errs towards saying so, because a redeploy is cheap and a stale API is not." art="h-32">
+        <p class="flex items-center gap-2 rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-xs text-foreground"><AlertTriangle class="h-3.5 w-3.5 text-syntax-num" /> Live API is behind</p>
+      </FeatureCard>
+      <FeatureCard title="Or ask the Co-Pilot" body="The AI Co-Pilot can deploy, start and stop the project too — exactly what the buttons do, through the same path." art="h-32">
+        <p class="rounded-xl bg-contrast px-3 py-1.5 text-xs text-contrast-foreground">Deploy my changes</p>
+      </FeatureCard>
+    </div>
+  </FeatureSection>
+
+  <FeatureSection band title="Start, stop and freeze" intro="Decide what your API does while you work on it — answer everything, answer reads only, or answer nothing at all.">
+    <FeatureTabs
+      name="api-state"
+      band
+      items={[
+        { title: 'Stop the API', body: 'Every public route — resources, sign-in, the spec — answers 503 until you start it again. Your data stays where it is, and the dashboard keeps working so you can.' },
+        { title: 'Start it again', body: 'Press Start, or Deploy, which starts a stopped project after putting your drafts live. A new project is born stopped, so nothing is served before you mean it to be.' },
+        { title: 'Read-only, still online', body: 'Set <code class="font-mono text-xs text-emphasis">READ_ONLY=true</code> and the API answers GET and HEAD while every write gets a 405 — whoever sends it, admin tokens included. You can still edit from the dashboard.' },
+        { title: 'Asleep when idle', body: 'A project nobody has called for a few minutes is put to sleep and wakes on its next request. Every write is already on disk, so sleeping loses nothing.' },
+      ]}
+    >
+      <div slot="p1" class="w-full max-w-sm space-y-2 font-mono text-[11px]">
+        {['GET /appointments', 'POST /auth/login', 'GET /openapi.json'].map((route) => (
+          <p class="flex justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">{route}</span><span class="text-subtle">503</span></p>
+        ))}
+      </div>
+      <div slot="p2" class="flex w-full max-w-sm flex-col items-center gap-3">
+        <span class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"><Power class="h-4 w-4" /> Start</span>
+        <p class="font-mono text-[11px] text-subtle">status: stopped → active</p>
+      </div>
+      <div slot="p3" class="w-full max-w-sm space-y-2 font-mono text-[11px]">
+        <p class="flex justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">GET /appointments</span><span class="text-primary-ink">200</span></p>
+        <p class="flex justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">POST /appointments</span><span class="text-subtle">405 · Allow: GET, HEAD</span></p>
+      </div>
+      <div slot="p4" class="flex w-full max-w-sm flex-col gap-2">
+        <div class="flex h-24 items-end gap-1.5 rounded-xl border border-border-c bg-(--mock) px-4 pt-4 pb-3">
+          {[8, 12, 16, 10, 6, 0, 0, 0, 0, 0, 5, 11].map((n) => (
+            n === 0 ? <span class="h-1 flex-1 rounded-full bg-border-strong"></span> : <span class="flex-1 rounded-t bg-primary" style={`height: ${n * 4}px`}></span>
+          ))}
+        </div>
+        <p class="flex items-center gap-2 font-mono text-[10px] text-subtle"><Moon class="h-3 w-3 text-primary-accent" /> asleep · wakes on the next request</p>
+      </div>
+    </FeatureTabs>
+  </FeatureSection>
+</FeatureLayout>

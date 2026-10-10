@@ -1,0 +1,26 @@
+---
+/*
+  One stage of a feature page (FeatureLayout), after xmind.com/ai's bands: a
+  centred heading and one line, then whatever the page puts in. `band` gives it
+  the tinted section surface, so consecutive stages alternate the way xmind's
+  white and grey bands do — space and surface separate them, never a rule.
+*/
+interface Props {
+  title: string;
+  intro: string;
+  band?: boolean;
+  id?: string;
+}
+
+const { title, intro, band = false, id } = Astro.props;
+---
+
+<section id={id} class:list={['scroll-mt-24', band && 'bg-section']}>
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="reveal mx-auto mb-14 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{title}</h2>
+      <p class="font-medium leading-relaxed text-muted-foreground">{intro}</p>
+    </div>
+    <slot />
+  </div>
+</section>

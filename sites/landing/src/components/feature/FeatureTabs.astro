@@ -1,0 +1,47 @@
+---
+/*
+  The tabbed stage of a feature page, after xmind.com/ai's "Edit and refine":
+  a list of capabilities on the left, and the open one's picture on the right.
+  No script — the list is an exclusive <details> group (`name`), and
+  styles/showcase.css shows the panel whose item is open (up to six). Each
+  item's picture is a named slot, `p1` … `p6`, rendered twice: beside the list
+  from md up, and inside the item below that, where there is no room beside it.
+*/
+interface Props {
+  /** Unique per page, so two tab groups never close each other. */
+  name: string;
+  items: { title: string; body: string }[];
+  band?: boolean;
+}
+
+const { name, items, band = false } = Astro.props;
+const panels = await Promise.all(items.map((_, i) => Astro.slots.render(`p${i + 1}`)));
+---
+
+<div class="ftabs reveal grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+  <div class="flex flex-col gap-3">
+    {
+      items.map((item, i) => (
+        <details class="ftabs-item group rounded-2xl border border-border-c bg-transparent" name={name} open={i === 0}>
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+            <h3 class="font-semibold text-foreground">{item.title}</h3>
+            <span class="text-xl leading-none text-subtle group-open:hidden" aria-hidden="true">+</span>
+          </summary>
+          <p class="px-5 pb-5 text-sm leading-relaxed text-muted-foreground"><Fragment set:html={item.body} /></p>
+          <div aria-hidden="true" class={`mx-5 mb-5 flex min-h-56 items-center justify-center rounded-xl p-5 md:hidden ${band ? 'bg-background [--mock:var(--card)]' : 'bg-card [--mock:var(--background)]'}`}>
+            <Fragment set:html={panels[i]} />
+          </div>
+        </details>
+      ))
+    }
+  </div>
+  <div aria-hidden="true" class="feature-canvas relative hidden min-h-96 overflow-hidden rounded-3xl border border-border-c [--mock:var(--background)] md:block">
+    {
+      panels.map((html) => (
+        <div class="ftabs-panel absolute inset-0 items-center justify-center p-8">
+          <Fragment set:html={html} />
+        </div>
+      ))
+    }
+  </div>
+</div>

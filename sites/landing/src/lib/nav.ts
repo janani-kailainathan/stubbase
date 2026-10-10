@@ -88,12 +88,12 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         href: '/features/google-github-social-login',
         label: 'Social Login',
-        blurb: 'Google and GitHub sign-in from four config values, with verified-email identity and record ownership.',
+        blurb: 'Google and GitHub sign-in from four config values, with one account per email and record ownership.',
       },
       {
         href: '/features/instant-api-deployments',
         label: 'Instant Deployments',
-        blurb: 'Stage every edit as a draft, then swap it live with no downtime — or stop the project outright.',
+        blurb: 'New tables and settings wait as drafts, then go live with no downtime — or stop the project outright.',
       },
     ],
   },

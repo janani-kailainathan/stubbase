@@ -1,0 +1,205 @@
+---
+/*
+  The feature pages (/features/*), laid out after xmind.com/ai: a centred hero
+  on a faint grid with tinted icon tiles floating round the headline, one big
+  product picture under it, then the page's stages (FeatureSection, with
+  FeatureCard and FeatureTabs inside), the other features, and a FAQ with
+  FAQPage data. Unlike RoleLayout there is no character drawing — a feature
+  page leads with the product.
+
+  A page hands over its words as props and its pictures as slots:
+    hero     the big picture under the hero
+    default  the stages
+  Shared styles are styles/showcase.css (see RoleLayout). The other-features
+  cards read nav.ts, so a feature added there shows up here with no second
+  list; the icon map below is presentation only.
+*/
+import { ArrowRight, Plus, Minus, Sparkles, KeyRound, Zap, BookOpen } from 'lucide-astro';
+import '@fontsource/sedgwick-ave/latin-400.css';
+import '../styles/showcase.css';
+import Layout from './Layout.astro';
+import { NAV_GROUPS } from '../lib/nav';
+import type { FooterCta } from '../lib/cta';
+
+interface Link {
+  label: string;
+  href: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  /** The page's own path, e.g. /features/instant-api-deployments. */
+  path: string;
+  eyebrow: string;
+  h1: string;
+  subhead: string;
+  primary: Link;
+  secondary?: Link;
+  note?: string;
+  /** Four tinted icon tiles around the headline: top left, top right, bottom left, bottom right. */
+  tiles: { Icon: (props: Record<string, unknown>) => unknown; tint: string }[];
+  faqs: { q: string; a: string }[];
+  cta: FooterCta;
+}
+
+const { title, description, path, eyebrow, h1, subhead, primary, secondary, note, tiles, faqs, cta } = Astro.props;
+
+const FEATURE_ART: Record<string, { Icon: typeof Sparkles; tint: string }> = {
+  '/features/ai-rest-api-generation': { Icon: Sparkles, tint: 'var(--syntax-str)' },
+  '/features/google-github-social-login': { Icon: KeyRound, tint: 'var(--syntax-fn)' },
+  '/features/instant-api-deployments': { Icon: Zap, tint: 'var(--syntax-bool)' },
+};
+const features = NAV_GROUPS.find((group) => group.key === 'features')!;
+const others = [
+  ...features.links
+    .filter((link) => link.href !== path)
+    .map((link) => ({ ...link, ...(FEATURE_ART[link.href] ?? { Icon: ArrowRight, tint: 'var(--syntax-num)' }) })),
+  {
+    href: '/quick-start',
+    label: 'API reference',
+    blurb: 'Call a live API in one line, then make it slow or fail.',
+    Icon: BookOpen,
+    tint: 'var(--syntax-num)',
+  },
+];
+
+const TILE_PLACES = [
+  'top-14 left-[6%] -rotate-6',
+  'top-20 right-[6%] rotate-6',
+  'top-[52%] left-[10%] rotate-3',
+  'top-[48%] right-[9%] -rotate-3',
+];
+
+const url = new URL(path, Astro.site).toString();
+const schema = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: h1,
+    name: title,
+    description,
+    url,
+    inLanguage: 'en',
+    isPartOf: { '@type': 'WebSite', name: 'Stubbase', url: Astro.site?.toString() },
+    publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: Astro.site?.toString() },
+      { '@type': 'ListItem', position: 2, name: features.label },
+      { '@type': 'ListItem', position: 3, name: h1, item: url },
+    ],
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.q,
+      acceptedAnswer: { '@type': 'Answer', text: faq.a },
+    })),
+  },
+];
+---
+
+<Layout title={title} description={description} active="features" schema={schema} cta={cta}>
+  <section class="relative overflow-hidden">
+    <div class="feature-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
+
+    <div class="relative mx-auto max-w-6xl px-6 pt-20 pb-14 text-center lg:pt-28">
+      <div aria-hidden="true" class="pointer-events-none absolute inset-0 hidden lg:block">
+        {
+          tiles.slice(0, 4).map(({ Icon, tint }, i) => (
+            <span
+              class={`hero-rise absolute flex h-20 w-20 items-center justify-center rounded-2xl ${TILE_PLACES[i]}`}
+              style={`--d: ${0.3 + i * 0.1}s; background: color-mix(in oklab, ${tint} 16%, var(--background)); color: ${tint}`}
+            >
+              <Icon class="h-9 w-9" />
+            </span>
+          ))
+        }
+        <svg class="absolute top-28 left-[14%] h-16 w-28 text-(--syntax-bool) opacity-60" viewBox="0 0 112 64" fill="none">
+          <path d="M4 52 Q40 8 104 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M94 6 L104 14 L94 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <svg class="absolute right-[14%] bottom-6 h-16 w-28 text-(--syntax-bool) opacity-60" viewBox="0 0 112 64" fill="none">
+          <path d="M108 10 Q76 58 8 50" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M18 42 L8 50 L18 58" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+
+      <p class="hero-rise relative mb-4 text-lg font-bold text-primary-ink">{eyebrow}</p>
+      <h1 class="hero-rise relative mx-auto max-w-3xl text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground md:text-5xl lg:text-6xl [--d:0.05s]">
+        {h1}
+      </h1>
+      <p class="hero-rise relative mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">{subhead}</p>
+      <div class="hero-rise relative mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
+        <a href={primary.href} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
+          <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
+          {primary.label}
+        </a>
+        {secondary && (
+          <a href={secondary.href} class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+            {secondary.label}
+          </a>
+        )}
+      </div>
+      {note && <p class="hero-rise relative mt-4 text-sm text-subtle [--d:0.3s]">{note}</p>}
+    </div>
+
+    <div class="hero-rise relative mx-auto max-w-5xl px-6 pb-24 [--d:0.4s]">
+      <div aria-hidden="true" class="overflow-hidden rounded-3xl border border-border-c bg-card [--mock:var(--background)]">
+        <slot name="hero" />
+      </div>
+    </div>
+  </section>
+
+  <slot />
+
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore more features</h2>
+      <ul class="reveal grid grid-cols-1 gap-5 md:grid-cols-3">
+        {
+          others.map(({ href, label, blurb, Icon, tint }) => (
+            <li>
+              <a href={href} class="tinted group flex h-full min-h-52 flex-col rounded-2xl border border-border-c p-6" style={`--tint: ${tint}`}>
+                <span class="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-background text-(--tint)">
+                  <Icon class="h-5 w-5" />
+                </span>
+                <span class="mb-2 text-lg font-semibold text-foreground">{label}</span>
+                <span class="mb-6 text-sm leading-relaxed text-muted-foreground">{blurb}</span>
+                <span class="mt-auto flex h-9 w-9 items-center justify-center rounded-full bg-contrast text-contrast-foreground transition-colors group-hover:bg-contrast-hover">
+                  <ArrowRight class="h-4 w-4" />
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 py-24">
+      <h2 class="reveal mb-12 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Frequently asked questions</h2>
+      <div class="flex flex-col gap-3">
+        {
+          faqs.map((faq) => (
+            <details class="group rounded-xl border border-border-c bg-card" name="faq">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                <h3 class="font-semibold text-foreground">{faq.q}</h3>
+                <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+                <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
+              </summary>
+              <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Layout>

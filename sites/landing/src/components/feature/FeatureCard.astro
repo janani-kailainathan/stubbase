@@ -1,0 +1,34 @@
+---
+/*
+  A capability card on a feature page, after xmind.com/ai's: the title and one
+  sentence on top, the picture filling the card below them. The picture is the
+  default slot and is decoration (aria-hidden) — the words say what it shows.
+  `band` is set when the card sits in a banded FeatureSection, so it stays a
+  shade off the band the way a card on the page stays a shade off the page.
+  Mocks inside the picture use `bg-(--mock)`, which is set to whichever
+  surface contrasts with the card's own.
+*/
+interface Props {
+  title: string;
+  body: string;
+  band?: boolean;
+  /** Extra classes for the article, e.g. a grid span. */
+  class?: string;
+  /** Height of the picture area. */
+  art?: string;
+}
+
+const { title, body, band = false, class: className, art = 'h-56' } = Astro.props;
+---
+
+<article
+  class:list={['reveal flex min-w-0 flex-col overflow-hidden rounded-3xl border border-border-c', band ? 'bg-background [--mock:var(--card)]' : 'bg-card [--mock:var(--background)]', className]}
+>
+  <div class="p-7 pb-5">
+    <h3 class="mb-2 text-xl font-semibold text-foreground">{title}</h3>
+    <p class="leading-relaxed text-muted-foreground"><Fragment set:html={body} /></p>
+  </div>
+  <div aria-hidden="true" class:list={['relative mt-auto flex items-center justify-center overflow-hidden px-6 pb-6', art]}>
+    <slot />
+  </div>
+</article>

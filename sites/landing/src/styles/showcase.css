@@ -1,0 +1,172 @@
+/*
+  The solution and feature pages' shared look (RoleLayout, FeatureLayout):
+  hero wash, drawings' type, feature canvases and labels, explore buttons,
+  tinted cards, entrances and the client strip. Imported by those two layouts
+  only, so no other page downloads it. Global on purpose: most of it styles
+  markup a page passes in through a slot.
+*/
+/* The band behind the hero: a wash of emerald that fades into the page. */
+.hero-wash {
+  background: linear-gradient(to bottom, var(--primary-soft), transparent 70%);
+}
+.hero-art > svg {
+  width: 100%;
+  height: auto;
+}
+
+/* The drawings' handwriting, and their code. */
+.doodle-note {
+  font-family: 'Sedgwick Ave', cursive;
+}
+.doodle-mono {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* The logo mark in the button's own text colour, whatever the theme. */
+.hero-mark {
+  mask: url('/stubbase-logo.svg') center / contain no-repeat;
+}
+
+/* A reason's picture: the card with a faint dot grid and an emerald glow. */
+.feature-canvas {
+  background:
+    radial-gradient(var(--border-strong) 1px, transparent 1px) 0 0 / 18px 18px,
+    radial-gradient(80% 80% at 50% 100%, var(--primary-soft), transparent 70%),
+    var(--card);
+}
+
+.feature-label {
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--primary-ink);
+}
+
+.explore-btn {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 0.75rem;
+  background: var(--contrast);
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--contrast-foreground);
+  transition: background-color 150ms ease;
+}
+.explore-btn:hover {
+  background: var(--contrast-hover);
+}
+
+/* Resource and role cards: the card tinted with its own colour. */
+.tinted {
+  background:
+    radial-gradient(90% 90% at 100% 100%, color-mix(in oklab, var(--tint) 18%, transparent), transparent 70%),
+    color-mix(in oklab, var(--tint) 8%, var(--card));
+  transition: border-color 150ms ease;
+}
+.tinted:hover {
+  border-color: var(--border-strong);
+}
+
+/* Entrance: the text rises out of a blur. `--d` staggers it. */
+.hero-rise {
+  animation: hero-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s) both;
+}
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    translate: 0 12px;
+  }
+}
+
+/* Name tags drift a few pixels, as if someone were holding them. */
+.hero-tag {
+  animation: hero-drift 5s ease-in-out infinite alternate;
+}
+@keyframes hero-drift {
+  to {
+    translate: var(--drift, 5px) calc(var(--drift, 5px) * -0.6);
+  }
+}
+
+/* The client strip scrolls one copy's width, then repeats. */
+.marquee {
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+.marquee-track {
+  animation: marquee 40s linear infinite;
+}
+@keyframes marquee {
+  to {
+    translate: -50% 0;
+  }
+}
+
+/* Blocks below the fold rise in as they scroll into view. Scroll-driven, so
+   no script; a browser without view timelines shows them as they are. */
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: hero-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 40%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .hero-rise,
+  .hero-tag {
+    animation: none;
+  }
+  .marquee-track {
+    animation: none;
+    width: auto;
+    justify-content: center;
+  }
+  .marquee-track > ul + ul {
+    display: none;
+  }
+  .marquee-track > ul {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* Feature tabs (FeatureTabs.astro): an exclusive <details> list whose open
+   item picks the preview beside it — CSS only. With every item closed, the
+   first preview stays up rather than leaving an empty frame. */
+.ftabs-panel {
+  display: none;
+}
+.ftabs:has(.ftabs-item:nth-of-type(1)[open]) .ftabs-panel:nth-child(1),
+.ftabs:has(.ftabs-item:nth-of-type(2)[open]) .ftabs-panel:nth-child(2),
+.ftabs:has(.ftabs-item:nth-of-type(3)[open]) .ftabs-panel:nth-child(3),
+.ftabs:has(.ftabs-item:nth-of-type(4)[open]) .ftabs-panel:nth-child(4),
+.ftabs:has(.ftabs-item:nth-of-type(5)[open]) .ftabs-panel:nth-child(5),
+.ftabs:has(.ftabs-item:nth-of-type(6)[open]) .ftabs-panel:nth-child(6),
+.ftabs:not(:has(.ftabs-item[open])) .ftabs-panel:nth-child(1) {
+  display: flex;
+}
+.ftabs-item[open] {
+  border-color: var(--border-strong);
+  background: var(--card);
+}
+
+/* The feature hero's canvas: a faint grid that fades towards the edges. */
+.feature-grid {
+  background-image:
+    linear-gradient(var(--border-c) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-c) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, black 25%, transparent 75%);
+  opacity: 0.6;
+}
+/* The preview beside the list has room to spare: show it a size up. */
+.ftabs-panel > * {
+  zoom: 1.2;
+}

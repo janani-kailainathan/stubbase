@@ -1,0 +1,264 @@
+---
+/*
+  The AI generation feature page, on FeatureLayout (after xmind.com/ai). It
+  was a Markdown spoke once; the title, description and H1 are that spoke's,
+  kept because they are SEO targets. Every claim follows the Co-Pilot
+  invariants in CLAUDE.md: new tables are staged as drafts, records change
+  directly but nothing about them reaches the provider, more than 20 records
+  wait for a later message, every change is undoable once for 24 hours, a
+  setting is applied only when it narrows access, credentials and URLs are
+  the user's to paste, removing a table is the user's click, and credits are
+  charged per 1,000 tokens once a turn ends — a failed turn is free. Figures
+  are GIFT_CREDITS and PLANS in apps/dashboard-api/server-app.ts.
+*/
+import { Sparkles, Table2, Link2, Rocket, Check, Undo2, ShieldCheck, Activity, FileJson, Bot, TerminalSquare, KeyRound } from 'lucide-astro';
+import FeatureLayout from '../../layouts/FeatureLayout.astro';
+import FeatureSection from '../../components/feature/FeatureSection.astro';
+import FeatureCard from '../../components/feature/FeatureCard.astro';
+import FeatureTabs from '../../components/feature/FeatureTabs.astro';
+import { APP_URL } from '../../lib/urls';
+
+const tables = [
+  { name: 'doctors', fields: ['id', 'name', 'specialty'] },
+  { name: 'appointments', fields: ['id', 'doctorId', 'patientId', 'startsAt'] },
+  { name: 'patients', fields: ['id', 'name', 'email'] },
+];
+---
+
+<FeatureLayout
+  title="AI-Powered REST API Generation — Stubbase"
+  description="Leverage enterprise AI to instantly generate complex relational data structures, schemas, and API endpoints using natural language prompts."
+  path="/features/ai-rest-api-generation"
+  eyebrow="AI Co-Pilot"
+  h1="AI-Powered REST API Generation"
+  subhead="Describe your app in a sentence. The Co-Pilot designs the tables, links them, fills them with sample records and stages it all for you to deploy — then keeps working with you as the API grows."
+  primary={{ label: 'Generate an API free', href: APP_URL }}
+  secondary={{ label: 'Get more AI credits', href: '/pricing#ai-credits' }}
+  note="1,000 AI credits when you sign up · no credit card"
+  tiles={[
+    { Icon: Sparkles, tint: 'var(--syntax-str)' },
+    { Icon: Table2, tint: 'var(--syntax-fn)' },
+    { Icon: Link2, tint: 'var(--syntax-bool)' },
+    { Icon: Rocket, tint: 'var(--syntax-num)' },
+  ]}
+  faqs={[
+    {
+      q: 'What can the AI Co-Pilot build?',
+      a: 'Tables and the relations between them, sample records to fill them, validation schemas, and the project settings that make an API stricter. Describe the app in a sentence and it stages the new tables as drafts; press Deploy and every one is a live REST resource with GET, POST, PUT and DELETE.',
+    },
+    {
+      q: 'Does the Co-Pilot read my data?',
+      a: 'No. It works from your tables\' shape — names, fields and counts — never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
+    },
+    {
+      q: 'Can it break my live API?',
+      a: 'It is built not to. New tables wait as drafts until you deploy; removing or emptying a table is a button you press, never something it does itself; a change to more than 20 records waits until you confirm it in a later message; and every change it makes can be undone once, for 24 hours, without touching anything written since.',
+    },
+    {
+      q: 'Can it change my settings?',
+      a: 'Only towards stricter. A change that narrows access — switching auth on, shortening a token\'s life, blocking throwaway email addresses — is saved as a draft for your next deploy. Anything that could widen access comes back as a card for you to approve, and credentials and URLs such as OAuth keys or webhook addresses are never set by the AI at all: it gives you the line to paste.',
+    },
+    {
+      q: 'How are AI credits counted?',
+      a: 'One credit is 1,000 tokens — what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
+    },
+    {
+      q: 'Is the Co-Pilot on the Free plan?',
+      a: 'Yes, on every plan. A new account gets 1,000 AI credits, valid for 3 months; Pro adds 5,000 every month; and credit packs top up any plan.',
+    },
+  ]}
+  cta={{
+    title: 'Describe it. Deploy it.',
+    body: 'Tell the Co-Pilot what you are building and get live, related endpoints a minute later. 1,000 AI credits to start.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'See AI credit pricing', href: '/pricing#ai-credits' },
+    note: 'No credit card required',
+  }}
+>
+  {/* A sentence on the left; the tables and endpoints it became on the right. */}
+  <div slot="hero" class="grid grid-cols-1 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div class="flex flex-col gap-3 border-b border-border-c p-6 md:border-r md:border-b-0 sm:p-8">
+      <p class="flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
+      <p class="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-contrast px-4 py-2.5 text-sm text-contrast-foreground">
+        A clinic booking app with doctors, patients and appointments.
+      </p>
+      <div class="max-w-[90%] space-y-2 rounded-2xl rounded-bl-md border border-border-c bg-(--mock) px-4 py-3 text-sm text-foreground">
+        <p>Staged 3 tables as drafts, linked by <code class="font-mono text-xs text-primary-ink">doctorId</code> and <code class="font-mono text-xs text-primary-ink">patientId</code>, with 24 sample records.</p>
+        <p class="text-muted-foreground">Deploy when you are ready and they go live.</p>
+      </div>
+      <span class="mt-auto inline-flex items-center gap-2 self-start rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"><Rocket class="h-4 w-4" /> Deploy</span>
+    </div>
+    <div class="feature-canvas relative flex min-h-80 flex-col items-center justify-center gap-5 p-6 sm:p-8">
+      <div class="flex flex-wrap items-start justify-center gap-3">
+        {tables.map((table, i) => (
+          <div class={`w-36 rounded-xl border border-border-c bg-(--mock) ${i === 1 ? 'sm:translate-y-5' : ''}`}>
+            <p class="flex items-center justify-between border-b border-border-c px-3 py-1.5 font-mono text-[11px] font-semibold text-foreground">
+              {table.name}
+              <span class="rounded bg-primary-soft px-1 text-[9px] font-medium text-primary-soft-ink">draft</span>
+            </p>
+            <ul class="px-3 py-1.5 font-mono text-[11px] leading-5">
+              {table.fields.map((field) => (
+                <li class={field.endsWith('Id') ? 'text-primary-ink' : 'text-muted-foreground'}>{field}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+        GET /appointments<span class="text-primary-ink">?_expand=doctor,patient</span>
+      </p>
+      <span class="doodle-note absolute right-6 bottom-4 hidden -rotate-3 text-lg text-primary-ink sm:block">linked for you</span>
+    </div>
+  </div>
+
+  <FeatureSection title="Generate an API from a sentence" intro="Start from a description, a starter or a JSON file. The Co-Pilot designs the shape; you decide what goes live.">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <FeatureCard title="Chat your app into tables" body="Describe the domain and get the tables, the <code class='font-mono text-sm text-emphasis'>&lt;name&gt;Id</code> fields that link them, and sample records — staged as drafts, never put live behind your back." art="h-48">
+        <div class="w-full max-w-sm space-y-2">
+          <p class="ml-auto w-fit rounded-xl bg-contrast px-3 py-1.5 text-xs text-contrast-foreground">A recipe site with reviews</p>
+          <div class="flex gap-2">
+            {['recipes', 'reviews', 'cuisines'].map((name) => (
+              <span class="flex-1 rounded-lg border border-border-c bg-(--mock) px-2 py-2 text-center font-mono text-[11px] text-foreground">{name}</span>
+            ))}
+          </div>
+          <p class="text-center font-mono text-[10px] text-subtle">3 drafts · 18 records</p>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Start from a starter" body="On a project with no tables, ask for an example and the Co-Pilot proposes a starter — a blog, a storefront, a helpdesk with roles — applied when you click, through the same path as the starter cards." art="h-48">
+        <div class="grid w-full max-w-sm grid-cols-2 gap-2">
+          {['Issue tracker', 'Blog', 'Storefront', 'Deskline helpdesk'].map((name, i) => (
+            <span class={`rounded-xl border px-3 py-3 text-xs font-medium ${i === 1 ? 'border-primary-soft-border-strong bg-primary-soft text-primary-soft-ink' : 'border-border-c bg-(--mock) text-foreground'}`}>{name}</span>
+          ))}
+        </div>
+      </FeatureCard>
+    </div>
+    <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+      <FeatureCard title="Relations from Id fields" body="<code class='font-mono text-sm text-emphasis'>doctorId</code> links an appointment to its doctor, and <code class='font-mono text-sm text-emphasis'>?_expand=doctor</code> nests it — no join to configure." art="h-36">
+        <div class="space-y-2 font-mono text-[11px]">
+          <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-muted-foreground">appointments.<span class="text-primary-ink">doctorId</span></p>
+          <p class="text-center text-primary-ink">↓</p>
+          <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-muted-foreground">doctors.<span class="text-foreground">id</span></p>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Sample records that fit" body="Seed data shaped like the real thing, so the screens you build against it look the way they will in production." art="h-36">
+        <ul class="w-full max-w-xs divide-y divide-border-c rounded-lg border border-border-c bg-(--mock) text-[11px]">
+          {[['Dr. Amara Okafor', 'cardiology'], ['Dr. Leo Brandt', 'dermatology'], ['Dr. Mei Tanaka', 'pediatrics']].map(([name, specialty]) => (
+            <li class="flex justify-between px-3 py-1.5"><span class="text-foreground">{name}</span><span class="font-mono text-subtle">{specialty}</span></li>
+          ))}
+        </ul>
+      </FeatureCard>
+      <FeatureCard title="Validation from a sentence" body="Ask for a table's schema and POST and PUT bodies are checked against it, every problem listed in one 400." art="h-36">
+        <pre class="rounded-lg border border-border-c bg-(--mock) px-3 py-2 font-mono text-[10px] leading-relaxed text-code-fg"><span class="text-syntax-str">SCHEMA_APPOINTMENTS</span>=
+<span class="text-syntax-punct">{'{'}</span><span class="text-syntax-str">"required"</span><span class="text-syntax-punct">: [</span><span class="text-syntax-fn">"doctorId"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-fn">"startsAt"</span><span class="text-syntax-punct">] …{'}'}</span></pre>
+      </FeatureCard>
+    </div>
+  </FeatureSection>
+
+  <FeatureSection band title="Edit and refine with the Co-Pilot" intro="Keep asking as the API grows. It changes what you ask for and nothing else — and every change is one you can see, confirm and undo.">
+    <FeatureTabs
+      name="copilot-edit"
+      band
+      items={[
+        { title: 'Change records by asking', body: 'Add, update or delete records in plain words. The Co-Pilot names them with the same filters as the API and never reads their contents — it is told how many changed and the ids it created, nothing more.' },
+        { title: 'Big changes wait for you', body: 'A change to more than 20 records is counted first and comes back as a question. It goes ahead only when you confirm in a later message — the AI cannot confirm on your behalf.' },
+        { title: 'Undo any change', body: 'Every record change can be undone once, for 24 hours. An undo skips any record written since, so it never erases newer work, and tells you how many it skipped.' },
+        { title: 'Settings only get stricter', body: 'A change that narrows access is saved as a draft for your next deploy. Anything that could widen it comes back as a card to approve, and keys and URLs are always yours to paste.' },
+        { title: 'Ask why something failed', body: 'The Co-Pilot reads your recent request log and settings to explain a 401 or a 404 — status codes and paths, never request bodies, and credential names without their values.' },
+      ]}
+    >
+      <div slot="p1" class="w-full max-w-sm space-y-2 text-xs">
+        <p class="ml-auto w-fit rounded-xl bg-contrast px-3 py-1.5 text-contrast-foreground">Mark every appointment before May as done</p>
+        <p class="w-fit rounded-xl border border-border-c bg-(--mock) px-3 py-1.5 text-foreground">Updated 12 records in <span class="font-mono text-primary-ink">appointments</span>.</p>
+        <p class="font-mono text-[10px] text-subtle">where startsAt[lt]=2026-05-01</p>
+      </div>
+      <div slot="p2" class="w-full max-w-sm space-y-2 text-xs">
+        <p class="w-fit rounded-xl border border-border-c bg-(--mock) px-3 py-1.5 text-foreground">This would delete <b>340</b> patients. Shall I go ahead?</p>
+        <div class="flex gap-2">
+          <span class="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground">Yes, delete 340</span>
+          <span class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-foreground">Cancel</span>
+        </div>
+      </div>
+      <div slot="p3" class="w-full max-w-sm">
+        <div class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-3 text-xs">
+          <span class="text-foreground">Updated 12 records</span>
+          <span class="flex items-center gap-1.5 rounded-lg border border-border-c px-2.5 py-1 font-medium text-foreground"><Undo2 class="h-3.5 w-3.5" /> Undo</span>
+        </div>
+        <p class="mt-2 text-center font-mono text-[10px] text-subtle">restored 11 · skipped 1 written since</p>
+      </div>
+      <div slot="p4" class="w-full max-w-sm space-y-2 font-mono text-[11px]">
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">AUTH_ENABLED=true</span><span class="flex items-center gap-1 text-primary-ink"><Check class="h-3.5 w-3.5" /> draft</span></p>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">AUTH_PUBLIC_ROUTES=…</span><span class="flex items-center gap-1 text-subtle"><ShieldCheck class="h-3.5 w-3.5" /> asks you</span></p>
+        <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="text-foreground">HOOK_AFTER_…</span><span class="text-subtle">you paste it</span></p>
+      </div>
+      <div slot="p5" class="w-full max-w-sm space-y-2 text-xs">
+        <p class="ml-auto w-fit rounded-xl bg-contrast px-3 py-1.5 text-contrast-foreground">Why is my app getting 401s?</p>
+        <p class="flex items-center gap-2 font-mono text-[10px] text-subtle"><Activity class="h-3.5 w-3.5 text-primary-accent" /> read 50 log entries · settings</p>
+        <p class="w-fit rounded-xl border border-border-c bg-(--mock) px-3 py-1.5 text-foreground">Auth is on and <span class="font-mono text-primary-ink">/appointments</span> is not a public route, so requests without a token are refused.</p>
+      </div>
+    </FeatureTabs>
+  </FeatureSection>
+
+  <FeatureSection title="Ship it on your terms" intro="Nothing the Co-Pilot designs is live until you say so, and nothing it can do is irreversible without your click.">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <FeatureCard title="Drafts until you deploy" body="New tables and settings wait as drafts. Deploy puts them live with no downtime — or ask the Co-Pilot to deploy, which does exactly what the button does." art="h-36">
+        <div class="flex items-center gap-2 text-xs">
+          <span class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-subtle">3 drafts</span>
+          <span class="text-primary-ink">→</span>
+          <span class="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground"><Rocket class="h-3.5 w-3.5" /> live</span>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="Removing a table is your click" body="Ask to clear or drop a table and the Co-Pilot names the tables and hands you a button. It never removes one itself." art="h-36">
+        <div class="w-full max-w-xs rounded-xl border border-border-c bg-(--mock) p-3 text-xs">
+          <p class="mb-2 text-foreground">Remove <span class="font-mono">legacy_visits</span>?</p>
+          <span class="rounded-lg border border-border-c px-2.5 py-1 font-medium text-foreground">Remove table</span>
+        </div>
+      </FeatureCard>
+      <FeatureCard title="An OpenAPI spec for every project" body="Each project serves its own <code class='font-mono text-sm text-emphasis'>openapi.json</code>, with a schema per table inferred from its records — for client generators, Postman and agents." art="h-36">
+        <p class="flex items-center gap-2 rounded-xl border border-border-c bg-(--mock) px-3 py-2 font-mono text-xs text-foreground"><FileJson class="h-4 w-4 text-primary-accent" /> /my-clinic/openapi.json</p>
+      </FeatureCard>
+    </div>
+  </FeatureSection>
+
+  <FeatureSection band title="Use your API in your AI tools" intro="The API you generated is a datastore your own agents can use too — over MCP, through its spec, or as plain REST.">
+    <ul class="grid grid-cols-1 gap-5 md:grid-cols-3">
+      {[
+        { Icon: TerminalSquare, tint: 'var(--syntax-bool)', title: 'MCP server with read-only SQL', body: 'Connect Claude Desktop, Cursor or any MCP client and let it answer questions with real joins and aggregates — never writes.', href: '/roles/ai-engineer' },
+        { Icon: KeyRound, tint: 'var(--syntax-num)', title: 'A key per project', body: 'Developer keys are shown once, stored hashed, scoped to one project and revocable; the dashboard writes the client config for you.', href: '/roles/ai-engineer' },
+        { Icon: Bot, tint: 'var(--syntax-fn)', title: 'A spec your agent can read', body: 'Point a function-calling agent at openapi.json and it learns every route and field without you describing them.', href: '/quick-start' },
+      ].map(({ Icon, tint, title, body, href }) => (
+        <li class="reveal">
+          <a href={href} class="group flex h-full flex-col overflow-hidden rounded-3xl border border-border-c bg-background transition-colors hover:border-border-strong">
+            <span class="flex h-36 items-center justify-center" style={`background: color-mix(in oklab, ${tint} 14%, var(--background)); color: ${tint}`}>
+              <Icon class="h-12 w-12 transition-transform duration-200 group-hover:-translate-y-1" />
+            </span>
+            <span class="flex flex-1 flex-col p-6">
+              <span class="mb-2 text-lg font-semibold text-foreground">{title}</span>
+              <span class="mb-5 text-sm leading-relaxed text-muted-foreground">{body}</span>
+              <span class="mt-auto text-sm font-medium text-primary-ink group-hover:text-primary-ink-hover">Learn more →</span>
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </FeatureSection>
+
+  <FeatureSection title="Pay for the work, not the message" intro="AI credits are counted in tokens, so a small edit costs little and a big build costs more — and a reply that fails costs nothing.">
+    <ul class="reveal grid grid-cols-1 gap-5 sm:grid-cols-3">
+      {[
+        { big: '1,000', small: 'tokens per credit — read, written and thought, charged once when a reply ends' },
+        { big: 'Free', small: 'a reply that fails, whatever it cost upstream: you got nothing, so you pay nothing' },
+        { big: '1,000', small: 'credits when you sign up, valid for 3 months; Pro adds 5,000 a month' },
+      ].map(({ big, small }) => (
+        <li class="rounded-3xl border border-border-c bg-card p-7 text-center">
+          <p class="mb-2 text-4xl font-extrabold tracking-tight text-foreground">{big}</p>
+          <p class="text-sm leading-relaxed text-muted-foreground">{small}</p>
+        </li>
+      ))}
+    </ul>
+    <p class="reveal mt-8 text-center">
+      <a href="/pricing#ai-credits" class="explore-btn">See AI credit packs</a>
+    </p>
+  </FeatureSection>
+</FeatureLayout>
