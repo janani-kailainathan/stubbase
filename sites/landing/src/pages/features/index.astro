@@ -1,0 +1,305 @@
+---
+/*
+  /features: every feature on one page, after xmind.com/features — a row of
+  feature icons over the headline, the product underneath, big tinted cards
+  for the features with a page of their own, smaller ones for the rest, pill
+  tabs showing how Stubbase is applied, and a FAQ. The big cards and the tabs'
+  links read nav.ts, so a feature or solution page added there appears here
+  with no second list; the smaller cards link to whichever page explains the
+  feature best, since those features have no page of their own yet.
+
+  Every claim is the core's or the Dashboard API's, as on the pages it links
+  to. The pill tabs are CSS only: a radio group, and styles in this page that
+  show the checked one's panel.
+*/
+import { Sparkles, KeyRound, Zap, SlidersHorizontal, UserCheck, ShieldCheck, FlaskConical, TerminalSquare, Webhook, Activity, ListChecks, FileJson, ArrowRight, ArrowUpRight, Plus, Minus, Check } from 'lucide-astro';
+import '@fontsource/sedgwick-ave/latin-400.css';
+import '../../styles/showcase.css';
+import Layout from '../../layouts/Layout.astro';
+import { NAV_GROUPS, SOLUTION_GROUPS } from '../../lib/nav';
+import { APP_URL } from '../../lib/urls';
+
+const featureGroup = NAV_GROUPS.find((group) => group.key === 'features')!;
+const BIG: Record<string, { Icon: typeof Sparkles; tint: string; points: string[] }> = {
+  '/features/ai-rest-api-generation': {
+    Icon: Sparkles,
+    tint: 'var(--syntax-str)',
+    points: ['Tables, relations and sample records from a sentence', 'Record changes you confirm and can undo', 'Settings it may only make stricter'],
+  },
+  '/features/google-github-social-login': {
+    Icon: KeyRound,
+    tint: 'var(--syntax-fn)',
+    points: ['Two values per provider', 'Only verified email addresses', 'Tokens, refresh and ownership included'],
+  },
+  '/features/instant-api-deployments': {
+    Icon: Zap,
+    tint: 'var(--syntax-bool)',
+    points: ['Records save live, guarded', 'New tables and settings wait for Deploy', 'Stop, start or go read-only'],
+  },
+};
+const big = featureGroup.links.filter((link) => link.href in BIG).map((link) => ({ ...link, ...BIG[link.href] }));
+
+const more = [
+  { Icon: SlidersHorizontal, tint: 'var(--syntax-fn)', title: 'Query like a real backend', body: 'Exact and operator filters, multi-key sort, paging with X-Total-Count, and _expand for relations.', href: '/use-cases/mock-apis' },
+  { Icon: UserCheck, tint: 'var(--syntax-str)', title: 'Sign-in for your users', body: 'Sign-up with an emailed code, login, refresh tokens, logout and password reset.', href: '/use-cases/mvp-backend' },
+  { Icon: ShieldCheck, tint: 'var(--syntax-bool)', title: 'Roles and permissions', body: 'Roles that read and write their own records or all of them, enforced on the server.', href: '/use-cases/mvp-backend' },
+  { Icon: FlaskConical, tint: 'var(--syntax-num)', title: 'QA mode', body: 'Latency, status codes, random failures and empty lists on demand, one request at a time.', href: '/roles/qa-engineer' },
+  { Icon: TerminalSquare, tint: 'var(--syntax-bool)', title: 'MCP with read-only SQL', body: 'Let Claude, Cursor or any MCP client join and aggregate your data — never write it.', href: '/roles/ai-engineer' },
+  { Icon: Webhook, tint: 'var(--syntax-fn)', title: 'Webhooks, email and SMS', body: 'Run your logic before or after a write, and send email or SMS without shipping a key.', href: '/use-cases/mvp-backend' },
+  { Icon: Activity, tint: 'var(--syntax-str)', title: 'Live request log', body: 'Every request streamed to your dashboard, each response tagged with a correlation id.', href: '/roles/qa-engineer' },
+  { Icon: ListChecks, tint: 'var(--syntax-num)', title: 'Validation schemas', body: 'Describe a table\'s shape once; POST and PUT bodies that break it get one 400 listing every problem.', href: '/features/ai-rest-api-generation' },
+  { Icon: FileJson, tint: 'var(--syntax-fn)', title: 'OpenAPI for every project', body: 'A generated openapi.json with a schema per table, for client generators, Postman and agents.', href: '/use-cases/mock-apis' },
+];
+
+// The pill tabs: one solution page each, labelled by what someone is doing.
+const APPLIED: { href: string; pill: string; title: string; body: string; steps: string[] }[] = [
+  { href: '/use-cases/mock-apis', pill: 'Mocking', title: 'Mock APIs that behave like the real thing', body: 'Turn a JSON file into a relational REST API that pages, filters and keeps every write.', steps: ['Paste users.json and posts.json', 'GET /posts?_expand=user', 'Build the real screens today'] },
+  { href: '/use-cases/mvp-backend', pill: 'Shipping', title: 'A whole backend for your MVP', body: 'Data, sign-in, ownership, webhooks and email behind one API, with nothing to run.', steps: ['Describe the app to the Co-Pilot', 'Switch on AUTH_ENABLED', 'Deploy and point your frontend at it'] },
+  { href: '/roles/qa-engineer', pill: 'Testing', title: 'Make the API fail the same way every run', body: 'Ask for a 503, a delay or a 30% error rate with a header, from any test runner.', steps: ['QA_MODE=true', 'x-stubbase-status: 503', 'Assert on the failure you chose'] },
+  { href: '/roles/ai-engineer', pill: 'AI agents', title: 'Give your agent a datastore it can query', body: 'Read-only SQL over MCP: real joins and aggregates instead of paging through REST.', steps: ['Mint a developer key', 'Paste the generated config', 'Ask a question that needs a JOIN'] },
+  { href: '/uses/ai-backend-generator-for-students', pill: 'Learning', title: 'A backend for class projects', body: 'No database to install, no server to deploy — and real status codes from the first request.', steps: ['Start from a starter', 'Call it from your app', 'Share the URL with your team'] },
+];
+const solutionLabel = (href: string) =>
+  SOLUTION_GROUPS.flatMap((group) => group.links).find((link) => link.href === href)?.label ?? 'Students';
+
+const faqs = [
+  {
+    q: 'Which features are on the Free plan?',
+    a: 'All of them. Auth and roles, social login, webhooks, QA mode, MCP with SQL and the AI Co-Pilot are on every plan; plans differ only in how many requests you can make each month and each second. The Co-Pilot is paid for in AI credits, and a new account starts with 1,000.',
+  },
+  {
+    q: 'How do I switch a feature on?',
+    a: 'Most features are a line in your project\'s .env — AUTH_ENABLED=true, QA_MODE=true, a webhook URL — saved as a draft and put live when you deploy. A new project\'s .env lists every setting, commented out, with a note on what each one does.',
+  },
+  {
+    q: 'Do I need to run a server or a database?',
+    a: 'No. Your project is a hosted REST API at a public URL. You describe the data as JSON, in a sentence to the AI Co-Pilot, or from a starter, and every write is saved as it happens.',
+  },
+  {
+    q: 'Which languages and frameworks can call it?',
+    a: 'Anything that makes HTTP requests. Public routes answer with Access-Control-Allow-Origin: *, so a browser app calls it from localhost or production alike, and the openapi.json every project serves feeds client generators.',
+  },
+  {
+    q: 'Can I try it without an account?',
+    a: 'Yes. The free practice APIs — posts, comments, albums, photos, todos and users — answer anyone, with filters, paging and relations, and need no key.',
+  },
+];
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map((faq) => ({ '@type': 'Question', name: faq.q, acceptedAnswer: { '@type': 'Answer', text: faq.a } })),
+};
+const listSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Stubbase features',
+  url: new URL('/features', Astro.site).toString(),
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: big.map((link, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: link.label,
+      url: new URL(link.href, Astro.site).toString(),
+    })),
+  },
+};
+const heroIcons = [Sparkles, KeyRound, Zap, SlidersHorizontal, FlaskConical, TerminalSquare];
+const heroTints = ['var(--syntax-str)', 'var(--syntax-fn)', 'var(--syntax-bool)', 'var(--syntax-num)', 'var(--syntax-fn)', 'var(--syntax-bool)'];
+---
+
+<Layout
+  title="Stubbase Features — AI API Generation, Auth, Deployments and More"
+  description="Every Stubbase feature on every plan: AI REST API generation, Google and GitHub login, instant deployments, roles and permissions, QA mode, MCP with read-only SQL, webhooks and a live request log."
+  active="features"
+  schema={[listSchema, faqSchema]}
+  cta={{
+    title: 'Every feature, on every plan',
+    body: 'Start free with all of it — the Co-Pilot included, with 1,000 AI credits to begin. No credit card.',
+    label: 'Generate an API free',
+    href: APP_URL,
+    secondary: { label: 'See pricing', href: '/pricing' },
+    note: 'No credit card required',
+  }}
+>
+  <section class="relative overflow-hidden">
+    <div class="feature-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
+    <div class="relative mx-auto max-w-4xl px-6 pt-20 pb-14 text-center lg:pt-28">
+      <div aria-hidden="true" class="hero-rise mb-8 flex flex-wrap justify-center gap-3">
+        {heroIcons.map((Icon, i) => (
+          <span
+            class={`flex h-14 w-14 items-center justify-center rounded-2xl ${i % 2 ? 'rotate-3' : '-rotate-3'}`}
+            style={`background: color-mix(in oklab, ${heroTints[i]} 16%, var(--background)); color: ${heroTints[i]}`}
+          >
+            <Icon class="h-7 w-7" />
+          </span>
+        ))}
+      </div>
+      <p class="hero-rise mb-4 text-lg font-bold text-primary-ink [--d:0.05s]">Features</p>
+      <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground md:text-5xl lg:text-6xl [--d:0.1s]">
+        Everything your API needs, on every plan
+      </h1>
+      <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.15s]">
+        Generate it with AI, sign your users in, query it like a real backend, test its failures and
+        let agents read it — all from one JSON file and one dashboard, with nothing to run.
+      </p>
+      <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
+        <a href={APP_URL} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
+          <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
+          Generate an API free
+        </a>
+        <a href="/pricing" class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+          See pricing
+        </a>
+      </div>
+      <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">No credit card required</p>
+    </div>
+    <div class="hero-rise relative mx-auto max-w-5xl px-6 pb-24 [--d:0.4s]">
+      <div class="relative">
+        <div class="absolute inset-0 translate-x-3 translate-y-3 rounded-2xl bg-primary sm:translate-x-4 sm:translate-y-4" aria-hidden="true"></div>
+        <div class="relative overflow-hidden rounded-2xl border border-border-c bg-background p-2">
+          <img src="/dashboard-ui.png" alt="Stubbase Dashboard UI" class="w-full rounded-lg border border-border-faint" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* The features with pages of their own: one full width, two side by side. */}
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-14 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore the power of Stubbase</h2>
+        <p class="font-medium leading-relaxed text-muted-foreground">The three things most projects reach for first, each with a page of its own.</p>
+      </div>
+      <ul class="grid grid-cols-1 gap-5 md:grid-cols-2">
+        {big.map(({ href, label, blurb, Icon, tint, points }, i) => (
+          <li class={`reveal ${i === 0 ? 'md:col-span-2' : ''}`}>
+            <a href={href} class="tinted group relative flex h-full min-h-72 flex-col overflow-hidden rounded-3xl border border-border-c p-8" style={`--tint: ${tint}`}>
+              <span class="mb-3 flex items-center gap-3 text-2xl font-semibold text-foreground">
+                <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-(--tint)"><Icon class="h-5 w-5" /></span>
+                {label}
+              </span>
+              <span class="mb-6 max-w-xl leading-relaxed text-muted-foreground">{blurb}</span>
+              <ul class="mb-8 space-y-2 text-sm text-foreground">
+                {points.map((point) => (
+                  <li class="flex items-center gap-2"><Check class="h-4 w-4 text-(--tint)" /> {point}</li>
+                ))}
+              </ul>
+              <span class="mt-auto flex h-10 w-10 items-center justify-center rounded-full bg-contrast text-contrast-foreground transition-colors group-hover:bg-contrast-hover">
+                <ArrowRight class="h-4 w-4" />
+              </span>
+              <Icon aria-hidden="true" class="pointer-events-none absolute -right-6 -bottom-8 h-56 w-56 text-(--tint) opacity-15 transition-transform duration-300 group-hover:-translate-y-2" />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="bg-section">
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-14 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">And everything around them</h2>
+        <p class="font-medium leading-relaxed text-muted-foreground">The rest of what a project can do, each linked to the page that shows it working.</p>
+      </div>
+      <ul class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {more.map(({ Icon, tint, title, body, href }) => (
+          <li class="reveal">
+            <a href={href} class="group flex h-full flex-col rounded-2xl border border-border-c bg-background p-6 transition-colors hover:border-border-strong">
+              <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl" style={`background: color-mix(in oklab, ${tint} 14%, var(--background)); color: ${tint}`}>
+                <Icon class="h-5 w-5" />
+              </span>
+              <span class="mb-2 font-semibold text-foreground">{title}</span>
+              <span class="mb-4 text-sm leading-relaxed text-muted-foreground">{body}</span>
+              <span class="mt-auto inline-flex items-center gap-1 text-sm font-medium text-primary-ink group-hover:text-primary-ink-hover">
+                Learn more <ArrowUpRight class="h-4 w-4" />
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  {/* How it is applied: pill tabs over a preview, CSS only. */}
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-24">
+      <div class="reveal mx-auto mb-10 max-w-2xl text-center">
+        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">See how Stubbase is used</h2>
+        <p class="font-medium leading-relaxed text-muted-foreground">Pick what you are doing; each has a page that walks through it.</p>
+      </div>
+      <div class="applied reveal">
+        <div class="mb-6 flex flex-wrap justify-center gap-2" role="radiogroup" aria-label="What you are doing">
+          {APPLIED.map(({ pill }, i) => (
+            <label class="applied-pill cursor-pointer rounded-full border border-border-c bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+              <input type="radio" name="applied" class="sr-only" checked={i === 0} />
+              {pill}
+            </label>
+          ))}
+        </div>
+        <div class="feature-canvas rounded-3xl border border-border-c">
+          {APPLIED.map(({ href, title, body, steps }) => (
+            <div class="applied-panel grid grid-cols-1 items-center gap-8 p-8 md:grid-cols-2 sm:p-12">
+              <div>
+                <p class="mb-3 text-2xl font-semibold text-foreground">{title}</p>
+                <p class="mb-6 leading-relaxed text-muted-foreground">{body}</p>
+                <a href={href} class="explore-btn">{solutionLabel(href)} <ArrowRight class="ml-2 h-4 w-4" /></a>
+              </div>
+              <ol class="space-y-3" aria-label="In three steps">
+                {steps.map((step, n) => (
+                  <li class="flex items-center gap-3 rounded-xl border border-border-c bg-background px-4 py-3 text-sm text-foreground">
+                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-soft font-mono text-xs text-primary-soft-ink">{n + 1}</span>
+                    <span class="font-mono text-xs sm:text-sm">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 py-24">
+      <h2 class="reveal mb-12 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Frequently asked questions</h2>
+      <div class="flex flex-col gap-3">
+        {faqs.map((faq) => (
+          <details class="group rounded-xl border border-border-c bg-card" name="faq">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+              <h3 class="font-semibold text-foreground">{faq.q}</h3>
+              <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+              <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
+            </summary>
+            <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  /* Pill tabs: the checked radio picks its pill's look and its panel. The
+     first panel is the fallback when nothing is checked. */
+  .applied-panel {
+    display: none;
+  }
+  .applied:has(.applied-pill:nth-child(1) :checked) .applied-panel:nth-child(1),
+  .applied:has(.applied-pill:nth-child(2) :checked) .applied-panel:nth-child(2),
+  .applied:has(.applied-pill:nth-child(3) :checked) .applied-panel:nth-child(3),
+  .applied:has(.applied-pill:nth-child(4) :checked) .applied-panel:nth-child(4),
+  .applied:has(.applied-pill:nth-child(5) :checked) .applied-panel:nth-child(5),
+  .applied:not(:has(:checked)) .applied-panel:nth-child(1) {
+    display: grid;
+  }
+  .applied-pill:has(:checked) {
+    border-color: var(--primary-soft-border-strong);
+    background: var(--primary-soft);
+    color: var(--primary-soft-ink);
+  }
+  .applied-pill:has(:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+</style>

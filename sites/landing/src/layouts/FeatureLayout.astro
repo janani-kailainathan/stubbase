@@ -14,7 +14,7 @@
   cards read nav.ts, so a feature added there shows up here with no second
   list; the icon map below is presentation only.
 */
-import { ArrowRight, Plus, Minus, Sparkles, KeyRound, Zap, BookOpen } from 'lucide-astro';
+import { ArrowRight, Plus, Minus, Sparkles, KeyRound, Zap, LayoutGrid } from 'lucide-astro';
 import '@fontsource/sedgwick-ave/latin-400.css';
 import '../styles/showcase.css';
 import Layout from './Layout.astro';
@@ -49,20 +49,12 @@ const FEATURE_ART: Record<string, { Icon: typeof Sparkles; tint: string }> = {
   '/features/ai-rest-api-generation': { Icon: Sparkles, tint: 'var(--syntax-str)' },
   '/features/google-github-social-login': { Icon: KeyRound, tint: 'var(--syntax-fn)' },
   '/features/instant-api-deployments': { Icon: Zap, tint: 'var(--syntax-bool)' },
+  '/features': { Icon: LayoutGrid, tint: 'var(--syntax-num)' },
 };
 const features = NAV_GROUPS.find((group) => group.key === 'features')!;
-const others = [
-  ...features.links
-    .filter((link) => link.href !== path)
-    .map((link) => ({ ...link, ...(FEATURE_ART[link.href] ?? { Icon: ArrowRight, tint: 'var(--syntax-num)' }) })),
-  {
-    href: '/quick-start',
-    label: 'API reference',
-    blurb: 'Call a live API in one line, then make it slow or fail.',
-    Icon: BookOpen,
-    tint: 'var(--syntax-num)',
-  },
-];
+const others = features.links
+  .filter((link) => link.href !== path)
+  .map((link) => ({ ...link, ...(FEATURE_ART[link.href] ?? { Icon: ArrowRight, tint: 'var(--syntax-num)' }) }));
 
 const TILE_PLACES = [
   'top-14 left-[6%] -rotate-6',

@@ -440,7 +440,7 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
       */}
       <ul class="reveal flex flex-wrap justify-center gap-x-10 gap-y-14">
         {
-          features.links.map((link, i) => {
+          features.links.filter((link) => link.href !== '/features').map((link, i) => {
             const Icon = FEATURE_ICONS[link.href] ?? ArrowUpRight;
             return (
               <li class="w-full max-w-72 sm:w-72" style={`--tint: ${FEATURE_TINTS[i % FEATURE_TINTS.length]}`}>
@@ -472,6 +472,12 @@ const FEATURE_TINTS = ['var(--primary)', 'var(--syntax-fn)', 'var(--syntax-bool)
           })
         }
       </ul>
+      {/* The overview is a page about the features, not one of them: a link, not a shield. */}
+      <p class="reveal mt-14 text-center">
+        <a href="/features" class="inline-flex items-center gap-2 rounded-xl border border-border-c bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+          See every feature <ArrowRight class="h-4 w-4" />
+        </a>
+      </p>
     </div>
   </section>
 

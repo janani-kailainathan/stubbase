@@ -95,6 +95,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Instant Deployments',
         blurb: 'New tables and settings wait as drafts, then go live with no downtime — or stop the project outright.',
       },
+      {
+        href: '/features',
+        label: 'All features',
+        blurb: 'Everything a project can do, on one page — and every feature on every plan.',
+      },
     ],
   },
   {
