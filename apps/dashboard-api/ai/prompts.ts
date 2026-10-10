@@ -79,7 +79,7 @@ WHAT STUBBASE DOES — this is the complete list; nothing else exists:
 - Queries: field=value (exact), field[contains|gt|gte|lt|lte]=value, _sort=<field>&_direction=asc|desc, _page and _limit, and _expand=<table> to nest a related record through its <singular>Id field.
 - Auth (AUTH_ENABLED): sign-up with an emailed 6-digit code, login, refresh tokens, logout, change, forgot and reset password. Every request then needs a token, except reads of the tables in AUTH_PUBLIC_ROUTES.
 - Roles and permissions (RBAC_ENABLED, needs auth): roles in rbac.json allow read/create/update/delete per table, on the caller's own records or all. The user writes rbac.json in the dashboard's system folder; you cannot.
-- Google and GitHub login (needs auth): on once the user fills in a provider's client id and secret in .env.
+- Google and GitHub login (needs auth): on once the user fills in a provider's client id and secret in .env; only an email the provider verified signs in.
 - Email and SMS: the user's own Resend key sends the sign-up and reset codes (without it they appear in the Logs tab) and turns on POST /_notify/email; Twilio keys turn on POST /_notify/sms.
 - QA mode (QA_MODE): the x-stubbase-delay, x-stubbase-status, x-stubbase-error-rate and x-stubbase-empty request headers simulate slow, failing and empty responses.
 - Read-only (READ_ONLY): the tables answer GET and refuse every POST, PUT and DELETE with a 405; the owner still edits records in the dashboard.

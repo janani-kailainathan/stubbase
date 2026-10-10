@@ -1009,6 +1009,7 @@ describe("signup email domains", () => {
         const { pathname } = new URL(req.url);
         if (pathname === "/token") return Response.json({ access_token: "gh-access" });
         if (pathname === "/user") return Response.json({ login: "octo", name: "Octo", email: identityEmail });
+        if (pathname === "/emails") return Response.json([{ email: identityEmail, primary: true, verified: true }]);
         return new Response("not found", { status: 404 });
       },
     });
@@ -2240,6 +2241,7 @@ describe("sessions and refresh tokens", () => {
           const { pathname } = new URL(req.url);
           if (pathname === "/token") return Response.json({ access_token: "gh-access" });
           if (pathname === "/user") return Response.json({ login: "octo", name: "Octo", email: "octo@test.co" });
+          if (pathname === "/emails") return Response.json([{ email: "octo@test.co", primary: true, verified: true }]);
           return new Response("not found", { status: 404 });
         },
       });
@@ -2281,6 +2283,86 @@ describe("sessions and refresh tokens", () => {
       expect((await read("ghredirect", fragment.get("token")!, svc)).status).toBe(200);
       expect((await refresh("ghredirect", fragment.get("refreshToken")!, svc)).status).toBe(200);
     }, 20_000);
+
+    test("signs in only with an address the provider verified", async () => {
+      // A sign-in joins an existing account by email, so an address the
+      // provider never verified would hand that account to whoever typed it.
+      let google: Record<string, unknown> = {};
+      let githubProfile: Record<string, unknown> = {};
+      let githubEmails: unknown[] = [];
+      const mock = Bun.serve({
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname.endsWith("/token")) return Response.json({ access_token: "access" });
+          if (pathname === "/google/userinfo") return Response.json(google);
+          if (pathname === "/github/user") return Response.json(githubProfile);
+          if (pathname === "/github/emails") return Response.json(githubEmails);
+          return new Response("not found", { status: 404 });
+        },
+      });
+      try {
+        const base = `http://127.0.0.1:${mock.port}`;
+        const on = await boot(`oauth-verified-${Date.now()}`, {
+          OAUTH_GOOGLE_AUTH_URL: `${base}/google/authorize`,
+          OAUTH_GOOGLE_TOKEN_URL: `${base}/google/token`,
+          OAUTH_GOOGLE_USERINFO_URL: `${base}/google/userinfo`,
+          OAUTH_GITHUB_AUTH_URL: `${base}/github/authorize`,
+          OAUTH_GITHUB_TOKEN_URL: `${base}/github/token`,
+          OAUTH_GITHUB_USER_URL: `${base}/github/user`,
+          OAUTH_GITHUB_EMAILS_URL: `${base}/github/emails`,
+        });
+        await project("verifiedonly", { AUTH_GOOGLE_CLIENT_ID: "g.test", AUTH_GOOGLE_SECRET: "g-secret", ...GITHUB }, on);
+        // The account someone would like to walk into.
+        await seedSystemFile(on, "verifiedonly", "users", [{ id: "victim-1", email: "victim@test.co", role: "user" }]);
+        const signIn = async (provider: "google" | "github") => {
+          const start = await fetch(`${on.base}/verifiedonly/auth/${provider}`, { redirect: "manual" });
+          const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+          return fetch(`${on.base}/verifiedonly/auth/${provider}/callback?code=any&state=${encodeURIComponent(state)}`, {
+            redirect: "manual",
+          });
+        };
+        const untouched = async () =>
+          expect(await systemFile(on, "verifiedonly", "users")).toEqual([
+            { id: "victim-1", email: "victim@test.co", role: "user" },
+          ]);
+
+        // Google: refused unless it says the address is verified.
+        google = { email: "victim@test.co", email_verified: false };
+        expect((await signIn("google")).status).toBe(403);
+        google = { email: "victim@test.co" };
+        expect((await signIn("google")).status).toBe(403);
+        await untouched();
+
+        // GitHub: the profile's public email is ignored, and so is an
+        // unverified entry in the emails list, primary or not.
+        githubProfile = { login: "eve", email: "victim@test.co" };
+        githubEmails = [
+          { email: "victim@test.co", primary: true, verified: false },
+          { email: "eve@evil.test", primary: false, verified: false },
+        ];
+        const refused = await signIn("github");
+        expect(refused.status).toBe(403);
+        expect(await refused.json()).toEqual({ error: "github has not verified an email address for this account" });
+        await untouched();
+
+        // Verified, both land on the account that was already there.
+        google = { email: "victim@test.co", email_verified: true };
+        const viaGoogle = await signIn("google");
+        expect(viaGoogle.status).toBe(200);
+        expect((await viaGoogle.json()).user.id).toBe("victim-1");
+        githubEmails = [
+          { email: "old@test.co", primary: true, verified: false },
+          { email: "victim@test.co", primary: false, verified: true },
+        ];
+        const viaGithub = await signIn("github");
+        expect(viaGithub.status).toBe(200);
+        expect((await viaGithub.json()).user.id).toBe("victim-1");
+        expect(await systemFile(on, "verifiedonly", "users")).toHaveLength(1);
+      } finally {
+        mock.stop(true);
+      }
+    }, 30_000);
   });
 });
 

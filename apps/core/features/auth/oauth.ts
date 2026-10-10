@@ -110,15 +110,26 @@ export async function handleOauth<T extends AuthTenant>(
   const profile = profRes?.ok ? ((await profRes.json().catch(() => null)) as any) : null;
   if (!profile) return err(502, "oauth profile fetch failed");
 
-  let email: unknown = profile.email;
-  if (provider === "github" && typeof email !== "string" && p.emailsUrl) {
+  // Only an address the provider says it verified. A sign-in joins an existing
+  // account by email, so an unverified one is an account takeover: anyone can
+  // put someone else's address on a provider profile and walk into their
+  // account here. Google says so in `email_verified`; GitHub's profile email is
+  // whatever the user typed as their public email, so the emails endpoint, and
+  // only a verified entry in it, is the source there. The Dashboard API's own
+  // sign-in holds the same rule.
+  let email: unknown;
+  if (provider === "google") {
+    if (profile.email_verified === true || profile.email_verified === "true") email = profile.email;
+  } else if (p.emailsUrl) {
     const er = await fetch(p.emailsUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) }).catch(
       () => null,
     );
     const list = er?.ok ? ((await er.json().catch(() => null)) as any[]) : null;
-    if (Array.isArray(list)) email = (list.find((e) => e?.primary && e?.verified) ?? list[0])?.email;
+    if (!Array.isArray(list)) return err(502, "oauth email lookup failed");
+    email = (list.find((e) => e?.primary && e?.verified) ?? list.find((e) => e?.verified))?.email;
   }
-  if (typeof email !== "string" || !EMAIL_RE.test(email)) return err(502, "oauth profile has no usable email");
+  if (typeof email !== "string" || !EMAIL_RE.test(email))
+    return err(403, `${provider} has not verified an email address for this account`);
 
   let user = findByEmail(tenant.identity, email);
   if (!user) {

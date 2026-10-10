@@ -13,9 +13,8 @@
   issueTokens' { token, refreshToken, expiresIn, user } or, with
   AUTH_OAUTH_REDIRECT, the same in a URL fragment.
 
-  Do not claim that only provider-verified addresses are accepted: the core's
-  OAuth does not check email_verified (Google) or require GitHub's verified
-  address yet. The Dashboard API does; the project plane should.
+  Only an address the provider verified signs in (Google's email_verified, a
+  verified entry from GitHub's /user/emails); anything else is a 403.
 */
 import { KeyRound, Lock, Users, ShieldCheck, Check, X } from 'lucide-astro';
 import FeatureLayout from '../../layouts/FeatureLayout.astro';
@@ -27,7 +26,7 @@ import { APP_URL, CORE_URL } from '../../lib/urls';
 
 <FeatureLayout
   title="Google and GitHub Social Login for Your REST API — Stubbase"
-  description="Add Sign in with Google and Sign in with GitHub to a Stubbase API with two config keys per provider. One account per email, signed JWTs with refresh tokens, and per-record ownership, with no auth server to run."
+  description="Add Sign in with Google and Sign in with GitHub to a Stubbase API with two config keys per provider. Verified-email identity, signed JWTs, and per-record ownership, with no auth server to run."
   path="/features/google-github-social-login"
   eyebrow="Social login"
   h1="Google and GitHub social login, without an auth server"
@@ -57,6 +56,10 @@ import { APP_URL, CORE_URL } from '../../lib/urls';
     {
       q: 'How does my single-page app get the token?',
       a: 'Set AUTH_OAUTH_REDIRECT to a page of your app. After sign-in the browser lands there with token, refreshToken and expiresIn in the URL fragment, which is never sent to a server. Without it, the callback answers the same values as JSON.',
+    },
+    {
+      q: 'What if someone\'s provider email is not verified?',
+      a: 'The sign-in is refused with a 403 and no account is touched. A sign-in joins the account that already has the same email, so an unverified address would let anyone who typed your email into a profile walk into your account. For GitHub, the verified addresses on the account are used, never the email shown on the profile.',
     },
     {
       q: 'Can I control who is allowed to sign up?',
@@ -137,7 +140,7 @@ import { APP_URL, CORE_URL } from '../../lib/urls';
       band
       items={[
         { title: 'Off to the consent screen', body: 'Link a button to <code class="font-mono text-xs text-emphasis">/auth/google</code> or <code class="font-mono text-xs text-emphasis">/auth/github</code>. The browser goes to the provider\'s consent screen with a signed state, and comes back to the callback.' },
-        { title: 'One account per email', body: 'The first sign-in creates an account with your project\'s default role. Every later sign-in with the same email — by password, Google or GitHub — lands on that same account and id.' },
+        { title: 'One account per verified email', body: 'Only an address the provider has verified is accepted. The first sign-in creates an account with your project\'s default role; every later one with the same email — by password, Google or GitHub — lands on that same account and id.' },
         { title: 'Tokens back to your app', body: 'The callback answers with a token, a refresh token and its lifetime. Set <code class="font-mono text-xs text-emphasis">AUTH_OAUTH_REDIRECT</code> and your app receives them in the URL fragment instead, which never reaches a server.' },
         { title: 'You decide who may join', body: 'Domain rules and throwaway-address blocking apply to social sign-up too — but only where an account would be created, so nobody you already accepted is ever locked out.' },
       ]}

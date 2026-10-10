@@ -333,6 +333,10 @@ GET    /<project>/auth/google
 
 Send your users there and we handle the round trip back from Google.
 
+A sign-in joins the account that already has the same email address, so only an
+address Google says it has verified is accepted. Anything else is refused with a
+`403`, and no account is touched.
+
 ##### To enable this, add to your `.env`:
 
 ```
@@ -368,6 +372,11 @@ The same, for GitHub:
 ```
 GET    /<project>/auth/github
 ```
+
+As with Google, only a verified address is accepted. The email on a GitHub
+profile is whatever its owner typed, so we read the account's verified addresses
+instead — the primary one if it is verified, otherwise any verified one — and
+refuse the sign-in with a `403` if there are none.
 
 ##### To enable this, add to your `.env`:
 
