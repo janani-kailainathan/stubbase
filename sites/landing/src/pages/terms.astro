@@ -3,7 +3,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import FloatingNav from '../components/FloatingNav.astro';
 import FramedFooter from '../components/FramedFooter.astro';
 
-const sections = [
+// A section's `p` is one paragraph, or several.
+const sections: { h: string; p: string | string[] }[] = [
   {
     h: '1. Acceptance of terms',
     p: 'By accessing or using Stubbase, you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
@@ -18,14 +19,35 @@ const sections = [
   },
   {
     h: '4. Payment & billing',
-    p: 'Paid plans are billed in advance on a recurring basis. Fees are non-refundable except as required by law.',
+    p: [
+      "Our order process is conducted by our online reseller Polar (polar.sh), which is the Merchant of Record for every purchase. Polar takes the payment, calculates and collects any sales tax or VAT, and issues your receipts and invoices. Your purchase is also subject to Polar's terms.",
+      'Prices are in US dollars. Tax is added at checkout where your location requires it.',
+    ],
   },
   {
-    h: '5. Termination',
+    h: '5. Subscriptions',
+    p: [
+      'The Pro plan is billed monthly in advance and renews automatically until you cancel. You can cancel at any time from your account settings. Pro stays active until the end of the period you have paid for, and your account then returns to the Free plan. Your projects are kept, under the Free plan’s limits.',
+      'If we change the price of a plan, we will tell you before the change applies, and it takes effect from your next renewal.',
+    ],
+  },
+  {
+    h: '6. Add-ons',
+    p: [
+      'Request add-ons and AI credit packs are one-time purchases, not subscriptions. Each is valid for 12 months from purchase, and anything unused when it expires is lost.',
+      'Request add-ons are for the Pro plan. They are drawn on only after the plan’s monthly allowance is used up, and only while your account is on Pro: a pack held on the Free plan is not used, but still expires on schedule. AI credit packs work on every plan.',
+    ],
+  },
+  {
+    h: '7. Refunds',
+    p: 'Fees are non-refundable except as required by law. If you believe you were charged in error, contact us at help@stubbase.dev and we will resolve it with you and Polar.',
+  },
+  {
+    h: '8. Termination',
     p: 'We may suspend or terminate access to Stubbase at any time for violation of these terms.',
   },
   {
-    h: '6. Limitation of liability',
+    h: '9. Limitation of liability',
     p: 'Stubbase is provided "as is" without warranties of any kind. We are not liable for indirect, incidental, or consequential damages.',
   },
 ];
@@ -40,19 +62,23 @@ const sections = [
     <section>
       <article class="mx-auto max-w-3xl px-6 py-20">
         <h1 class="mb-3 text-4xl font-extrabold text-foreground">Terms of service</h1>
-        <p class="mb-12 font-mono text-sm text-subtle">Last updated: July 14, 2026</p>
+        <p class="mb-12 font-mono text-sm text-subtle">Last updated: October 3, 2026</p>
 
         <div class="flex flex-col gap-10">
           {
             sections.map((section) => (
               <section>
                 <h2 class="mb-3 text-xl font-semibold text-foreground">{section.h}</h2>
-                <p class="text-sm leading-relaxed text-muted-foreground">{section.p}</p>
+                <div class="flex flex-col gap-3">
+                  {[section.p].flat().map((p) => (
+                    <p class="text-sm leading-relaxed text-muted-foreground">{p}</p>
+                  ))}
+                </div>
               </section>
             ))
           }
           <section>
-            <h2 class="mb-3 text-xl font-semibold text-foreground">7. Contact</h2>
+            <h2 class="mb-3 text-xl font-semibold text-foreground">10. Contact</h2>
             <p class="text-sm leading-relaxed text-muted-foreground">
               Questions about these terms? Reach out on{' '}
               <a href="mailto:help@stubbase.dev" class="text-primary-accent hover:text-primary-accent-hover">

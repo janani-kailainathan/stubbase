@@ -3,10 +3,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import FloatingNav from '../components/FloatingNav.astro';
 import FramedFooter from '../components/FramedFooter.astro';
 
-const sections = [
+// A section's `p` is one paragraph, or several.
+const sections: { h: string; p: string | string[] }[] = [
   {
     h: '1. Information we collect',
-    p: 'We collect account information (name, email, company) and usage data necessary to operate and improve Stubbase.',
+    p: [
+      'We collect account information (name, email, company) and usage data necessary to operate and improve Stubbase.',
+      'When you buy a plan or an add-on, we receive the details of the purchase from our reseller, Polar: what you bought, when, the amount, and the status of your subscription. We never see or store your card details.',
+    ],
   },
   {
     h: '2. How we use information',
@@ -14,7 +18,13 @@ const sections = [
   },
   {
     h: '3. Data sharing',
-    p: 'We only share data with third-party processors necessary to run Stubbase (e.g. hosting, billing), each bound by confidentiality obligations.',
+    p: [
+      'We only share data with the third-party processors we need to run Stubbase, each bound by confidentiality obligations.',
+      'Polar (polar.sh) is our reseller and Merchant of Record. It collects your payment details and billing address at checkout, and processes them under its own privacy policy.',
+      'Hetzner hosts our servers. Resend delivers our emails, such as sign-up and password-reset codes.',
+      'Google runs the AI model behind the Co-Pilot: your messages and the structure of your tables are sent to it, never the records in them.',
+      'If you sign in with Google or GitHub, that provider tells us your name and verified email address.',
+    ],
   },
   {
     h: '4. Data security',
@@ -36,14 +46,18 @@ const sections = [
     <section>
       <article class="mx-auto max-w-3xl px-6 py-20">
         <h1 class="mb-3 text-4xl font-extrabold text-foreground">Privacy policy</h1>
-        <p class="mb-12 font-mono text-sm text-subtle">Last updated: July 14, 2026</p>
+        <p class="mb-12 font-mono text-sm text-subtle">Last updated: October 3, 2026</p>
 
         <div class="flex flex-col gap-10">
           {
             sections.map((section) => (
               <section>
                 <h2 class="mb-3 text-xl font-semibold text-foreground">{section.h}</h2>
-                <p class="text-sm leading-relaxed text-muted-foreground">{section.p}</p>
+                <div class="flex flex-col gap-3">
+                  {[section.p].flat().map((p) => (
+                    <p class="text-sm leading-relaxed text-muted-foreground">{p}</p>
+                  ))}
+                </div>
               </section>
             ))
           }
