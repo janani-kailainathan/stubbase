@@ -3,7 +3,8 @@
   The FAQ, grouped by topic after the FAQ blocks on xmind.com's pricing and
   features pages: topic pills that jump to each group, then each group's
   heading beside its questions. The first five answers are the page's
-  original ones, kept word for word; the rest are the answers the solution,
+  original ones (the error-boundary one corrected: error-rate is not a rate
+  on x-stubbase-status, which answers every request); the rest are the answers the solution,
   feature and pricing pages give, so the two must say the same thing — change
   one, change both. Every answer is checked against the code, as there.
 */
@@ -81,7 +82,7 @@ const topics: { id: string; title: string; intro: string; faqs: { q: string; a: 
       },
       {
         q: 'Can I test my error boundaries?',
-        a: "Yes. Pass the 'x-stubbase-status' header to force any HTTP status code, and 'x-stubbase-error-rate' to control how often it fires — 1.0 fails every request, 0.3 reproduces intermittent flakiness for retry and backoff logic. Both require QA Mode to be enabled on the project.",
+        a: "Yes. Pass the 'x-stubbase-status' header to answer every request with the HTTP status code you name. For intermittent flakiness, send 'x-stubbase-error-rate' on its own instead — 1.0 fails every request with a 503, 0.3 roughly three in ten, for retry and backoff logic. Status wins when both are sent. Both require QA Mode to be enabled on the project.",
       },
       {
         q: 'How do I test empty states?',
