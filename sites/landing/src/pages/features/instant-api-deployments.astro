@@ -36,7 +36,7 @@ const files = [
   path="/features/instant-api-deployments"
   eyebrow="Deployments"
   h1="Instant API Deployments and State Management"
-  subhead="Records save live the moment you hit Save. New tables and settings wait as drafts, and one click puts them live with no downtime — or stops the whole API until you start it again."
+  subhead="Records save live the moment you hit Save. New tables and settings wait as drafts, and one click puts them live with no downtime, or stops the whole API until you start it again."
   primary={{ label: 'Generate an API free', href: APP_URL }}
   secondary={{ label: 'Read the API reference', href: '/quick-start' }}
   note="On every plan · no credit card"
@@ -49,7 +49,7 @@ const files = [
   faqs={[
     {
       q: 'What goes live when I press Save?',
-      a: 'Records in a table that is already live — the public API serves them at once. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
+      a: 'Records in a table that is already live: the public API serves them at once. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
     },
     {
       q: 'Can a save overwrite records the API wrote meanwhile?',
@@ -57,7 +57,7 @@ const files = [
     },
     {
       q: 'Can I roll back a deploy?',
-      a: 'There is no rollback of a whole deploy. A record save can be undone from the toast that confirms it — unless the table has changed since — and a change made by the AI Co-Pilot can be undone once, for 24 hours. A table marked for removal can be restored right up until you deploy.',
+      a: 'There is no rollback of a whole deploy. A record save can be undone from the toast that confirms it (unless the table has changed since), and a change made by the AI Co-Pilot can be undone once, for 24 hours. A table marked for removal can be restored right up until you deploy.',
     },
     {
       q: 'Is the API down while it deploys?',
@@ -65,7 +65,7 @@ const files = [
     },
     {
       q: 'What does Stop do?',
-      a: 'Every public route of the project — its resources, sign-in and the rest — answers 503 until you start it again. Your data is untouched and the dashboard keeps working, which is how you start it again. Deploy also starts a stopped project.',
+      a: 'Every public route of the project, its resources and sign-in included, answers 503 until you start it again. Your data is untouched and the dashboard keeps working, which is how you start it again. Deploy also starts a stopped project.',
     },
     {
       q: 'How do I freeze writes without going offline?',
@@ -115,7 +115,7 @@ const files = [
       <FeatureCard title="Records save live" body="Edit a live table's records and Save: the public API serves them at once. The save is refused if the API wrote to the table since you opened it, and the toast that confirms it offers Undo." art="h-48">
         <div class="w-full max-w-sm space-y-2">
           <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-xs">
-            <span class="text-foreground">Saved appointments.json — live now</span>
+            <span class="text-foreground">Saved appointments.json · live now</span>
             <span class="flex items-center gap-1 rounded-lg border border-border-c px-2 py-0.5 font-medium text-foreground"><Undo2 class="h-3 w-3" /> Undo</span>
           </p>
           <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5 text-xs">
@@ -124,7 +124,7 @@ const files = [
           </p>
         </div>
       </FeatureCard>
-      <FeatureCard title="Structure waits for Deploy" body="A new table is saved as a draft and never served. Settings and roles are drafts too. Removing a live table only marks it — it keeps serving, with Restore, until you deploy." art="h-48">
+      <FeatureCard title="Structure waits for Deploy" body="A new table is saved as a draft and never served. Settings and roles are drafts too. Removing a live table only marks it: it keeps serving, with Restore, until you deploy." art="h-48">
         <div class="w-full max-w-sm space-y-2 text-xs">
           {[['reviews.json', 'draft · not served yet'], ['.env', 'draft · AUTH_ENABLED=true'], ['rbac.json', 'draft · 3 roles']].map(([name, note]) => (
             <p class="flex items-center justify-between rounded-xl border border-border-c bg-(--mock) px-4 py-2.5"><span class="font-mono text-foreground">{name}</span><span class="text-subtle">{note}</span></p>
@@ -133,30 +133,30 @@ const files = [
       </FeatureCard>
     </div>
     <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
-      <FeatureCard title="One click, no downtime" body="Deploy carries out removals, promotes every draft, and the next request reads the new state — at the same URL, with no build and no restart." art="h-32">
+      <FeatureCard title="One click, no downtime" body="Deploy carries out removals, promotes every draft, and the next request reads the new state, at the same URL, with no build and no restart." art="h-32">
         <div class="flex items-center gap-2 text-xs">
           <span class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-subtle">drafts</span>
           <span class="text-primary-ink">→</span>
           <span class="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground">live</span>
         </div>
       </FeatureCard>
-      <FeatureCard title="Know when you are behind" body="While anything is staged, the dashboard says your live API is behind — and it errs towards saying so, because a redeploy is cheap and a stale API is not." art="h-32">
+      <FeatureCard title="Know when you are behind" body="While anything is staged, the dashboard says your live API is behind, and it errs towards saying so, because a redeploy is cheap and a stale API is not." art="h-32">
         <p class="flex items-center gap-2 rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-xs text-foreground"><AlertTriangle class="h-3.5 w-3.5 text-syntax-num" /> Live API is behind</p>
       </FeatureCard>
-      <FeatureCard title="Or ask the Co-Pilot" body="The AI Co-Pilot can deploy, start and stop the project too — exactly what the buttons do, through the same path." art="h-32">
+      <FeatureCard title="Or ask the Co-Pilot" body="The AI Co-Pilot can deploy, start and stop the project too, exactly as the buttons do, through the same path." art="h-32">
         <p class="rounded-xl bg-contrast px-3 py-1.5 text-xs text-contrast-foreground">Deploy my changes</p>
       </FeatureCard>
     </div>
   </FeatureSection>
 
-  <FeatureSection band title="Start, stop and freeze" intro="Decide what your API does while you work on it — answer everything, answer reads only, or answer nothing at all.">
+  <FeatureSection band title="Start, stop and freeze" intro="Decide what your API does while you work on it: answer everything, answer reads only, or answer nothing at all.">
     <FeatureTabs
       name="api-state"
       band
       items={[
-        { title: 'Stop the API', body: 'Every public route — resources, sign-in, the spec — answers 503 until you start it again. Your data stays where it is, and the dashboard keeps working so you can.' },
+        { title: 'Stop the API', body: 'Every public route (resources, sign-in, the spec) answers 503 until you start it again. Your data stays where it is, and the dashboard keeps working so you can.' },
         { title: 'Start it again', body: 'Press Start, or Deploy, which starts a stopped project after putting your drafts live. A new project is born stopped, so nothing is served before you mean it to be.' },
-        { title: 'Read-only, still online', body: 'Set <code class="font-mono text-xs text-emphasis">READ_ONLY=true</code> and the API answers GET and HEAD while every write gets a 405 — whoever sends it, admin tokens included. You can still edit from the dashboard.' },
+        { title: 'Read-only, still online', body: 'Set <code class="font-mono text-xs text-emphasis">READ_ONLY=true</code> and the API answers GET and HEAD while every write gets a 405, whoever sends it, admin tokens included. You can still edit from the dashboard.' },
         { title: 'Asleep when idle', body: 'A project nobody has called for a few minutes is put to sleep and wakes on its next request. Every write is already on disk, so sleeping loses nothing.' },
       ]}
     >

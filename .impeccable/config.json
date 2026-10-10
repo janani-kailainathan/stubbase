@@ -12,6 +12,12 @@
         ],
         "createdAt": "2026-10-10T21:48:29.760Z",
         "reason": "user confirmed: 'feature page heroes, leave it as it is' — the faint grid copies xmind.com/ai's hero, masked to fade, used only behind hero sections"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-10T21:52:03.403Z",
+        "reason": "sanctioned by the design system: CLAUDE.md sets Inter (font-sans) + JetBrains Mono, self-hosted via Fontsource, for both frontends"
       }
     ]
   }

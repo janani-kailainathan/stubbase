@@ -35,7 +35,7 @@ import { APP_URL } from '../../lib/urls';
     {
       art: 'reset',
       title: 'Mocks that forget every write',
-      body: 'The moment a mock resets, so does whatever state your UI had built up — and the code you wrote against it gets thrown away with it.',
+      body: 'The moment a mock resets, so does whatever state your UI had built up, and the code you wrote against it gets thrown away with it.',
     },
     {
       art: 'unlinked',
@@ -45,13 +45,13 @@ import { APP_URL } from '../../lib/urls';
     {
       art: 'server',
       title: 'One more server to babysit',
-      body: 'A local mock server needs installing, starting and keeping in sync on every machine — and it is never running on the one your teammate is using.',
+      body: 'A local mock server needs installing, starting and keeping in sync on every machine, and it is never running on the one your teammate is using.',
     },
   ]}
   whyTitle="Why teams mock their APIs on Stubbase"
   starters={{
     title: 'Starter mocks with real relations',
-    intro: 'Every new project offers these on its first screen — related tables with sample data, ready for the screens you are about to build.',
+    intro: 'Every new project offers these on its first screen: related tables with sample data, ready for the screens you are about to build.',
     items: [
       {
         title: 'Blog',
@@ -62,14 +62,14 @@ import { APP_URL } from '../../lib/urls';
       },
       {
         title: 'Storefront',
-        body: 'Orders that point at a customer and a product — expand both in one request for an order history screen.',
+        body: 'Orders that point at a customer and a product. Expand both in one request for an order history screen.',
         head: 'GET /orders',
         accent: '?_expand=customer,product',
         rows: [['orders', '8 rows'], ['customers', '4 rows'], ['products', '6 rows']],
       },
       {
         title: 'Forkful recipes',
-        body: 'Six related tables — recipes, cuisines, ingredients, steps, reviews and collections — for a mock as big as a real product.',
+        body: 'Six related tables (recipes, cuisines, ingredients, steps, reviews and collections) for a mock as big as a real product.',
         head: 'GET /recipes',
         accent: '?difficulty=easy',
         rows: [['recipes', '6 rows'], ['ingredients', '10 rows'], ['steps', '7 rows']],
@@ -88,7 +88,7 @@ import { APP_URL } from '../../lib/urls';
   faqs={[
     {
       q: 'How do relations work?',
-      a: 'Name a field after another resource with Id on the end — userId for users — and the relation is inferred. Add ?_expand=user and the matching user is nested inside each record. There is no schema language and no join to configure.',
+      a: 'Name a field after another resource with Id on the end, such as userId for users, and the relation is inferred. Add ?_expand=user and the matching user is nested inside each record. There is no schema language and no join to configure.',
     },
     {
       q: 'Do writes persist?',
@@ -100,7 +100,7 @@ import { APP_URL } from '../../lib/urls';
     },
     {
       q: 'What happens when I edit the data in the dashboard?',
-      a: 'Records you save in a live table go live at once — and the save is refused if the API wrote to that table since you opened it, so nothing it wrote is lost. A new table, and any settings, wait as drafts until you press Deploy.',
+      a: 'Records you save in a live table go live at once, and the save is refused if the API wrote to that table since you opened it, so nothing it wrote is lost. A new table, and any settings, wait as drafts until you press Deploy.',
     },
     {
       q: 'Is there a spec I can import?',
@@ -113,7 +113,7 @@ import { APP_URL } from '../../lib/urls';
   ]}
   cta={{
     title: 'Your mock API is two minutes away',
-    body: 'Drop in a JSON file, get relational REST endpoints back — and keep every write.',
+    body: 'Drop in a JSON file, get relational REST endpoints back, and keep every write.',
     label: 'Generate an API free',
     href: APP_URL,
     secondary: { label: 'Try the free APIs', href: '/free-api' },
@@ -199,7 +199,7 @@ import { APP_URL } from '../../lib/urls';
         <p class="mb-6 leading-relaxed text-muted-foreground">
           Append <code class="font-mono text-sm text-emphasis">Id</code> to a key and the relationship is
           inferred, with <code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=</code> on top
-          of it. No schema language, no migration step — the shape of your file is the shape of
+          of it. No schema language, no migration step: the shape of your file is the shape of
           your API.
         </p>
         <a href="/free-api" class="explore-btn">Explore now</a>
@@ -225,7 +225,7 @@ import { APP_URL } from '../../lib/urls';
       <h3 class="mb-3 text-2xl font-semibold text-foreground">Writes that stick</h3>
       <p class="mb-6 leading-relaxed text-muted-foreground">
         Every write is saved before the response returns. The record your form just created is
-        still there after a refresh, on another machine and in your teammate's session — so
+        still there after a refresh, on another machine and in your teammate's session, so
         optimistic updates and refetches behave the way they will in production.
       </p>
       <a href={APP_URL} class="explore-btn mt-auto">Try it free</a>

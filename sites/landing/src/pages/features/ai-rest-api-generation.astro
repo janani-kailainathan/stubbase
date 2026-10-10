@@ -31,7 +31,7 @@ const tables = [
   path="/features/ai-rest-api-generation"
   eyebrow="AI Co-Pilot"
   h1="AI-Powered REST API Generation"
-  subhead="Describe your app in a sentence. The Co-Pilot designs the tables, links them, fills them with sample records and stages it all for you to deploy — then keeps working with you as the API grows."
+  subhead="Describe your app in a sentence. The Co-Pilot designs the tables, links them, fills them with sample records and stages it all for you to deploy, then keeps working with you as the API grows."
   primary={{ label: 'Generate an API free', href: APP_URL }}
   secondary={{ label: 'Get more AI credits', href: '/pricing#ai-credits' }}
   note="1,000 AI credits when you sign up · no credit card"
@@ -48,7 +48,7 @@ const tables = [
     },
     {
       q: 'Does the Co-Pilot read my data?',
-      a: 'No. It works from your tables\' shape — names, fields and counts — never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
+      a: 'No. It works from your tables\' shape (names, fields and counts), never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
     },
     {
       q: 'Can it break my live API?',
@@ -56,11 +56,11 @@ const tables = [
     },
     {
       q: 'Can it change my settings?',
-      a: 'Only towards stricter. A change that narrows access — switching auth on, shortening a token\'s life, blocking throwaway email addresses — is saved as a draft for your next deploy. Anything that could widen access comes back as a card for you to approve, and credentials and URLs such as OAuth keys or webhook addresses are never set by the AI at all: it gives you the line to paste.',
+      a: 'Only towards stricter. A change that narrows access, such as switching auth on, shortening a token\'s life or blocking throwaway email addresses, is saved as a draft for your next deploy. Anything that could widen access comes back as a card for you to approve, and credentials and URLs such as OAuth keys or webhook addresses are never set by the AI at all: it gives you the line to paste.',
     },
     {
       q: 'How are AI credits counted?',
-      a: 'One credit is 1,000 tokens — what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
+      a: 'One credit is 1,000 tokens: what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
     },
     {
       q: 'Is the Co-Pilot on the Free plan?',
@@ -114,7 +114,7 @@ const tables = [
 
   <FeatureSection title="Generate an API from a sentence" intro="Start from a description, a starter or a JSON file. The Co-Pilot designs the shape; you decide what goes live.">
     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
-      <FeatureCard title="Chat your app into tables" body="Describe the domain and get the tables, the <code class='font-mono text-sm text-emphasis'>&lt;name&gt;Id</code> fields that link them, and sample records — staged as drafts, never put live behind your back." art="h-48">
+      <FeatureCard title="Chat your app into tables" body="Describe the domain and get the tables, the <code class='font-mono text-sm text-emphasis'>&lt;name&gt;Id</code> fields that link them, and sample records, all staged as drafts and never put live behind your back." art="h-48">
         <div class="w-full max-w-sm space-y-2">
           <p class="ml-auto w-fit rounded-xl bg-contrast px-3 py-1.5 text-xs text-contrast-foreground">A recipe site with reviews</p>
           <div class="flex gap-2">
@@ -125,7 +125,7 @@ const tables = [
           <p class="text-center font-mono text-[10px] text-subtle">3 drafts · 18 records</p>
         </div>
       </FeatureCard>
-      <FeatureCard title="Start from a starter" body="On a project with no tables, ask for an example and the Co-Pilot proposes a starter — a blog, a storefront, a helpdesk with roles — applied when you click, through the same path as the starter cards." art="h-48">
+      <FeatureCard title="Start from a starter" body="On a project with no tables, ask for an example and the Co-Pilot proposes a starter (a blog, a storefront, a helpdesk with roles), applied when you click, through the same path as the starter cards." art="h-48">
         <div class="grid w-full max-w-sm grid-cols-2 gap-2">
           {['Issue tracker', 'Blog', 'Storefront', 'Deskline helpdesk'].map((name, i) => (
             <span class={`rounded-xl border px-3 py-3 text-xs font-medium ${i === 1 ? 'border-primary-soft-border-strong bg-primary-soft text-primary-soft-ink' : 'border-border-c bg-(--mock) text-foreground'}`}>{name}</span>
@@ -134,7 +134,7 @@ const tables = [
       </FeatureCard>
     </div>
     <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
-      <FeatureCard title="Relations from Id fields" body="<code class='font-mono text-sm text-emphasis'>doctorId</code> links an appointment to its doctor, and <code class='font-mono text-sm text-emphasis'>?_expand=doctor</code> nests it — no join to configure." art="h-36">
+      <FeatureCard title="Relations from Id fields" body="<code class='font-mono text-sm text-emphasis'>doctorId</code> links an appointment to its doctor, and <code class='font-mono text-sm text-emphasis'>?_expand=doctor</code> nests it. No join to configure." art="h-36">
         <div class="space-y-2 font-mono text-[11px]">
           <p class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 text-muted-foreground">appointments.<span class="text-primary-ink">doctorId</span></p>
           <p class="text-center text-primary-ink">↓</p>
@@ -156,16 +156,16 @@ const tables = [
     </div>
   </FeatureSection>
 
-  <FeatureSection band title="Edit and refine with the Co-Pilot" intro="Keep asking as the API grows. It changes what you ask for and nothing else — and every change is one you can see, confirm and undo.">
+  <FeatureSection band title="Edit and refine with the Co-Pilot" intro="Keep asking as the API grows. It changes what you ask for and nothing else, and every change is one you can see, confirm and undo.">
     <FeatureTabs
       name="copilot-edit"
       band
       items={[
-        { title: 'Change records by asking', body: 'Add, update or delete records in plain words. The Co-Pilot names them with the same filters as the API and never reads their contents — it is told how many changed and the ids it created, nothing more.' },
-        { title: 'Big changes wait for you', body: 'A change to more than 20 records is counted first and comes back as a question. It goes ahead only when you confirm in a later message — the AI cannot confirm on your behalf.' },
+        { title: 'Change records by asking', body: 'Add, update or delete records in plain words. The Co-Pilot names them with the same filters as the API and never reads their contents: it is told how many changed and the ids it created, nothing more.' },
+        { title: 'Big changes wait for you', body: 'A change to more than 20 records is counted first and comes back as a question. It goes ahead only when you confirm in a later message; the AI cannot confirm on your behalf.' },
         { title: 'Undo any change', body: 'Every record change can be undone once, for 24 hours. An undo skips any record written since, so it never erases newer work, and tells you how many it skipped.' },
         { title: 'Settings only get stricter', body: 'A change that narrows access is saved as a draft for your next deploy. Anything that could widen it comes back as a card to approve, and keys and URLs are always yours to paste.' },
-        { title: 'Ask why something failed', body: 'The Co-Pilot reads your recent request log and settings to explain a 401 or a 404 — status codes and paths, never request bodies, and credential names without their values.' },
+        { title: 'Ask why something failed', body: 'The Co-Pilot reads your recent request log and settings to explain a 401 or a 404 from status codes and paths alone: never request bodies, and credential names without their values.' },
       ]}
     >
       <div slot="p1" class="w-full max-w-sm space-y-2 text-xs">
@@ -202,7 +202,7 @@ const tables = [
 
   <FeatureSection title="Ship it on your terms" intro="Nothing the Co-Pilot designs is live until you say so, and nothing it can do is irreversible without your click.">
     <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
-      <FeatureCard title="Drafts until you deploy" body="New tables and settings wait as drafts. Deploy puts them live with no downtime — or ask the Co-Pilot to deploy, which does exactly what the button does." art="h-36">
+      <FeatureCard title="Drafts until you deploy" body="New tables and settings wait as drafts. Deploy puts them live with no downtime. Or ask the Co-Pilot to deploy, which does exactly what the button does." art="h-36">
         <div class="flex items-center gap-2 text-xs">
           <span class="rounded-lg border border-border-c bg-(--mock) px-3 py-1.5 font-mono text-subtle">3 drafts</span>
           <span class="text-primary-ink">→</span>
@@ -215,16 +215,16 @@ const tables = [
           <span class="rounded-lg border border-border-c px-2.5 py-1 font-medium text-foreground">Remove table</span>
         </div>
       </FeatureCard>
-      <FeatureCard title="An OpenAPI spec for every project" body="Each project serves its own <code class='font-mono text-sm text-emphasis'>openapi.json</code>, with a schema per table inferred from its records — for client generators, Postman and agents." art="h-36">
+      <FeatureCard title="An OpenAPI spec for every project" body="Each project serves its own <code class='font-mono text-sm text-emphasis'>openapi.json</code>, with a schema per table inferred from its records, for client generators, Postman and agents." art="h-36">
         <p class="flex items-center gap-2 rounded-xl border border-border-c bg-(--mock) px-3 py-2 font-mono text-xs text-foreground"><FileJson class="h-4 w-4 text-primary-accent" /> /my-clinic/openapi.json</p>
       </FeatureCard>
     </div>
   </FeatureSection>
 
-  <FeatureSection band title="Use your API in your AI tools" intro="The API you generated is a datastore your own agents can use too — over MCP, through its spec, or as plain REST.">
+  <FeatureSection band title="Use your API in your AI tools" intro="The API you generated is a datastore your own agents can use too: over MCP, through its spec, or as plain REST.">
     <ul class="grid grid-cols-1 gap-5 md:grid-cols-3">
       {[
-        { Icon: TerminalSquare, tint: 'var(--syntax-bool)', title: 'MCP server with read-only SQL', body: 'Connect Claude Desktop, Cursor or any MCP client and let it answer questions with real joins and aggregates — never writes.', href: '/roles/ai-engineer' },
+        { Icon: TerminalSquare, tint: 'var(--syntax-bool)', title: 'MCP server with read-only SQL', body: 'Connect Claude Desktop, Cursor or any MCP client and let it answer questions with real joins and aggregates. It can never write.', href: '/roles/ai-engineer' },
         { Icon: KeyRound, tint: 'var(--syntax-num)', title: 'A key per project', body: 'Developer keys are shown once, stored hashed, scoped to one project and revocable; the dashboard writes the client config for you.', href: '/roles/ai-engineer' },
         { Icon: Bot, tint: 'var(--syntax-fn)', title: 'A spec your agent can read', body: 'Point a function-calling agent at openapi.json and it learns every route and field without you describing them.', href: '/quick-start' },
       ].map(({ Icon, tint, title, body, href }) => (
@@ -244,10 +244,10 @@ const tables = [
     </ul>
   </FeatureSection>
 
-  <FeatureSection title="Pay for the work, not the message" intro="AI credits are counted in tokens, so a small edit costs little and a big build costs more — and a reply that fails costs nothing.">
+  <FeatureSection title="Pay for the work, not the message" intro="AI credits are counted in tokens, so a small edit costs little and a big build costs more. A reply that fails costs nothing.">
     <ul class="reveal grid grid-cols-1 gap-5 sm:grid-cols-3">
       {[
-        { big: '1,000', small: 'tokens per credit — read, written and thought, charged once when a reply ends' },
+        { big: '1,000', small: 'tokens per credit (read, written and thought), charged once when a reply ends' },
         { big: 'Free', small: 'a reply that fails, whatever it cost upstream: you got nothing, so you pay nothing' },
         { big: '1,000', small: 'credits when you sign up, valid for 3 months; Pro adds 5,000 a month' },
       ].map(({ big, small }) => (

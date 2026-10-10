@@ -55,7 +55,7 @@ const query = [
     {
       art: 'fixture',
       title: 'Tutorials that fake the server',
-      body: 'A teaching simulator answers 200 to everything and forgets every write. What you learn there does not survive contact with a real API — or a job interview.',
+      body: 'A teaching simulator answers 200 to everything and forgets every write. What you learn there does not survive contact with a real API, or a job interview.',
     },
     {
       art: 'portfolio',
@@ -66,7 +66,7 @@ const query = [
   whyTitle="Why students learn REST on Stubbase"
   starters={{
     title: 'Starter projects to learn from',
-    intro: 'Every new project offers these on its first screen, ordered from simplest to richest — a tour of REST from one list to sign-in.',
+    intro: 'Every new project offers these on its first screen, ordered from simplest to richest: a tour of REST from one list to sign-in.',
     items: [
       {
         title: 'Issue tracker',
@@ -77,14 +77,14 @@ const query = [
       },
       {
         title: 'Blog',
-        body: 'Posts belong to authors and comments to posts — the first relationship, and the reason _expand exists.',
+        body: 'Posts belong to authors and comments to posts: the first relationship, and the reason _expand exists.',
         head: 'GET /posts',
         accent: '?_expand=author',
         rows: [['Why we dropped the ORM', 'Sam Reyes'], ['Argon2 in practice', 'Mira Haddad'], ['Testing without mocks', 'Sam Reyes']],
       },
       {
         title: 'Sign-in basics',
-        body: 'Sign-up with an emailed code, login, refresh and password reset — and one resource to prove the token works.',
+        body: 'Sign-up with an emailed code, login, refresh and password reset, and one resource to prove the token works.',
         head: 'POST /auth/signup',
         accent: ' → verify → login',
         rows: [['/auth/signup', 'code sent'], ['/auth/signup/verify', 'account made'], ['/auth/login', 'token']],
@@ -103,7 +103,7 @@ const query = [
   faqs={[
     {
       q: 'Is Stubbase a real API or a simulation?',
-      a: 'A real one. Your project is a hosted REST API at a public URL: GET, POST, PUT and DELETE do what they are supposed to, writes are saved, and the status codes are the real ones — 201 when you create, 404 when you ask for something that is not there.',
+      a: 'A real one. Your project is a hosted REST API at a public URL: GET, POST, PUT and DELETE do what they are supposed to, writes are saved, and the status codes are the real ones: 201 when you create, 404 when you ask for something that is not there.',
     },
     {
       q: 'Do I need to install anything?',
@@ -115,7 +115,7 @@ const query = [
     },
     {
       q: 'How do I learn authentication?',
-      a: 'Set AUTH_ENABLED=true and watch the same routes start answering 401. Sign up, verify the emailed code (it shows in the Logs tab until you add an email provider), log in, and send the token as Authorization: Bearer — then they work again.',
+      a: 'Set AUTH_ENABLED=true and watch the same routes start answering 401. Sign up, verify the emailed code (it shows in the Logs tab until you add an email provider), log in, and send the token as Authorization: Bearer. Then they work again.',
     },
     {
       q: 'Can I use it for coursework and share it?',
@@ -197,7 +197,7 @@ const query = [
       </div>
       <div>
         <p class="mb-6 leading-relaxed text-muted-foreground">
-          Give it a JSON file — a list of objects — and you have five endpoints. Run them with curl,
+          Give it a JSON file (a list of objects) and you have five endpoints. Run them with curl,
           Postman or the app you are building. The answers carry real status codes, so what you
           learn here is what you will meet at work.
         </p>
@@ -222,7 +222,7 @@ const query = [
       <h3 class="mb-3 text-2xl font-semibold text-foreground">Filter, sort and page in one URL</h3>
       <p class="mb-6 leading-relaxed text-muted-foreground">
         Once the basics are boring, the same project teaches what comes up in a job: parameters
-        that compose in a fixed order — filter, then sort, then paginate — and
+        that compose in a fixed order (filter, then sort, then paginate), and
         {' '}<code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=user</code> to bring a
         related record along.
       </p>
@@ -246,7 +246,7 @@ const query = [
       <p class="mb-6 leading-relaxed text-muted-foreground">
         A list returns one page; <code class="font-mono text-sm whitespace-nowrap text-emphasis">X-Total-Count</code> says
         how many exist. CORS headers are why your fetch works from localhost. Plenty of developers
-        meet both ideas for the first time on the job — you can meet them here.
+        meet both ideas for the first time on the job. You can meet them here.
       </p>
       <a href="/free-api" class="explore-btn mt-auto">Explore now</a>
     </article>
@@ -272,7 +272,7 @@ const query = [
       <p class="feature-label">Authentication</p>
       <h3 class="mb-3 text-2xl font-semibold text-foreground">Watch auth refuse you, then let you in</h3>
       <p class="mb-6 leading-relaxed text-muted-foreground">
-        Switch auth on and the same routes start returning 401. Sign up, log in, send the token —
+        Switch auth on and the same routes start returning 401. Sign up, log in, send the token,
         and they work again. That one loop teaches what a bearer token actually does better than
         any diagram.
       </p>

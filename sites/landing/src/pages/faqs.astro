@@ -67,7 +67,7 @@ const topics: { id: string; title: string; intro: string; faqs: { q: string; a: 
       },
       {
         q: 'What goes live when I press Save?',
-        a: 'Records in a table that is already live — the public API serves them at once, and the save is refused if the API wrote to that table since you opened it. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
+        a: 'Records in a table that is already live: the public API serves them at once, and the save is refused if the API wrote to that table since you opened it. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
       },
     ],
   },
@@ -128,11 +128,11 @@ const topics: { id: string; title: string; intro: string; faqs: { q: string; a: 
       },
       {
         q: 'Does the Co-Pilot read my data?',
-        a: 'No. It works from your tables\' shape — names, fields and counts — never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
+        a: 'No. It works from your tables\' shape (names, fields and counts), never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
       },
       {
         q: 'How are AI credits counted?',
-        a: 'One credit is 1,000 tokens — what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
+        a: 'One credit is 1,000 tokens: what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
       },
       {
         q: 'Can my own agent query my data?',
