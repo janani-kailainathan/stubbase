@@ -1,82 +1,241 @@
 ---
-import { Plus, Minus } from 'lucide-astro';
-import BaseLayout from '../layouts/BaseLayout.astro';
-import FloatingNav from '../components/FloatingNav.astro';
-import FramedFooter from '../components/FramedFooter.astro';
+/*
+  The FAQ, grouped by topic after the FAQ blocks on xmind.com's pricing and
+  features pages: topic pills that jump to each group, then each group's
+  heading beside its questions. The first five answers are the page's
+  original ones, kept word for word; the rest are the answers the solution,
+  feature and pricing pages give, so the two must say the same thing — change
+  one, change both. Every answer is checked against the code, as there.
+*/
+import { Plus, Minus, Mail, ArrowRight } from 'lucide-astro';
+import '../styles/showcase.css';
+import Layout from '../layouts/Layout.astro';
 
-const faqs = [
+const topics: { id: string; title: string; intro: string; faqs: { q: string; a: string }[] }[] = [
   {
-    q: 'What exactly is a Mock API?',
-    a: 'A Mock API is a fake backend server that returns static JSON data instead of connecting to a real database. Frontend developers use them to build UIs before the backend is finished, and QA engineers use them to write predictable automated tests.',
+    id: 'getting-started',
+    title: 'Getting started',
+    intro: 'What Stubbase is, and what you need before your first request.',
+    faqs: [
+      {
+        q: 'What exactly is a Mock API?',
+        a: 'A Mock API is a fake backend server that returns static JSON data instead of connecting to a real database. Frontend developers use them to build UIs before the backend is finished, and QA engineers use them to write predictable automated tests.',
+      },
+      {
+        q: 'Do I need to install a database or run a server?',
+        a: 'No. Your project is a hosted REST API at a public URL. You describe the data as JSON, in a sentence to the AI Co-Pilot, or from a starter, and every write is saved as it happens.',
+      },
+      {
+        q: 'How do I switch a feature on?',
+        a: 'Most features are a line in your project\'s .env — AUTH_ENABLED=true, QA_MODE=true, a webhook URL — saved as a draft and put live when you deploy. A new project\'s .env lists every setting, commented out, with a note on what each one does.',
+      },
+      {
+        q: 'Which languages and frameworks can call it?',
+        a: 'Anything that makes HTTP requests. Public routes answer with Access-Control-Allow-Origin: *, so a browser app calls it from localhost or production alike, and the openapi.json every project serves feeds client generators.',
+      },
+      {
+        q: 'Can I try it without an account?',
+        a: 'Yes. The free practice APIs — posts, comments, albums, photos, todos and users — answer anyone, with filters, paging and relations, and need no key.',
+      },
+    ],
   },
   {
-    q: 'How do I simulate a slow network connection?',
-    a: "With QA Mode enabled on a project, send the 'x-stubbase-delay' header with your request. For example, fetching https://api.stubbase.dev/my-api/users with 'x-stubbase-delay: 3000' waits 3 seconds before returning the JSON, so you can test your loading spinners. Delays are sent as headers rather than URL parameters so Playwright or Cypress can inject them from the test runner without changing the URLs your frontend builds. The cap is 10 seconds.",
+    id: 'your-api',
+    title: 'Your API',
+    intro: 'How a project behaves: what it keeps, how it queries, and how changes go live.',
+    faqs: [
+      {
+        q: 'Do my API endpoints expire?',
+        a: 'No. Your endpoints stay up on every plan, Free included, until you stop or delete the project. A project nobody is calling is unloaded from memory and loaded again on its next request, so it keeps its data and its URL.',
+      },
+      {
+        q: 'Is there a limit to how much JSON I can mock?',
+        a: 'The limits are the same on every plan: one request body, including a file saved from the dashboard, can be up to 1 MiB. Plans differ only in how many requests you can make each month and each second.',
+      },
+      {
+        q: 'Do writes persist?',
+        a: 'Yes. Every POST, PUT and DELETE is saved to disk before the response returns, so the record your form created is still there after a refresh, on another machine and in your teammate\'s session.',
+      },
+      {
+        q: 'How does pagination work?',
+        a: 'Add _page (1-based, 10 per page by default) and _limit to any list, or _offset with _limit for a raw index. The response carries X-Total-Count with the unpaginated total — the number a pager needs. Filters and _sort with _direction compose in the same request.',
+      },
+      {
+        q: 'How do I load related records in one request?',
+        a: 'Name a field after the related resource — userId for users — and ?_expand=user nests the matching user inside each record. One request returns the shape your component renders, instead of a list request followed by a request per row.',
+      },
+      {
+        q: 'What goes live when I press Save?',
+        a: 'Records in a table that is already live — the public API serves them at once, and the save is refused if the API wrote to that table since you opened it. A new table, and changes to the project\'s settings or roles, are saved as drafts and go live when you deploy.',
+      },
+    ],
   },
   {
-    q: 'Can I test my error boundaries?',
-    a: "Yes. Pass the 'x-stubbase-status' header to force any HTTP status code, and 'x-stubbase-error-rate' to control how often it fires — 1.0 fails every request, 0.3 reproduces intermittent flakiness for retry and backoff logic. Both require QA Mode to be enabled on the project.",
+    id: 'testing',
+    title: 'Testing and QA mode',
+    intro: 'Making the API slow, broken or empty on purpose — one request at a time.',
+    faqs: [
+      {
+        q: 'How do I simulate a slow network connection?',
+        a: "With QA Mode enabled on a project, send the 'x-stubbase-delay' header with your request. For example, fetching https://api.stubbase.dev/my-api/users with 'x-stubbase-delay: 3000' waits 3 seconds before returning the JSON, so you can test your loading spinners. Delays are sent as headers rather than URL parameters so Playwright or Cypress can inject them from the test runner without changing the URLs your frontend builds. The cap is 10 seconds.",
+      },
+      {
+        q: 'Can I test my error boundaries?',
+        a: "Yes. Pass the 'x-stubbase-status' header to force any HTTP status code, and 'x-stubbase-error-rate' to control how often it fires — 1.0 fails every request, 0.3 reproduces intermittent flakiness for retry and backoff logic. Both require QA Mode to be enabled on the project.",
+      },
+      {
+        q: 'How do I test empty states?',
+        a: 'Send x-stubbase-empty: true. A list answers [] and a single record answers null, without touching the stored data — the case UIs most often forget.',
+      },
+      {
+        q: 'Can the chaos headers be used to get past authentication?',
+        a: 'No. They do nothing unless the project has QA mode switched on, and the simulation runs after authentication and permission checks — so no combination of headers returns data to a caller who was not already allowed to have it.',
+      },
+    ],
   },
   {
-    q: 'Do my API endpoints expire?',
-    a: 'No. Your endpoints stay up on every plan, Free included, until you stop or delete the project. A project nobody is calling is unloaded from memory and loaded again on its next request, so it keeps its data and its URL.',
+    id: 'auth',
+    title: 'Sign-in and accounts',
+    intro: 'Sign-up, login and social sign-in for the people who use your API.',
+    faqs: [
+      {
+        q: 'What does authentication include?',
+        a: 'Set AUTH_ENABLED=true and the project serves sign-up with an emailed verification code, login, refresh tokens, logout, change password and password reset. Google and GitHub sign-in mount beside them once you add a client id and secret for each.',
+      },
+      {
+        q: 'What if someone\'s provider email is not verified?',
+        a: 'The sign-in is refused with a 403 and no account is touched. A sign-in joins the account that already has the same email, so an unverified address would let anyone who typed your email into a profile walk into your account. For GitHub, the verified addresses on the account are used, never the email shown on the profile.',
+      },
+      {
+        q: 'Can users edit each other\'s records?',
+        a: 'No. With auth on, a signed-in POST stamps the user\'s id on the record, users can change only their own records, and nobody can reassign a record by editing userId. Turn on roles and an rbac.json decides, per resource and action, whether a role sees its own records or all of them.',
+      },
+      {
+        q: 'Where are the accounts stored?',
+        a: 'Outside your resources, so no API route, filter or SQL query can read them. You can see who has signed up in the dashboard\'s read-only system folder and change an account\'s role there; with roles and permissions on, the role decides what each account may do.',
+      },
+    ],
   },
   {
-    q: 'Is there a limit to how much JSON I can mock?',
-    a: 'The limits are the same on every plan: one request body, including a file saved from the dashboard, can be up to 1 MiB. Plans differ only in how many requests you can make each month and each second.',
+    id: 'ai',
+    title: 'AI Co-Pilot and agents',
+    intro: 'Building with the Co-Pilot, and letting your own agents read your data.',
+    faqs: [
+      {
+        q: 'What can the AI Co-Pilot build?',
+        a: 'Tables and the relations between them, sample records to fill them, validation schemas, and the project settings that make an API stricter. Describe the app in a sentence and it stages the new tables as drafts; press Deploy and every one is a live REST resource with GET, POST, PUT and DELETE.',
+      },
+      {
+        q: 'Does the Co-Pilot read my data?',
+        a: 'No. It works from your tables\' shape — names, fields and counts — never their records. When it changes records it is told how many changed and the ids it created, nothing more, and the diagnostics it reads carry no request or response bodies. To look at your data, it hands you a query to run in the Live tab.',
+      },
+      {
+        q: 'How are AI credits counted?',
+        a: 'One credit is 1,000 tokens — what the model read, wrote and thought. A reply is charged once, when it ends, for all the work it took, so renaming a field costs little and seeding thousands of rows costs more. A reply that fails is free.',
+      },
+      {
+        q: 'Can my own agent query my data?',
+        a: 'Yes, over MCP. A project exposes one tool, execute_sql_query, so Claude Desktop, Cursor or any MCP client can join, filter and aggregate in a single call — read-only, enforced twice, and up to 500 rows per call. Connect with a developer key from the dashboard, which writes the client config for you.',
+      },
+    ],
+  },
+  {
+    id: 'plans',
+    title: 'Plans and limits',
+    intro: 'What is free, what counts, and what happens at the limit.',
+    faqs: [
+      {
+        q: 'Is the Free plan really free?',
+        a: 'Yes, with no credit card and no trial that ends. It has every feature, 10,000 requests a month at 5 requests a second, and 1,000 AI credits when you sign up.',
+      },
+      {
+        q: 'What counts as a request?',
+        a: 'Every response your project\'s public API sends — reads, writes, sign-ins and the OpenAPI spec alike, including requests you send from the dashboard\'s Live tab. Working in the dashboard and the AI Co-Pilot\'s changes do not count, and neither does a request turned away because a limit was reached or the API is stopped.',
+      },
+      {
+        q: 'Is the allowance per project?',
+        a: 'No — it is one pool for your account. Every project you own draws on the same monthly allowance and the same per-second rate, so a second project never buys a second allowance.',
+      },
+      {
+        q: 'What happens when I reach my monthly limit?',
+        a: 'Your projects\' public APIs answer 429 until the month resets, at the start of each calendar month (UTC), or until a request pack on Pro adds more. The dashboard keeps working, so you can always see why.',
+      },
+    ],
   },
 ];
 
 const faqSchema = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  mainEntity: faqs.map((faq) => ({
-    '@type': 'Question',
-    name: faq.q,
-    acceptedAnswer: { '@type': 'Answer', text: faq.a },
-  })),
+  mainEntity: topics.flatMap((topic) =>
+    topic.faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.q,
+      acceptedAnswer: { '@type': 'Answer', text: faq.a },
+    })),
+  ),
 };
 ---
 
-<BaseLayout
+<Layout
   title="FAQs — Stubbase"
-  description="Answers to common questions about Stubbase mock APIs: simulating slow networks, forcing HTTP errors, endpoint expiry, and payload limits."
+  description="Answers to common questions about Stubbase: mock APIs, slow networks and forced errors, persistence and pagination, sign-in and accounts, the AI Co-Pilot, and what each plan includes."
+  active="faqs"
   schema={[faqSchema]}
 >
-  <FloatingNav active="faqs" />
-  <main>
-    <section>
-      <div class="mx-auto max-w-2xl px-6 pt-20 pb-14 text-center">
-        <h1 class="mb-4 text-4xl font-extrabold text-foreground">Frequently asked questions</h1>
-        <p class="text-muted-foreground">
-          Can't find the answer you're looking for? Reach out on{' '}
-          <a href="mailto:help@stubbase.dev" class="text-primary-accent hover:text-primary-accent-hover">
-            help@stubbase.dev
+  <section class="relative overflow-hidden">
+    <div class="feature-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
+    <div class="relative mx-auto max-w-3xl px-6 pt-20 pb-12 text-center lg:pt-28">
+      <p class="hero-rise mb-4 text-lg font-bold text-primary-ink">Help</p>
+      <h1 class="hero-rise mb-5 text-4xl font-extrabold tracking-tight text-foreground md:text-5xl [--d:0.05s]">Frequently asked questions</h1>
+      <p class="hero-rise text-lg text-muted-foreground [--d:0.1s]">
+        Can't find the answer you're looking for? Reach out on{' '}
+        <a href="mailto:help@stubbase.dev" class="font-medium text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">help@stubbase.dev</a>
+      </p>
+      <nav aria-label="Topics" class="hero-rise mt-10 flex flex-wrap justify-center gap-2 [--d:0.2s]">
+        {topics.map((topic) => (
+          <a href={`#${topic.id}`} class="rounded-full border border-border-c bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground">
+            {topic.title}
           </a>
-        </p>
-      </div>
-    </section>
+        ))}
+      </nav>
+    </div>
+  </section>
 
-    <section>
-      <div class="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-16">
-        {
-          faqs.map((faq, i) => (
-            <details
-              class="group overflow-hidden rounded-xl border border-border-c bg-card"
-              name="faq"
-              open={i === 0}
-            >
+  {topics.map((topic, i) => (
+    <section id={topic.id} class:list={['scroll-mt-24', i % 2 === 1 && 'bg-section']}>
+      <div class="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-14">
+        <div class="lg:sticky lg:top-28 lg:self-start">
+          <h2 class="mb-3 text-2xl font-bold tracking-tight text-foreground">{topic.title}</h2>
+          <p class="leading-relaxed text-muted-foreground">{topic.intro}</p>
+        </div>
+        <div class="flex flex-col gap-3">
+          {topic.faqs.map((faq) => (
+            <details class:list={['group rounded-xl border border-border-c', i % 2 === 1 ? 'bg-background' : 'bg-card']} name={`faq-${topic.id}`}>
               <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
-                <h2 class="font-semibold text-foreground">{faq.q}</h2>
+                <h3 class="font-semibold text-foreground">{faq.q}</h3>
                 <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
                 <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
               </summary>
               <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
             </details>
-          ))
-        }
+          ))}
+        </div>
       </div>
     </section>
-  </main>
-  <FramedFooter />
-</BaseLayout>
+  ))}
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 py-20">
+      <div class="rounded-3xl border border-border-c bg-card p-8 text-center sm:p-10">
+        <span class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary-accent"><Mail class="h-6 w-6" /></span>
+        <h2 class="mb-3 text-2xl font-bold text-foreground">Still have a question?</h2>
+        <p class="mb-6 leading-relaxed text-muted-foreground">Write to us and we will get back to you. For Enterprise volumes or anything else, there is the contact page.</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="mailto:help@stubbase.dev" class="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">help@stubbase.dev</a>
+          <a href="/contact" class="inline-flex items-center gap-2 rounded-xl border border-border-c bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted">Contact page <ArrowRight class="h-4 w-4" /></a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
