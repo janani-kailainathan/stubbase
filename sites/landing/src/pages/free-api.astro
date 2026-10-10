@@ -5,7 +5,8 @@
 // fields, counts) and the core's list handling (query parameters); every
 // example below was run against a live core. The demo is READ_ONLY, so the
 // page shows reads only and sends writes to a project of your own.
-import { Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, ArrowUpRight, LockOpen, Globe, Hash } from 'lucide-astro';
+import { Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, ArrowUpRight, LockOpen, Globe, Hash, Plus, Minus } from 'lucide-astro';
+import '../styles/showcase.css';
 import Layout from '../layouts/Layout.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import { APP_URL, CORE_URL } from '../lib/urls';
@@ -59,13 +60,39 @@ const breadcrumbs = {
     { '@type': 'ListItem', position: 2, name: 'Free API', item: new URL('/free-api', Astro.site).toString() },
   ],
 };
+
+// The FAQ, in the other pages' form. Answers are the demo project's own
+// behaviour: read-only (405 on writes), CORS open, the shared query language.
+const faqs = [
+  {
+    q: 'Do I need an account or an API key?',
+    a: 'No. Every resource answers anyone, from your browser, your terminal or a deployed app, with no sign-up and no key.',
+  },
+  {
+    q: 'Can I create, update or delete records?',
+    a: 'Not here. Everyone shares this data, so POST, PUT and DELETE answer 405. Create a free project and you get the same API with full CRUD on data only you control.',
+  },
+  {
+    q: 'Will it work from my frontend on localhost?',
+    a: 'Yes. Every response carries Access-Control-Allow-Origin: *, so a fetch works from localhost and from your deployed app alike, and X-Total-Count can be read from the browser.',
+  },
+  {
+    q: 'Does the data change?',
+    a: 'No. It is read-only, so the records you build against today are there tomorrow, and everyone sees the same ones.',
+  },
+];
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map((faq) => ({ '@type': 'Question', name: faq.q, acceptedAnswer: { '@type': 'Answer', text: faq.a } })),
+};
 ---
 
 <Layout
   title="Free Fake REST API for Testing and Prototyping — Stubbase"
   description="A free fake REST API with 6 resources and 5,910 records: posts, comments, albums, photos, todos and users. Filters, paging and relations. No sign-up, no key."
   active="free-api"
-  schema={[breadcrumbs]}
+  schema={[breadcrumbs, faqSchema]}
   cta={{
     title: 'Need your own data?',
     body: 'Create a project, start from a JSON file or a chat with the AI Co-Pilot, and get the same API with GET, POST, PUT and DELETE on every resource.',
@@ -74,8 +101,10 @@ const breadcrumbs = {
     note: 'No credit card required',
   }}
 >
-  <section>
-    <div class="mx-auto max-w-3xl px-6 pt-20 pb-12 text-center">
+  <section class="relative overflow-hidden">
+    <div class="feature-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
+    <div class="relative mx-auto max-w-3xl px-6 pt-20 pb-12 text-center lg:pt-28">
+      <p class="mb-4 text-lg font-bold text-primary-ink">Free API</p>
       <h1 class="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">Free REST API for practice and prototyping</h1>
       <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
         Six resources and {totalRecords.toLocaleString('en-US')} records of sample data, linked to each
@@ -139,7 +168,7 @@ const breadcrumbs = {
               <p class="mt-4 text-sm text-muted-foreground">
                 {parent ? (
                   <>
-                    Belongs to {/^[aeiou]/.test(parent.expand) ? 'an' : 'a'} {parent.expand} ({parent.per}). Add{' '}
+                    Belongs to {/^[aeio]/.test(parent.expand) ? 'an' : 'a'} {parent.expand} ({parent.per}). Add{' '}
                     <code class="font-mono text-xs text-emphasis">?_expand={parent.expand}</code> to nest it.
                   </>
                 ) : (
@@ -216,6 +245,24 @@ const breadcrumbs = {
           Stubbase.
         </li>
       </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 pb-24">
+      <h2 class="mb-10 text-center text-3xl font-bold tracking-tight text-foreground">Frequently asked questions</h2>
+      <div class="flex flex-col gap-3">
+        {faqs.map((faq) => (
+          <details class="group rounded-xl border border-border-c bg-card" name="faq">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+              <h3 class="font-semibold text-foreground">{faq.q}</h3>
+              <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+              <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
+            </summary>
+            <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
+          </details>
+        ))}
+      </div>
     </div>
   </section>
 </Layout>
