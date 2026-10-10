@@ -1,5 +1,6 @@
 ---
-import { Check, Sparkles } from 'lucide-astro';
+import { Check, Sparkles, Minus, Plus } from 'lucide-astro';
+import '../styles/showcase.css';
 import Layout from '../layouts/Layout.astro';
 import { APP_URL } from '../lib/urls';
 
@@ -127,12 +128,103 @@ const creditPacks = [
 
 const ctaClass = {
   solid:
-    'rounded-md bg-primary py-3 text-center text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover',
+    'rounded-xl bg-primary py-3 text-center text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover',
   outline:
-    'rounded-md border border-primary py-3 text-center text-sm font-semibold text-primary-accent transition-colors hover:bg-primary-soft',
+    'rounded-xl border border-primary py-3 text-center text-sm font-semibold text-primary-accent transition-colors hover:bg-primary-soft',
   muted:
-    'rounded-md border border-border-strong bg-muted py-3 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted-strong',
+    'rounded-xl border border-border-strong bg-muted py-3 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted-strong',
 } as const;
+
+/**
+ * Compare plans & features, after xmind.com/pricing's table. Request rows are
+ * PLANS (apps/dashboard-api/server-app.ts) as the tier cards state them;
+ * Enterprise has no plan id, so its numbers are "Custom". The feature rows are
+ * the point of the table: every one is on every plan — plans differ by request
+ * limits alone, so never put a dash in a feature row without a plan change in
+ * PLANS behind it. `true` renders a tick, a string renders as written.
+ */
+type Cell = string | boolean;
+const compare: { group: string; rows: { label: string; cells: [Cell, Cell, Cell] }[] }[] = [
+  {
+    group: 'Requests',
+    rows: [
+      { label: 'Requests a month', cells: ['10,000', '250,000', 'Custom'] },
+      { label: 'Requests a second', cells: ['5', '50', 'Custom'] },
+      { label: 'Burst', cells: ['20', '150', 'Custom'] },
+      { label: 'Request add-ons', cells: [false, true, 'Custom'] },
+    ],
+  },
+  {
+    group: 'AI Co-Pilot',
+    rows: [
+      { label: 'AI credits', cells: ['1,000 at sign-up', '5,000 a month', 'Custom'] },
+      { label: 'AI credit packs', cells: [true, true, true] },
+    ],
+  },
+  {
+    group: 'Every feature, on every plan',
+    rows: [
+      { label: 'CRUD API from any JSON file', cells: [true, true, true] },
+      { label: 'Filters, sorting, paging and relations', cells: [true, true, true] },
+      { label: 'Sign-up, login and password reset', cells: [true, true, true] },
+      { label: 'Google and GitHub login', cells: [true, true, true] },
+      { label: 'Roles and permissions', cells: [true, true, true] },
+      { label: 'Webhooks, email and SMS', cells: [true, true, true] },
+      { label: 'QA mode chaos headers', cells: [true, true, true] },
+      { label: 'MCP with read-only SQL', cells: [true, true, true] },
+      { label: 'Live request log', cells: [true, true, true] },
+      { label: 'OpenAPI spec', cells: [true, true, true] },
+    ],
+  },
+  {
+    group: 'Infrastructure',
+    rows: [{ label: 'Isolated infrastructure', cells: [false, false, true] }],
+  },
+];
+
+/**
+ * The FAQ, after xmind.com/pricing's. Every answer is the Dashboard API's or
+ * the core's: what the core meters (public plane only, refusals not counted),
+ * one allowance and one rate per account, a UTC calendar month, the 429 with
+ * the dashboard still reachable, the credit rules (CLAUDE.md, AI credits) and
+ * request packs drawn only on Pro. Nothing here may promise checkout before
+ * BILLING_LIVE is true.
+ */
+const faqs = [
+  {
+    q: 'Is the Free plan really free?',
+    a: 'Yes, with no credit card and no trial that ends. It has every feature, 10,000 requests a month at 5 requests a second, and 1,000 AI credits when you sign up.',
+  },
+  {
+    q: 'What counts as a request?',
+    a: 'Every response your project\'s public API sends — reads, writes, sign-ins and the OpenAPI spec alike, including requests you send from the dashboard\'s Live tab. Working in the dashboard and the AI Co-Pilot\'s changes do not count, and neither does a request turned away because a limit was reached or the API is stopped.',
+  },
+  {
+    q: 'Is the allowance per project?',
+    a: 'No — it is one pool for your account. Every project you own draws on the same monthly allowance and the same per-second rate, so a second project never buys a second allowance.',
+  },
+  {
+    q: 'What happens when I reach my monthly limit?',
+    a: 'Your projects\' public APIs answer 429 until the month resets, at the start of each calendar month (UTC), or until a request pack on Pro adds more. The dashboard keeps working, so you can always see why.',
+  },
+  {
+    q: 'How do AI credits work?',
+    a: 'One credit is 1,000 tokens of the Co-Pilot\'s work, charged once when a reply ends; a reply that fails is free. Free accounts get 1,000 credits at sign-up, valid for 3 months; Pro gets 5,000 every month, which end with the month. Packs top up any plan, last 12 months, and are spent after your plan\'s own credits.',
+  },
+  {
+    q: 'Can I buy request packs on the Free plan?',
+    a: 'No. Request packs are for Pro: on Free, the next step up in requests is Pro itself. A pack bought on Pro waits unused if you move to Free, and still lapses 12 months after you bought it.',
+  },
+  {
+    q: 'Do request packs raise my per-second limit?',
+    a: 'No. A pack adds requests for the month once your plan\'s allowance is used up; the per-second rate and burst stay your plan\'s.',
+  },
+];
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map((faq) => ({ '@type': 'Question', name: faq.q, acceptedAnswer: { '@type': 'Answer', text: faq.a } })),
+};
 
 // Something that cannot be bought yet is a PreOrder, not InStock. The prices
 // are real and worth publishing; claiming they are purchasable is not.
@@ -177,27 +269,29 @@ const offerSchema = {
   ],
 };
 ---
-
 <Layout
   title="Transparent API Pricing for Developers and Teams — Stubbase"
   description="Flat, predictable Stubbase limits: start mocking APIs for free, then upgrade to Pro at $29/mo for 250,000 requests a month and 5,000 AI credits every month. Enterprise on request."
   active="pricing"
-  schema={[offerSchema]}
+  schema={[offerSchema, faqSchema]}
 >
+  {/* Hero, after xmind.com/pricing: a centred headline with a hand-drawn
+      underline under its key words. */}
   <section>
-    <div class="mx-auto max-w-3xl px-6 pt-20 pb-10 text-center">
-      <h1 class="mb-6 text-5xl leading-tight font-extrabold text-foreground">
-        Transparent API Pricing for Developers and Teams
+    <div class="mx-auto max-w-3xl px-6 pt-20 pb-12 text-center">
+      <h1 class="hero-rise mb-6 text-4xl leading-tight font-extrabold tracking-tight text-foreground md:text-5xl">
+        Transparent <span class="relative inline-block">API Pricing<svg class="absolute -bottom-3 left-0 h-3 w-full text-primary" viewBox="0 0 200 12" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M2 8 Q50 2 100 6 T198 4" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg><svg class="absolute -top-3 -right-5 h-5 w-5 text-primary" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 0 L12 8 L20 10 L12 12 L10 20 L8 12 L0 10 L8 8 Z" fill="currentColor" /></svg></span>{' '}
+        for Developers and Teams
       </h1>
-      <p class="text-lg leading-relaxed text-muted-foreground">
+      <p class="hero-rise text-lg leading-relaxed text-muted-foreground [--d:0.1s]">
         Flat, predictable limits. Every feature is on every plan: start mocking APIs for free,
         upgrade to Pro for higher limits and monthly AI credits.
       </p>
     </div>
   </section>
 
-  <section>
-    <div class="mx-auto max-w-6xl px-6 pt-8 pb-20">
+  <section class="bg-section">
+    <div class="mx-auto max-w-6xl px-6 py-20">
       <div class="mb-10 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Feature Tiers</h2>
         <p class="leading-relaxed text-muted-foreground">
@@ -209,43 +303,36 @@ const offerSchema = {
         {
           tiers.map((tier) => (
             <article
-              class={
-                tier.featured && !tier.comingSoon
-                  ? 'relative flex flex-col overflow-hidden rounded-xl border border-primary bg-card p-8 shadow-lg shadow-primary/5'
-                  : 'relative flex flex-col overflow-hidden rounded-xl border border-border-c bg-card p-8'
-              }
+              class={`relative flex flex-col rounded-2xl border bg-background p-8 ${tier.featured && !tier.comingSoon ? 'border-primary' : 'border-border-c'}`}
             >
-              {tier.featured && !tier.comingSoon && (
-                <p class="absolute top-0 right-0 rounded-bl-lg bg-primary px-3 py-1 text-[10px] font-bold tracking-wider text-primary-foreground uppercase">
-                  Most Popular
-                </p>
-              )}
-
-              <h3 class="mb-2 flex items-center gap-2 text-xl font-semibold text-foreground">
-                {tier.name}
-                {tier.ai && <Sparkles class="h-5 w-5 text-primary-ink" />}
-                {tier.comingSoon && (
-                  <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
-                    Not active yet
-                  </span>
+              <div class="mb-4 flex items-center justify-between gap-2">
+                <h3 class="flex items-center gap-2 text-xl font-semibold text-foreground">
+                  {tier.name}
+                  {tier.ai && <Sparkles class="h-5 w-5 text-primary-ink" />}
+                  {tier.comingSoon && (
+                    <span class="rounded-full border border-border-strong px-2 py-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">
+                      Not active yet
+                    </span>
+                  )}
+                </h3>
+                {tier.featured && !tier.comingSoon && (
+                  <span class="rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-semibold text-primary-soft-ink">Most popular</span>
                 )}
-              </h3>
-              <p class="mb-6 text-sm font-medium text-muted-foreground">{tier.tagline}</p>
-              <p class="mb-6 text-4xl font-extrabold text-foreground">
+              </div>
+              <p class="mb-1 text-4xl font-extrabold tracking-tight text-foreground">
                 {/* Struck through rather than hidden: the number is the thing
                     worth remembering, and striking it says "later", where
                     removing it would say "never". */}
-                <span class={tier.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
-                  {tier.price}
-                </span>
+                <span class={tier.comingSoon ? 'text-subtle line-through decoration-2' : ''}>{tier.price}</span>
                 <span class="text-base font-medium text-subtle">{tier.period}</span>
               </p>
+              <p class="mb-6 text-sm font-medium text-muted-foreground">{tier.tagline}</p>
 
               {/* A dead <a> is worse than no <a>: it looks clickable, and a
                   crawler follows it. An inert element carries the state. */}
               {tier.comingSoon ? (
                 <p
-                  class="mb-8 rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  class="mb-8 rounded-xl border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
                   aria-disabled="true"
                 >
                   Not available yet
@@ -256,6 +343,7 @@ const offerSchema = {
                 </a>
               )}
 
+              <p class="mb-3 text-xs font-semibold tracking-wide text-subtle uppercase">What's included</p>
               <ul class="space-y-3">
                 {tier.specs.map((spec, i) => (
                   <li class="flex gap-3 text-sm leading-relaxed text-muted-foreground">
@@ -296,8 +384,54 @@ const offerSchema = {
     </div>
   </section>
 
-  <section id="ai-credits">
-    <div class="mx-auto max-w-6xl px-6 pb-20">
+  {/* Compare plans & features, after xmind.com/pricing's table. Scrolls
+      sideways inside its own box on a phone rather than the page. */}
+  <section id="compare">
+    <div class="mx-auto max-w-5xl px-6 py-20">
+      <div class="mb-10 text-center">
+        <h2 class="mb-4 text-3xl font-extrabold text-foreground">Compare Plans &amp; Features</h2>
+        <p class="leading-relaxed text-muted-foreground">The numbers change from plan to plan. The features do not.</p>
+      </div>
+      <div class="overflow-x-auto rounded-2xl border border-border-c">
+        <table class="w-full min-w-[36rem] border-collapse text-left text-sm">
+          <thead>
+            <tr class="bg-card">
+              <th scope="col" class="w-2/5 px-5 py-4 font-semibold text-foreground"><span class="sr-only">Feature</span></th>
+              {tiers.map((tier) => (
+                <th scope="col" class={`px-5 py-4 text-center font-semibold ${tier.featured ? 'text-primary-ink' : 'text-foreground'}`}>{tier.name}</th>
+              ))}
+            </tr>
+          </thead>
+          {compare.map(({ group, rows }) => (
+            <tbody>
+              <tr>
+                <th scope="colgroup" colspan="4" class="border-t border-border-c bg-section px-5 pt-5 pb-2 text-xs font-semibold tracking-wide text-subtle uppercase">{group}</th>
+              </tr>
+              {rows.map(({ label, cells }) => (
+                <tr class="border-t border-border-c">
+                  <th scope="row" class="px-5 py-3 font-normal text-muted-foreground">{label}</th>
+                  {cells.map((cell) => (
+                    <td class="px-5 py-3 text-center text-foreground">
+                      {cell === true ? (
+                        <Check class="mx-auto h-4 w-4 text-primary-accent" aria-label="Included" />
+                      ) : cell === false ? (
+                        <Minus class="mx-auto h-4 w-4 text-faint" aria-label="Not included" />
+                      ) : (
+                        cell
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          ))}
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="ai-credits" class="bg-section">
+    <div class="mx-auto max-w-6xl px-6 py-20">
       <div class="mb-10 text-center">
         <h2 class="mb-4 flex items-center justify-center gap-2 text-3xl font-extrabold text-foreground">
           <Sparkles class="h-6 w-6 text-primary-ink" />
@@ -313,7 +447,7 @@ const offerSchema = {
       <div class="grid gap-6 md:grid-cols-3">
         {
           creditPacks.map((pack) => (
-            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
+            <article class="flex flex-col rounded-2xl border border-border-c bg-background p-8">
               <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
                 {pack.name}
                 {pack.comingSoon && (
@@ -325,15 +459,13 @@ const offerSchema = {
               <p class="mb-6 text-sm font-medium text-muted-foreground">
                 {pack.credits} &middot; valid 12 months
               </p>
-              <p class="mb-6 text-4xl font-extrabold text-foreground">
-                <span class={pack.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
-                  {pack.price}
-                </span>
+              <p class="text-4xl font-extrabold tracking-tight text-foreground">
+                <span class={pack.comingSoon ? 'text-subtle line-through decoration-2' : ''}>{pack.price}</span>
                 <span class="text-base font-medium text-subtle"> once</span>
               </p>
               {pack.comingSoon && (
                 <p
-                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  class="mt-6 rounded-xl border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
                   aria-disabled="true"
                 >
                   Not available yet
@@ -347,7 +479,7 @@ const offerSchema = {
   </section>
 
   <section id="add-ons">
-    <div class="mx-auto max-w-4xl px-6 pb-20">
+    <div class="mx-auto max-w-4xl px-6 py-20">
       <div class="mb-10 text-center">
         <h2 class="mb-4 text-3xl font-extrabold text-foreground">Request Add-ons for Pro</h2>
         <p class="mx-auto max-w-3xl leading-relaxed text-muted-foreground">
@@ -360,7 +492,7 @@ const offerSchema = {
       <div class="grid gap-6 md:grid-cols-2">
         {
           addons.map((addon) => (
-            <article class="flex flex-col rounded-xl border border-border-c bg-card p-8">
+            <article class="flex flex-col rounded-2xl border border-border-c bg-card p-8">
               <h3 class="mb-2 flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
                 {addon.name}
                 {addon.comingSoon && (
@@ -372,16 +504,14 @@ const offerSchema = {
               <p class="mb-6 text-sm font-medium text-muted-foreground">
                 {addon.perThousand} per 1,000 requests &middot; valid 12 months
               </p>
-              <p class="mb-6 text-4xl font-extrabold text-foreground">
-                <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>
-                  {addon.price}
-                </span>
+              <p class="text-4xl font-extrabold tracking-tight text-foreground">
+                <span class={addon.comingSoon ? 'text-subtle line-through decoration-2' : ''}>{addon.price}</span>
                 <span class="text-base font-medium text-subtle"> once</span>
               </p>
               {/* Inert for the tiers' reason: there is nothing to buy yet. */}
               {addon.comingSoon && (
                 <p
-                  class="mt-auto rounded-md border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
+                  class="mt-6 rounded-xl border border-dashed border-border-strong py-3 text-center text-sm font-semibold text-subtle"
                   aria-disabled="true"
                 >
                   Not available yet
@@ -390,6 +520,24 @@ const offerSchema = {
             </article>
           ))
         }
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="mx-auto max-w-3xl px-6 pt-8 pb-24">
+      <h2 class="mb-12 text-center text-3xl font-extrabold text-foreground">Frequently asked questions</h2>
+      <div class="flex flex-col gap-3">
+        {faqs.map((faq) => (
+          <details class="group rounded-xl border border-border-c bg-card" name="faq">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 [&::-webkit-details-marker]:hidden">
+              <h3 class="font-semibold text-foreground">{faq.q}</h3>
+              <Plus class="h-5 w-5 shrink-0 text-subtle group-open:hidden" />
+              <Minus class="hidden h-5 w-5 shrink-0 text-subtle group-open:block" />
+            </summary>
+            <p class="px-6 pb-6 text-sm leading-relaxed text-muted-foreground">{faq.a}</p>
+          </details>
+        ))}
       </div>
     </div>
   </section>
