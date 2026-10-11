@@ -135,6 +135,7 @@ export const MENU_GROUPS: NavGroup[] = NAV_GROUPS.filter(
 export const RESOURCE_LINKS: NavLink[] = [
   { href: '/quick-start', label: 'API Reference', blurb: 'Call a live API in one line, then make it slow or fail.' },
   { href: '/free-api', label: 'Free API', blurb: 'Six resources of sample data to practise against, no sign-up.' },
+  { href: '/user-guide', label: 'User guide', blurb: 'How to do each thing in Stubbase, one task to a page.' },
   { href: '/guides', label: 'Guides', blurb: 'Step-by-step setups, from OAuth keys onwards.' },
   { href: '/changelog', label: 'Changelog', blurb: 'What shipped, newest first.' },
   { href: '/faqs', label: 'FAQs', blurb: 'Quick answers to common questions.' },

@@ -13,11 +13,16 @@ import { join } from 'node:path';
  * empty and say so once, at the end.
  */
 function pendingShots() {
-  const dir = 'src/content/guides';
   const pending = [];
-  for (const file of readdirSync(dir).filter((name) => name.endsWith('.md'))) {
-    const matches = readFileSync(join(dir, file), 'utf8').match(/shot--pending/g);
-    if (matches) pending.push(`${file}: ${matches.length}`);
+  for (const dir of ['src/content/guides', 'src/content/user-guide']) {
+    for (const file of readdirSync(dir).filter((name) => name.endsWith('.md'))) {
+      const text = readFileSync(join(dir, file), 'utf8');
+      const frontmatter = text.split('\n---')[0];
+      // A `hero` without a `src` is drawn as a pending frame too.
+      const heroPending = /^hero:/m.test(frontmatter) && !/^\s+src:/m.test(frontmatter);
+      const frames = (text.match(/shot--pending/g)?.length ?? 0) + (heroPending ? 1 : 0);
+      if (frames) pending.push(`${file}: ${frames}`);
+    }
   }
   return pending;
 }

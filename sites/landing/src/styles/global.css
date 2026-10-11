@@ -413,6 +413,18 @@ html.dark {
     color: var(--emphasis);
   }
 
+  /* Quoted product text — a toast, a notice — set apart from the prose
+     around it rather than read as the page's own voice. */
+  .prose-stubbase blockquote {
+    border-left: 2px solid var(--border-strong);
+    padding-left: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+  }
+  .prose-stubbase blockquote p {
+    color: var(--emphasis);
+  }
+
   .prose-stubbase ul,
   .prose-stubbase ol {
     padding-left: 1.25rem;

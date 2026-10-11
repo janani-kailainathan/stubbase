@@ -4,6 +4,7 @@
 import { defineCollection } from 'astro:content';
 import { z } from 'astro/zod';
 import { glob } from 'astro/loaders';
+import { CHAPTER_KEYS } from './lib/user-guide';
 
 /**
  * Every spoke page carries the same four fields. Answer engines index the
@@ -64,6 +65,33 @@ const guideSchema = seoSchema.extend({
   draft: z.boolean().default(false),
 });
 
+/**
+ * The user guide: the product manual, one task per page, filed by chapter.
+ * Unlike a guide it is not dated in the reader's eyes — no byline, no reading
+ * time — because a manual page is true until the product changes, and then it
+ * is edited, not superseded. `updatedAt` still feeds dateModified.
+ *
+ * Chapters are declared in src/lib/user-guide.ts; `order` places a page inside
+ * its chapter. Figures follow the guides' convention: a `shot--pending` frame
+ * naming the file under public/user-guide/<slug>/ until the image exists.
+ */
+const userGuideSchema = seoSchema.extend({
+  chapter: z.enum(CHAPTER_KEYS),
+  order: z.number(),
+  /** The rail and the chapter lists use the short label; h1 is the page's. */
+  label: z.string(),
+  publishedAt: z.coerce.date(),
+  updatedAt: z.coerce.date().optional(),
+  hero: z
+    .object({
+      src: z.string().optional(),
+      alt: z.string(),
+      caption: z.string().optional(),
+    })
+    .optional(),
+  draft: z.boolean().default(false),
+});
+
 const spokeCollection = (dir: string) =>
   defineCollection({
     loader: glob({ pattern: '**/[^_]*.md', base: `./src/content/${dir}` }),
@@ -74,6 +102,10 @@ export const collections = {
   guides: defineCollection({
     loader: glob({ pattern: '**/[^_]*.md', base: './src/content/guides' }),
     schema: guideSchema,
+  }),
+  userGuide: defineCollection({
+    loader: glob({ pattern: '**/[^_]*.md', base: './src/content/user-guide' }),
+    schema: userGuideSchema,
   }),
   // compare: spokeCollection('compare'), — hidden 2026-10-06; its .md files are kept as .md.bak
 };

@@ -1,0 +1,219 @@
+---
+/*
+  The user guide's left rail: a search field over the chapter list, after
+  xmind.com/user-guide. Each chapter is a native <details>, so the rail opens
+  and closes with JS off; the current page's chapter starts open and its link
+  is marked. A chapter with nothing published yet shows as "Soon" rather than
+  disappearing, so the guide's shape is readable from day one.
+
+  Rendered twice by UserGuideLayout — once inside the small-screen disclosure,
+  once as the sticky desktop rail — so it carries no ids, and the search script
+  in that layout drives every `[data-guide-rail]` on the page alike.
+*/
+import { ChevronRight, Search } from 'lucide-astro';
+import { GUIDE_CHAPTERS, type GuideChapterKey } from '../../lib/user-guide';
+
+export interface RailPage {
+  slug: string;
+  chapter: GuideChapterKey;
+  label: string;
+  /** Lower-cased text the search matches against. */
+  haystack: string;
+}
+
+interface Props {
+  pages: RailPage[];
+  current?: string;
+}
+
+const { pages, current } = Astro.props;
+const currentChapter = pages.find((page) => page.slug === current)?.chapter;
+---
+
+<div data-guide-rail>
+  <!--
+    Hidden until the script below the layout reveals it: with JS off a search
+    field that filters nothing is a broken control, and the full list is the
+    working page.
+  -->
+  <label class="guide-search" data-guide-search hidden>
+    <span class="sr-only">Search the user guide</span>
+    <input type="search" autocomplete="off" placeholder="Search the guide" />
+    <Search class="guide-search-icon" />
+  </label>
+
+  <ol class="guide-chapters">
+    {
+      GUIDE_CHAPTERS.map((chapter) => {
+        const inChapter = pages.filter((page) => page.chapter === chapter.key);
+        if (inChapter.length === 0) {
+          return (
+            <li class="guide-chapter guide-chapter--soon" data-guide-chapter>
+              <span class="guide-chapter-row">
+                <ChevronRight class="guide-chevron" />
+                {chapter.label}
+                <span class="guide-soon">Soon</span>
+              </span>
+            </li>
+          );
+        }
+        const open = chapter.key === currentChapter || (!current && chapter.key === GUIDE_CHAPTERS[0].key);
+        return (
+          <li class="guide-chapter" data-guide-chapter>
+            <details open={open} data-open={open ? '' : undefined}>
+              <summary class="guide-chapter-row">
+                <ChevronRight class="guide-chevron" />
+                {chapter.label}
+              </summary>
+              <ul class="guide-pages">
+                {inChapter.map((page) => (
+                  <li data-guide-page data-haystack={page.haystack}>
+                    <a
+                      href={`/user-guide/${page.slug}`}
+                      aria-current={page.slug === current ? 'page' : undefined}
+                    >
+                      {page.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </li>
+        );
+      })
+    }
+  </ol>
+
+  <p class="guide-empty" data-guide-empty hidden>No pages match that search.</p>
+</div>
+
+<style>
+  .guide-search {
+    display: block;
+    position: relative;
+    margin-bottom: 1.5rem;
+  }
+  .guide-search[hidden] {
+    display: none;
+  }
+  .guide-search input {
+    width: 100%;
+    border: 1px solid var(--border-c);
+    border-radius: 9999px;
+    background: var(--card);
+    padding: 0.625rem 2.5rem 0.625rem 1rem;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    transition: border-color 150ms ease-out;
+  }
+  .guide-search input::placeholder {
+    color: var(--subtle);
+  }
+  .guide-search input:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+  :global(.guide-search-icon) {
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    width: 1rem;
+    height: 1rem;
+    transform: translateY(-50%);
+    color: var(--subtle);
+  }
+
+  .guide-chapters {
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .guide-chapter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--foreground);
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .guide-chapter-row::-webkit-details-marker {
+    display: none;
+  }
+  summary.guide-chapter-row:hover {
+    color: var(--primary-ink);
+  }
+  summary.guide-chapter-row:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+  :global(.guide-chevron) {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    color: var(--subtle);
+    transition: transform 150ms ease-out;
+  }
+  details[open] > summary :global(.guide-chevron) {
+    transform: rotate(90deg);
+  }
+
+  .guide-chapter--soon .guide-chapter-row {
+    cursor: default;
+    color: var(--subtle);
+    font-weight: 500;
+  }
+  .guide-chapter--soon :global(.guide-chevron) {
+    opacity: 0.4;
+  }
+  .guide-soon {
+    margin-left: auto;
+    border: 1px solid var(--border-c);
+    border-radius: 9999px;
+    padding: 0.0625rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .guide-pages {
+    display: grid;
+    gap: 0.125rem;
+    margin: 0.125rem 0 0.75rem 0.4375rem;
+    border-left: 1px solid var(--border-c);
+  }
+  .guide-pages a {
+    display: block;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    padding: 0.375rem 0 0.375rem 1.0625rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+    transition:
+      color 150ms ease-out,
+      border-color 150ms ease-out;
+  }
+  .guide-pages a:hover {
+    color: var(--foreground);
+  }
+  .guide-pages a[aria-current='page'] {
+    border-left-color: var(--primary);
+    color: var(--primary-ink);
+    font-weight: 500;
+  }
+
+  .guide-empty {
+    padding: 1rem 0;
+    font-size: 0.875rem;
+    color: var(--subtle);
+  }
+</style>

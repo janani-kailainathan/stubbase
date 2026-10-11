@@ -1,0 +1,167 @@
+---
+// The user guide's frame, shared by its index and every page in it, after
+// xmind.com/user-guide: the chapter rail down the left, the page on the right.
+// Below `lg` the rail folds into one disclosure above the page, so a phone
+// reader sees the page first and opens the map only when they want it.
+//
+// The rail's search is the guide's one script. It filters the links already
+// in the page — nothing is fetched — and the field stays hidden with JS off,
+// where the full list is the working page.
+import { getCollection } from 'astro:content';
+import { BookOpen } from 'lucide-astro';
+import Layout from './Layout.astro';
+import GuideRail, { type RailPage } from '../components/user-guide/GuideRail.astro';
+import { APP_URL } from '../lib/urls';
+import { CHAPTER_KEYS } from '../lib/user-guide';
+
+interface Props {
+  title: string;
+  description: string;
+  schema?: Record<string, unknown>[];
+  /** Slug of the page being shown; absent on the index. */
+  current?: string;
+}
+
+const { title, description, schema = [], current } = Astro.props;
+
+const pages: RailPage[] = (await getCollection('userGuide'))
+  .filter((entry) => !entry.data.draft)
+  .sort(
+    (a, b) =>
+      CHAPTER_KEYS.indexOf(a.data.chapter) - CHAPTER_KEYS.indexOf(b.data.chapter) ||
+      a.data.order - b.data.order,
+  )
+  .map((entry) => ({
+    slug: entry.id,
+    chapter: entry.data.chapter,
+    label: entry.data.label,
+    haystack: [entry.data.label, entry.data.h1, entry.data.description].join(' ').toLowerCase(),
+  }));
+---
+
+<Layout
+  title={title}
+  description={description}
+  schema={schema}
+  ogType={current ? 'article' : 'website'}
+  cta={{
+    title: 'Try it on a project of your own',
+    body: 'Pick a starter, press Deploy, and call your API from anywhere. The Free plan needs no card.',
+    label: 'Start free',
+    href: `${APP_URL}/signup`,
+  }}
+>
+  <div class="mx-auto grid max-w-6xl gap-x-14 px-6 lg:grid-cols-[15.5rem_minmax(0,1fr)]">
+    <aside class="hidden lg:block">
+      <div class="guide-rail-sticky">
+        <a href="/user-guide" class="guide-rail-title">
+          User guide
+          <BookOpen class="h-6 w-6 text-primary-accent" />
+        </a>
+        <GuideRail pages={pages} current={current} />
+      </div>
+    </aside>
+
+    <div class="min-w-0">
+      <details class="guide-rail-mobile lg:hidden">
+        <summary>
+          <BookOpen class="h-4 w-4 text-primary-accent" />
+          Browse the user guide
+        </summary>
+        <div class="pt-5">
+          <GuideRail pages={pages} current={current} />
+        </div>
+      </details>
+
+      <slot />
+    </div>
+  </div>
+
+  <script is:inline>
+    (function () {
+      var rails = Array.prototype.slice.call(document.querySelectorAll('[data-guide-rail]'));
+
+      function filter(rail, query) {
+        var any = false;
+        rail.querySelectorAll('[data-guide-chapter]').forEach(function (chapter) {
+          var details = chapter.querySelector('details');
+          // A chapter with nothing published has no pages to match, so it
+          // leaves the list while a search is running and returns after.
+          if (!details) {
+            chapter.hidden = !!query;
+            return;
+          }
+          var hits = 0;
+          details.querySelectorAll('[data-guide-page]').forEach(function (page) {
+            var hit = !query || page.dataset.haystack.indexOf(query) !== -1;
+            page.hidden = !hit;
+            if (hit) hits++;
+          });
+          chapter.hidden = hits === 0;
+          // Searching opens every chapter with a match; clearing the field
+          // puts back the chapter the page started with.
+          details.open = query ? hits > 0 : details.hasAttribute('data-open');
+          if (hits > 0) any = true;
+        });
+        rail.querySelector('[data-guide-empty]').hidden = any;
+      }
+
+      rails.forEach(function (rail) {
+        var field = rail.querySelector('[data-guide-search]');
+        var input = field.querySelector('input');
+        field.hidden = false;
+        input.addEventListener('input', function () {
+          var query = input.value.trim().toLowerCase();
+          filter(rail, query);
+        });
+      });
+    })();
+  </script>
+</Layout>
+
+<style>
+  .guide-rail-sticky {
+    position: sticky;
+    top: 6.5rem;
+    max-height: calc(100vh - 7.5rem);
+    overflow-y: auto;
+    padding: 3.5rem 0.25rem 3rem 0;
+    scrollbar-width: thin;
+  }
+
+  .guide-rail-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 1.75rem;
+    font-size: 2.25rem;
+    line-height: 1.05;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: var(--foreground);
+  }
+
+  .guide-rail-mobile {
+    margin-top: 2rem;
+    border: 1px solid var(--border-c);
+    border-radius: 0.75rem;
+    background: var(--section);
+    padding: 0.875rem 1.25rem;
+  }
+  .guide-rail-mobile[open] {
+    padding-bottom: 1.25rem;
+  }
+  .guide-rail-mobile > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--foreground);
+    list-style: none;
+    cursor: pointer;
+  }
+  .guide-rail-mobile > summary::-webkit-details-marker {
+    display: none;
+  }
+</style>

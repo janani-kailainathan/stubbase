@@ -1,0 +1,123 @@
+---
+// The user guide's front page: one card per chapter, after xmind.com/user-guide.
+// A card's "View all" opens the chapter's first page, where the rail lists the
+// rest; a chapter with nothing published yet is a quiet card with no link.
+import { getCollection } from 'astro:content';
+import { ArrowRight } from 'lucide-astro';
+import UserGuideLayout from '../../layouts/UserGuideLayout.astro';
+import Doodle from '../../components/role/Doodle.astro';
+import { GUIDE_CHAPTERS } from '../../lib/user-guide';
+import '../../styles/showcase.css';
+
+const entries = (await getCollection('userGuide')).filter((entry) => !entry.data.draft);
+
+const chapters = GUIDE_CHAPTERS.map((chapter) => {
+  const pages = entries
+    .filter((entry) => entry.data.chapter === chapter.key)
+    .sort((a, b) => a.data.order - b.data.order);
+  return { ...chapter, pages, first: pages[0] };
+});
+
+const title = 'User Guide — How to Use Stubbase, Step by Step';
+const description =
+  'The Stubbase user guide: create a project, add tables, deploy a REST API, test it in the Live tab, and set up sign-up, roles and settings — one task per page.';
+
+const collectionSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Stubbase User Guide',
+  description,
+  url: new URL('/user-guide', Astro.site).toString(),
+  publisher: { '@type': 'Organization', name: 'Stubbase', url: Astro.site?.toString() },
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: chapters
+      .flatMap((chapter) => chapter.pages)
+      .map((entry, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: new URL(`/user-guide/${entry.id}`, Astro.site).toString(),
+        name: entry.data.h1,
+      })),
+  },
+};
+---
+
+<UserGuideLayout title={title} description={description} schema={[collectionSchema]}>
+  <header class="pt-12 pb-10 lg:pt-14">
+    <h1 class="text-4xl leading-[1.1] font-extrabold tracking-tight text-balance text-foreground sm:text-5xl lg:sr-only">
+      User guide
+    </h1>
+    <p class="mt-4 max-w-2xl text-lg leading-relaxed text-pretty text-muted-foreground lg:mt-0">
+      How to do each thing in Stubbase, one task to a page: from an empty account to a live API,
+      and everything you can switch on after that.
+    </p>
+  </header>
+
+  <ul class="grid gap-x-8 gap-y-12 pb-20 sm:grid-cols-2">
+    {
+      chapters.map((chapter) => (
+        <li class:list={['chapter-card', !chapter.first && 'chapter-card--soon']}>
+          <div class="chapter-tile">
+            <Doodle name={chapter.doodle} class="h-28 w-32" />
+          </div>
+          <h2 class="mt-5 text-xl font-bold text-foreground">{chapter.label}</h2>
+          <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">{chapter.blurb}</p>
+          {chapter.first ? (
+            <a href={`/user-guide/${chapter.first.id}`} class="chapter-link">
+              View all
+              <span class="sr-only"> {chapter.label} pages</span>
+              <ArrowRight class="h-3.5 w-3.5" />
+            </a>
+          ) : (
+            <span class="chapter-soon">Coming soon</span>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+</UserGuideLayout>
+
+<style>
+  .chapter-tile {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 2 / 1;
+    border: 1px solid var(--border-c);
+    border-radius: 1rem;
+    background: var(--section);
+    color: var(--foreground);
+    transition: border-color 150ms ease-out;
+  }
+  .chapter-card:not(.chapter-card--soon):hover .chapter-tile {
+    border-color: var(--border-strong);
+  }
+  .chapter-card--soon .chapter-tile {
+    color: var(--faint);
+  }
+
+  .chapter-link,
+  .chapter-soon {
+    margin-top: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .chapter-link {
+    background: var(--muted);
+    color: var(--foreground);
+    transition: background-color 150ms ease-out;
+  }
+  .chapter-link:hover {
+    background: var(--muted-strong);
+  }
+  .chapter-soon {
+    padding-inline: 0;
+    font-weight: 500;
+    color: var(--subtle);
+  }
+</style>
