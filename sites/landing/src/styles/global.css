@@ -425,6 +425,37 @@ html.dark {
     color: var(--emphasis);
   }
 
+  /* Reference tables: genuine rows, so they get hairline dividers. Block +
+     overflow keeps a wide one scrolling inside the column on a phone instead
+     of pushing the page sideways. */
+  .prose-stubbase table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .prose-stubbase th,
+  .prose-stubbase td {
+    border-bottom: 1px solid var(--border-faint);
+    padding: 0.625rem 1.25rem 0.625rem 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .prose-stubbase th {
+    border-bottom-color: var(--border-c);
+    font-weight: 600;
+    color: var(--foreground);
+    white-space: nowrap;
+  }
+  .prose-stubbase td {
+    color: var(--muted-foreground);
+  }
+  .prose-stubbase tr:last-child td {
+    border-bottom: 0;
+  }
+
   .prose-stubbase ul,
   .prose-stubbase ol {
     padding-left: 1.25rem;
