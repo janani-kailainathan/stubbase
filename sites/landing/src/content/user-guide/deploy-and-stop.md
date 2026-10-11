@@ -8,7 +8,8 @@ chapter: 'getting-started'
 order: 4
 publishedAt: 2026-10-11
 hero:
-  alt: 'The top bar of a live project: its status reading live, the Redeploy button and the Stop square beside it'
+  src: /user-guide/deploy-and-stop/hero.png
+  alt: 'The right end of a live project''s top bar: the Editor, AI chat, Logs and MCP tabs, then Redeploy with the Stop square beside it'
   caption: 'Live: Redeploy and Stop. Stopped: Deploy on its own.'
 ---
 
@@ -51,8 +52,8 @@ something that isn't live yet, a notice appears above the editor:
 Click **Redeploy** to publish them. The API keeps serving throughout, so
 callers see the old version and then the new one, with no gap between.
 
-<figure class="shot shot--pending">
-  <div class="shot-frame" role="img" aria-label="Screenshot to come: The yellow notice above the editor saying there are changes that aren't live yet."><span class="shot-file">/user-guide/deploy-and-stop/01-staged-changes.png</span></div>
+<figure class="shot">
+  <img src="/user-guide/deploy-and-stop/01-staged-changes.png" alt="The yellow notice above the editor saying there are changes that aren't live yet." width="916" height="67" loading="lazy" decoding="async" />
   <figcaption>The notice stays until you Redeploy, and comes back if you hide it and change something else.</figcaption>
 </figure>
 

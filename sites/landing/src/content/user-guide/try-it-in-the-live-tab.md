@@ -8,6 +8,7 @@ chapter: 'getting-started'
 order: 5
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/try-it-in-the-live-tab/hero.png
   alt: 'The Live tab for GET /posts/{id}: Path Variables open with an id filled in, and a 200 response with the record below'
   caption: 'Pick a route on the right, fill in what it needs, Send.'
 ---
@@ -37,8 +38,8 @@ The request tabs depend on the route, so you only see the ones it uses:
 
 Then click **Send**.
 
-<figure class="shot shot--pending">
-  <div class="shot-frame" role="img" aria-label="Screenshot to come: The Query Params tab with _sort=created and status=todo, and the list response beneath it."><span class="shot-file">/user-guide/try-it-in-the-live-tab/01-query-params.png</span></div>
+<figure class="shot">
+  <img src="/user-guide/try-it-in-the-live-tab/01-query-params.png" alt="The Query Params tab with published=true, _sort=views and _direction=desc, and the sorted list beneath it." width="916" height="743" loading="lazy" decoding="async" />
   <figcaption>Query params go on reads only; the response shows the status, its headers and the body.</figcaption>
 </figure>
 

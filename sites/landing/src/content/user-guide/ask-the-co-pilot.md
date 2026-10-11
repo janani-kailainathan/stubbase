@@ -8,8 +8,9 @@ chapter: 'copilot'
 order: 1
 publishedAt: 2026-10-11
 hero:
-  alt: 'The AI chat pane with a request to design a recipes API and the Co-Pilot''s reply proposing two tables'
-  caption: 'Ask in plain words. Cards in the reply show what it did, or what it is waiting for you to confirm.'
+  src: /user-guide/ask-the-co-pilot/hero.png
+  alt: 'The AI chat pane: a question about how the project''s tables are linked, the Co-Pilot''s answer, and a card showing it read the data model'
+  caption: 'Ask in plain words. A card under the reply shows what it looked at or did, here reading the data model.'
 ---
 
 ## Open AI chat

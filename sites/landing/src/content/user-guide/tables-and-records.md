@@ -8,6 +8,7 @@ chapter: 'getting-started'
 order: 3
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/tables-and-records/hero.png
   alt: 'The Editor with posts.json open for editing, the Save button showing its keyboard shortcut'
   caption: 'Edit, change the JSON, Save. A live table changes on your API as soon as you save.'
 ---
@@ -46,8 +47,8 @@ it is created through your API.
 **3. Click Save**, or press ⌘S on a Mac, Ctrl+S elsewhere. **Cancel** throws
 the edit away.
 
-<figure class="shot shot--pending">
-  <div class="shot-frame" role="img" aria-label="Screenshot to come: The toast after saving a live table, reading 'Saved posts.json (2 records) — live now.' with an Undo button."><span class="shot-file">/user-guide/tables-and-records/01-saved-live-now.png</span></div>
+<figure class="shot">
+  <img src="/user-guide/tables-and-records/01-saved-live-now.png" alt="The toast after saving a live table, reading 'Saved posts.json (8 records) — live now.' with an Undo button." width="302" height="64" loading="lazy" decoding="async" />
   <figcaption>The toast tells you whether the save is live now or waits for Deploy.</figcaption>
 </figure>
 

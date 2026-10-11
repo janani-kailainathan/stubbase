@@ -8,6 +8,7 @@ chapter: 'account'
 order: 3
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/connect-an-ai-agent-with-mcp/hero.png
   alt: 'The MCP tab: a key name field with Generate, the active keys list, and the Claude Desktop config snippet'
   caption: 'Generate a key, copy the snippet, restart Claude Desktop.'
 ---

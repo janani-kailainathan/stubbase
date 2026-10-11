@@ -8,6 +8,7 @@ chapter: 'getting-started'
 order: 1
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/what-is-stubbase/hero.png
   alt: 'A Stubbase project open in the dashboard: the Files rail, a JSON table in the editor, and the APIs rail listing its endpoints'
   caption: 'One project: its tables on the left, the records in the middle, and the endpoints they became on the right.'
 ---

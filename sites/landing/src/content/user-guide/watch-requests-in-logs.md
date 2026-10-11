@@ -8,6 +8,7 @@ chapter: 'getting-started'
 order: 6
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/watch-requests-in-logs/hero.png
   alt: 'The Logs tab streaming requests, one expanded to show its request body, response body and pipeline steps'
   caption: 'One line per request; click a line to open it.'
 ---

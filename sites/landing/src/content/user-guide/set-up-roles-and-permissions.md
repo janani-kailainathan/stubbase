@@ -8,6 +8,7 @@ chapter: 'roles'
 order: 2
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/set-up-roles-and-permissions/hero.png
   alt: 'rbac.json open in the system folder, showing guest, customer, staff and admin roles'
   caption: 'Turn roles on in the .env, Save, and rbac.json appears in the system folder.'
 ---

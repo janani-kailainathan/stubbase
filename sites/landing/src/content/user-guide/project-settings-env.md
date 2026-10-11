@@ -8,6 +8,7 @@ chapter: 'settings'
 order: 1
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/project-settings-env/hero.png
   alt: 'The .env editor open on a new project, sections numbered down the left with every line commented out'
   caption: 'Every setting is already in the file. Remove the # to switch one on.'
 ---

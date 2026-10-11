@@ -571,10 +571,14 @@ textarea {
   background-color: var(--card);
 }
 
+/* Never wider than its own pixels: a crop of one toast or one button is
+   shown at its true size, centred, rather than blown up to the column. */
 .shot img {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
+  margin-inline: auto;
 }
 
 .shot figcaption {

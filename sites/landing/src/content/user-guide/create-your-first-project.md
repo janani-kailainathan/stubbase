@@ -8,6 +8,7 @@ chapter: 'getting-started'
 order: 2
 publishedAt: 2026-10-11
 hero:
+  src: /user-guide/create-your-first-project/hero.png
   alt: 'The New project dialog, with a project name typed in and the starter examples below it'
   caption: 'Name the project, pick a starter (or Empty project), then Create project.'
 ---
@@ -40,8 +41,8 @@ records in it. Picking one fills in the name for you if you have not typed one.
 **4. Click Create project.** The project opens in the Editor, with its tables
 in the Files rail on the left.
 
-<figure class="shot shot--pending">
-  <div class="shot-frame" role="img" aria-label="Screenshot to come: A new project in the Editor, its status reading stopped beside the project name."><span class="shot-file">/user-guide/create-your-first-project/01-new-project-stopped.png</span></div>
+<figure class="shot">
+  <img src="/user-guide/create-your-first-project/01-new-project-stopped.png" alt="A new project in the Editor, its status reading stopped beside the project name." width="760" height="250" loading="lazy" decoding="async" />
   <figcaption>A new project starts stopped: nothing in it is public until you deploy.</figcaption>
 </figure>
 
