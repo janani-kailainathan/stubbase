@@ -7,6 +7,10 @@ label: 'Filter a list'
 chapter: 'querying'
 order: 1
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/filter-a-list/hero.png
+  alt: 'The Live tab with the query params views[gte]=1000 and published=true, and the matching posts in the response'
+  caption: 'An operator goes in brackets after the field name; plain fields match exactly.'
 ---
 
 ## Exact match

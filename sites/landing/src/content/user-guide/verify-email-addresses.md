@@ -7,6 +7,10 @@ label: 'Verify email addresses'
 chapter: 'auth'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/verify-email-addresses/hero.png
+  alt: 'The Logs tab showing a sign-up request with a note: the 6-digit verification code, shown because the project has no Resend key'
+  caption: 'Without a Resend key, the code is a note on the sign-up request in your Logs tab.'
 ---
 
 ## How the flow works

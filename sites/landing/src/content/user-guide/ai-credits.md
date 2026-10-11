@@ -7,6 +7,10 @@ label: 'AI credits'
 chapter: 'copilot'
 order: 4
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/ai-credits/hero.png
+  alt: 'The AI credits rows on the Account card: gift credits and a credit pack, each with what is left and when it expires'
+  caption: 'Grants are listed in the order they will be used.'
 ---
 
 ## What a reply costs

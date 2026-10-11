@@ -7,6 +7,10 @@ label: 'Read-only API'
 chapter: 'settings'
 order: 5
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/read-only-api/hero.png
+  alt: 'The APIs rail of a read-only project listing only GET routes for posts, authors and comments'
+  caption: 'While READ_ONLY is deployed, the APIs rail lists only the read routes.'
 ---
 
 ## Switch it on
@@ -38,7 +42,8 @@ allowed.
 - **The AI Co-Pilot** can still add, change and delete records for you.
 - **Sign-up and login** follow your auth settings, unaffected.
 - **`openapi.json`** lists only the read routes, so tools that read it never
-  offer a write.
+  offer a write. The dashboard's APIs rail does the same, so the Live tab
+  offers only reads while the setting is deployed.
 
 ## When to use it
 

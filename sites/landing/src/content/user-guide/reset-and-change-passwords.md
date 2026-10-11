@@ -7,6 +7,10 @@ label: 'Reset and change passwords'
 chapter: 'auth'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/reset-and-change-passwords/hero.png
+  alt: 'The Live tab sending POST /auth/forgot-password and the 202 response that reads the same for every address'
+  caption: 'forgot-password answers 202 whether or not the address has an account.'
 ---
 
 ## Reset a forgotten password

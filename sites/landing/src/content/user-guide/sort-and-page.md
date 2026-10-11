@@ -7,6 +7,10 @@ label: 'Sort and page'
 chapter: 'querying'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/sort-and-page/hero.png
+  alt: 'The Live tab with _sort=views, _page=1 and _limit=3, and the response headers showing x-total-count: 8'
+  caption: 'Three records come back; X-Total-Count says how many matched in all.'
 ---
 
 ## Sort

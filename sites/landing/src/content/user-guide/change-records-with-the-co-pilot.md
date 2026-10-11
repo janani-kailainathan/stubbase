@@ -7,6 +7,10 @@ label: 'Change records'
 chapter: 'copilot'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/change-records-with-the-co-pilot/hero.png
+  alt: 'AI chat after asking to publish every unpublished post: the reply, and cards for reading the data model, counting 2 matching posts and updating 2 records, with Undo'
+  caption: 'The change card carries Undo; the count shows it picked records without reading them.'
 ---
 
 ## Ask, and it happens

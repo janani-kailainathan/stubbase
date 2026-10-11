@@ -7,6 +7,10 @@ label: 'Give a user a role'
 chapter: 'roles'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/give-a-user-a-role/hero.png
+  alt: 'system/users.json in the Files rail, with a role picker beside each account above the read-only JSON'
+  caption: 'Pick a role beside the account. It applies from that account''s next request.'
 ---
 
 ## From the dashboard

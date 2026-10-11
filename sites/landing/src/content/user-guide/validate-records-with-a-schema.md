@@ -7,6 +7,10 @@ label: 'Validate with a schema'
 chapter: 'data'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/validate-records-with-a-schema/hero.png
+  alt: 'The Live tab sending an invalid post, and a 400 response listing each field that failed: title too short, published not a boolean, views below zero'
+  caption: 'Every problem is listed, with the field it belongs to.'
 ---
 
 ## Add a schema
@@ -23,6 +27,11 @@ SCHEMA_POSTS={"type":"object","required":["title"],"properties":{"title":{"type"
 body does not match is refused. The key is matched to the table by lowercasing
 it, so `SCHEMA_BLOG_POSTS` validates a table called `blog_posts`: give a table
 you want to validate a name in lowercase letters, digits and `_`.
+
+<figure class="shot">
+  <img src="/user-guide/validate-records-with-a-schema/01-schema-line.png" alt="The .env being edited, with a SCHEMA_POSTS line requiring a non-empty title, a boolean published and a non-negative integer views" width="916" height="390" loading="lazy" decoding="async" />
+  <figcaption>The schema sits on one line, in section 4 of the .env or anywhere below it.</figcaption>
+</figure>
 
 Nothing else needs switching on. The line is the switch, and removing it
 switches validation off again on the next deploy.

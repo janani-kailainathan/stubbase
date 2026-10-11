@@ -7,6 +7,10 @@ label: 'Expand related records'
 chapter: 'querying'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/expand-related-records/hero.png
+  alt: 'The Live tab with _expand=authors and _limit=2, and a post in the response carrying its author record'
+  caption: 'Each post comes back with its author nested inside.'
 ---
 
 ## Expand one link

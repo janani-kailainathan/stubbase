@@ -7,6 +7,10 @@ label: 'Applied or proposed'
 chapter: 'copilot'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/settings-and-proposals/hero.png
+  alt: 'A Co-Pilot proposal card titled Change 1 setting? with AUTH_ENABLED=false, and Yes, change it and Cancel buttons'
+  caption: 'Turning sign-in off could open your API up, so it waits for your click.'
 ---
 
 ## Why there are two kinds

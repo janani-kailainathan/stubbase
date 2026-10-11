@@ -7,6 +7,10 @@ label: 'Account settings'
 chapter: 'account'
 order: 4
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/account-settings/hero.png
+  alt: 'The Password card and the Delete account card, which lists the projects to delete first'
+  caption: 'An account made with Google or GitHub sets its first password with an emailed code.'
 ---
 
 ## Your account at a glance
@@ -32,8 +36,9 @@ signed in on this device and are signed out everywhere else.
   computer can't lock you out.
 - Forgotten it? Choose **Use an email code instead** and a 6-digit code is
   emailed to you.
-- Signed up with Google or GitHub? You have no password yet, so the card offers
-  **Set a password**, which uses an emailed code.
+- Signed up with Google or GitHub? You have no password yet, so the card says
+  so and offers **Send code**: you set your first password with the 6-digit
+  code it emails you.
 
 ## Forgot your password while signed out
 

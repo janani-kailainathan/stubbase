@@ -7,6 +7,10 @@ label: 'QA mode'
 chapter: 'settings'
 order: 4
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/qa-mode/hero.png
+  alt: 'The Live tab''s Headers panel with x-stubbase-delay set to 1500 and x-stubbase-status to 500, and a 500 response after 1519 ms'
+  caption: 'Asked for a 1.5 second delay and a 500, the API waits and then fails as requested.'
 ---
 
 ## Switch it on

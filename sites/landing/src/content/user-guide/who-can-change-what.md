@@ -7,13 +7,19 @@ label: 'Ownership before roles'
 chapter: 'roles'
 order: 1
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/who-can-change-what/hero.png
+  alt: 'The Live tab creating a post as a signed-in user, and the 201 response with the server-added userId'
+  caption: 'A signed-in create without a userId gets the caller''s id stamped on it.'
 ---
 
 ## Records belong to whoever created them
 
 With `AUTH_ENABLED=true`, a record created through your API by a signed-in user
-is stamped with that user's id in a `userId` field. The server sets it, and
-anything the body says for `userId` is replaced.
+is stamped with that user's id in a `userId` field, when the body leaves
+`userId` out. A `userId` the body does send is kept as sent, so have your app
+leave the field out and let the server fill it in. (With roles, a role whose
+`create` is `own` always gets the caller's id, whatever the body says.)
 
 ## The rule
 

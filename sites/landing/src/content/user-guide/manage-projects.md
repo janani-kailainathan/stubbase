@@ -7,6 +7,10 @@ label: 'Manage projects'
 chapter: 'account'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/manage-projects/hero.png
+  alt: 'The project menu open from the top bar: each project with copy and bin icons, and New project at the bottom'
+  caption: 'Click the project name to open the menu.'
 ---
 
 ## Switch projects

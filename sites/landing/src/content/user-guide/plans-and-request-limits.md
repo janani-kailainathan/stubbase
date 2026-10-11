@@ -7,6 +7,10 @@ label: 'Plans and requests'
 chapter: 'account'
 order: 1
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/plans-and-request-limits/hero.png
+  alt: 'The Account card in Settings: plan, requests this month against the allowance, reset date, projects, rate limit, request packs and AI credits'
+  caption: 'Settings → Account: the requests used are the number your API is limited on.'
 ---
 
 ## The plans

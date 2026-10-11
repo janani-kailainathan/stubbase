@@ -7,6 +7,10 @@ label: 'Link tables with relations'
 chapter: 'data'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/link-tables-with-relations/hero.png
+  alt: 'A post in a response with its authorId and, nested under author, the author record it points at'
+  caption: 'authorId points at authors.json; with _expand the author comes back inside the post.'
 ---
 
 ## The field name is the whole setup

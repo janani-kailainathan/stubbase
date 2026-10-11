@@ -7,6 +7,10 @@ label: 'Google and GitHub login'
 chapter: 'auth'
 order: 4
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/google-and-github-login/hero.png
+  alt: 'The project''s .env at section 1.5, with the Google and GitHub callback URLs already filled in with the project id'
+  caption: 'Section 1.5 of your .env names the exact callback URLs to register.'
 ---
 
 ## What you need

@@ -7,6 +7,10 @@ label: 'Records through your API'
 chapter: 'data'
 order: 1
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/records-through-your-api/hero.png
+  alt: 'The Live tab sending POST /comments with a JSON body, and the 201 response with the server-set id, createdAt and updatedAt'
+  caption: 'A create answers 201 with the record as stored: the id and both timestamps are filled in for you.'
 ---
 
 ## The five endpoints

@@ -7,6 +7,10 @@ label: 'Turn on sign-up and login'
 chapter: 'auth'
 order: 1
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/turn-on-sign-up/hero.png
+  alt: 'The APIs rail listing the auth routes, and the Live tab''s POST /auth/signup answering 202 with a verificationId and delivery: logs'
+  caption: 'Once AUTH_ENABLED is deployed, the auth routes appear in the APIs rail.'
 ---
 
 ## Switch it on

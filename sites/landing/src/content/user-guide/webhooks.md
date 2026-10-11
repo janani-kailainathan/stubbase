@@ -7,6 +7,10 @@ label: 'Webhooks'
 chapter: 'settings'
 order: 3
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/webhooks/hero.png
+  alt: 'The .env''s webhooks section with two lines added: a before-insert hook on posts and an after-insert hook on comments'
+  caption: 'One line per hook: phase, action and table in the key, your URL as the value.'
 ---
 
 ## Add a webhook

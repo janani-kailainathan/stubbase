@@ -7,6 +7,10 @@ label: 'Send email and SMS'
 chapter: 'settings'
 order: 2
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/send-email-and-sms/hero.png
+  alt: 'The .env with AUTH_ENABLED, RESEND_API_KEY, RESEND_FROM and the three TWILIO_ lines filled in'
+  caption: 'The Resend key turns on email, the three Twilio values together turn on SMS.'
 ---
 
 ## Email through Resend

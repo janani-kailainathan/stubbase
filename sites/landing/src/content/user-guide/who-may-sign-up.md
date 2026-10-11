@@ -7,6 +7,10 @@ label: 'Who may sign up'
 chapter: 'auth'
 order: 5
 publishedAt: 2026-10-11
+hero:
+  src: /user-guide/who-may-sign-up/hero.png
+  alt: 'The Live tab sending a sign-up from a gmail.com address and a 403 response: that email domain is not accepted for sign-up on this API'
+  caption: 'With AUTH_EMAIL_DOMAINS_ONLY=example.com deployed, other domains are refused with a 403.'
 ---
 
 ## Where the rules apply
