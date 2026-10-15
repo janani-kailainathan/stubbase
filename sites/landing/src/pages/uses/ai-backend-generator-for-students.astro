@@ -73,7 +73,7 @@ const subhead =
     prop's — an SEO target. No script: the entrance is showcase.css's
     hero-rise, which stops under prefers-reduced-motion.
   */}
-  <section slot="hero" class="relative overflow-hidden">
+  <section slot="hero" class="relative overflow-hidden" data-push-area>
     <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
     <div class="relative mx-auto max-w-7xl px-6 pt-24 pb-20 lg:pt-36 lg:pb-28 xl:pt-44 xl:pb-32">
@@ -100,10 +100,10 @@ const subhead =
             sides — the Co-Pilot at "Generator", you at "Students": the pointer
             is a 20px box the offsets place, the name chip hangs from its tail
             (VectorCraft, design/student-cursor-*). */}
-        <div class="hero-rise absolute top-[336px] left-[1002px] [--d:0.8s]">
+        <div class="hero-rise absolute top-[336px] left-[1002px] z-30 [--d:0.8s]" data-pushable>
           <div class="hero-nudge relative h-5 w-5 [--nx:-7px] [--ny:-7px] [--dur:2.2s]"><img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" /></div>
         </div>
-        <div class="hero-rise absolute top-[324px] left-[210px] [--d:0.9s]">
+        <div class="hero-rise absolute top-[324px] left-[210px] z-30 [--d:0.9s]" data-pushable>
           <div class="hero-nudge relative h-5 w-5 [--nx:7px] [--ny:-7px] [--dur:2.6s]"><img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" /></div>
         </div>
       </div>
@@ -240,6 +240,160 @@ const subhead =
     <HomePlans />
   </Fragment>
 </RoleLayout>
+
+<script>
+  /*
+    The hero's two cursors are physical objects. They move only when the
+    mouse runs into one — its pointer or its name chip — and the hit carries
+    the mouse's direction and a small share of its speed, capped, so a
+    collision nudges a cursor rather than launching it. An off-centre hit spins it, and it rights
+    itself as it slows. It glides with drag, bounces off the hero's edges
+    losing some energy each time, and the two can knock into each other.
+    Decoration only: with JS off, on a screen too narrow to show them, or with
+    reduced motion, they stay where they are. The motion is a `transform`,
+    never `translate`, which the entrance animation owns on the same element,
+    and the loop runs only while something is moving.
+  */
+  const area = document.querySelector<HTMLElement>('[data-push-area]');
+  const items = [...document.querySelectorAll<HTMLElement>('[data-pushable]')];
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (area && items.length && !reduced) {
+    const DRAG = 0.94; // velocity kept per frame (at 60fps)
+    const SPIN_DRAG = 0.93; // angular velocity kept per frame
+    const RIGHTING = 0.012; // how strongly a tilted cursor turns back upright
+    const BOUNCE = 0.72; // energy kept when hitting an edge
+    const HIT = 0.18; // share of the mouse's speed a hit passes on
+    const MAX_SPEED = 3; // px per frame — a collision is a nudge, never a launch
+    const TORQUE = 0.0025; // spin per unit of off-centre hit
+    const PAD = 6; // gap kept from the hero's edges
+
+    type Body = { el: HTMLElement; x: number; y: number; vx: number; vy: number; a: number; va: number; inside: boolean };
+    const bodies: Body[] = items.map((el) => ({ el, x: 0, y: 0, vx: 0, vy: 0, a: 0, va: 0, inside: false }));
+    let frame = 0;
+    let last = 0;
+    let mouse = { x: 0, y: 0, t: 0, vx: 0, vy: 0 };
+
+    const visible = (b: Body) => getComputedStyle(b.el.parentElement!).display !== 'none';
+
+    // A cursor's drawn extent: its pointer box and the name chip it carries.
+    const extent = (el: HTMLElement) => {
+      let { left, top, right, bottom } = el.getBoundingClientRect();
+      for (const img of el.querySelectorAll('img')) {
+        if (getComputedStyle(img).display === 'none') continue;
+        const r = img.getBoundingClientRect();
+        left = Math.min(left, r.left); top = Math.min(top, r.top);
+        right = Math.max(right, r.right); bottom = Math.max(bottom, r.bottom);
+      }
+      return { left, top, right, bottom, cx: (left + right) / 2, cy: (top + bottom) / 2, w: right - left, h: bottom - top };
+    };
+
+    // Spin about the cursor's middle (pointer and chip), not its pointer box —
+    // measured at its first hit, once the entrance animation has settled.
+    const pivot = (b: Body) => {
+      if (b.el.style.transformOrigin) return;
+      const box = b.el.getBoundingClientRect();
+      const e = extent(b.el);
+      b.el.style.transformOrigin = `${e.cx - box.left}px ${e.cy - box.top}px`;
+    };
+
+    const apply = (b: Body) => {
+      b.el.style.transform = `translate(${b.x}px, ${b.y}px) rotate(${b.a}deg)`;
+    };
+
+    const step = (now: number) => {
+      const k = last ? Math.min((now - last) / 16.7, 3) : 1; // frames elapsed
+      last = now;
+      const bounds = area.getBoundingClientRect();
+      let moving = false;
+
+      for (const b of bodies) {
+        b.x += b.vx * k;
+        b.y += b.vy * k;
+        b.a += b.va * k;
+        b.vx *= DRAG ** k;
+        b.vy *= DRAG ** k;
+        b.va = (b.va - b.a * RIGHTING * k) * SPIN_DRAG ** k;
+        apply(b);
+        // Bounce off the hero's edges, keeping the whole cursor inside.
+        const e = extent(b.el);
+        if (e.left < bounds.left + PAD) { b.x += bounds.left + PAD - e.left; b.vx = Math.abs(b.vx) * BOUNCE; b.va *= -0.6; }
+        if (e.right > bounds.right - PAD) { b.x -= e.right - (bounds.right - PAD); b.vx = -Math.abs(b.vx) * BOUNCE; b.va *= -0.6; }
+        if (e.top < bounds.top + PAD) { b.y += bounds.top + PAD - e.top; b.vy = Math.abs(b.vy) * BOUNCE; }
+        if (e.bottom > bounds.bottom - PAD) { b.y -= e.bottom - (bounds.bottom - PAD); b.vy = -Math.abs(b.vy) * BOUNCE; }
+        apply(b);
+        if (Math.hypot(b.vx, b.vy) > 0.03 || Math.abs(b.va) > 0.03 || Math.abs(b.a) > 0.2) moving = true;
+      }
+
+      // The two cursors knock into each other, as circles of equal mass.
+      if (bodies.length === 2 && bodies.every(visible)) {
+        const [p, q] = bodies;
+        const ep = extent(p.el), eq = extent(q.el);
+        const dx = eq.cx - ep.cx, dy = eq.cy - ep.cy;
+        const dist = Math.hypot(dx, dy) || 1;
+        const reach = (Math.min(ep.w, ep.h) + Math.min(eq.w, eq.h)) / 2;
+        if (dist < reach) {
+          const nx = dx / dist, ny = dy / dist;
+          const overlap = (reach - dist) / 2;
+          p.x -= nx * overlap; p.y -= ny * overlap;
+          q.x += nx * overlap; q.y += ny * overlap;
+          const rel = (q.vx - p.vx) * nx + (q.vy - p.vy) * ny;
+          if (rel < 0) {
+            p.vx += rel * nx; p.vy += rel * ny;
+            q.vx -= rel * nx; q.vy -= rel * ny;
+            p.va += rel * 0.4; q.va -= rel * 0.4;
+          }
+          apply(p); apply(q);
+        }
+      }
+
+      if (moving) {
+        frame = requestAnimationFrame(step);
+      } else {
+        frame = 0;
+        last = 0;
+      }
+    };
+
+    const wake = () => {
+      if (!frame) frame = requestAnimationFrame(step);
+    };
+
+    area.addEventListener('pointermove', (event) => {
+      if (event.pointerType !== 'mouse') return;
+      const t = event.timeStamp;
+      const dt = Math.max(t - mouse.t, 1);
+      // The mouse's speed, in px per frame, smoothed a little.
+      const vx = ((event.clientX - mouse.x) / dt) * 16.7;
+      const vy = ((event.clientY - mouse.y) / dt) * 16.7;
+      mouse = { x: event.clientX, y: event.clientY, t, vx: mouse.vx * 0.3 + vx * 0.7, vy: mouse.vy * 0.3 + vy * 0.7 };
+      if (dt > 100) return; // the first move after a pause has no speed to give
+
+      for (const b of bodies) {
+        if (!visible(b)) continue;
+        const e = extent(b.el);
+        const inside = mouse.x >= e.left && mouse.x <= e.right && mouse.y >= e.top && mouse.y <= e.bottom;
+        // A collision: the mouse moving into the cursor, or through it.
+        if (inside) {
+          const speed = Math.hypot(mouse.vx, mouse.vy);
+          if (speed > 0.2) {
+            pivot(b);
+            const share = b.inside ? HIT * 0.35 : HIT; // the first contact hits hardest
+            b.vx += mouse.vx * share;
+            b.vy += mouse.vy * share;
+            const v = Math.hypot(b.vx, b.vy);
+            if (v > MAX_SPEED) { b.vx *= MAX_SPEED / v; b.vy *= MAX_SPEED / v; }
+            // Off-centre hits spin: the cross product of lever and push.
+            const rx = mouse.x - e.cx, ry = mouse.y - e.cy;
+            b.va += (rx * mouse.vy - ry * mouse.vx) * TORQUE * share;
+            wake();
+          }
+        }
+        b.inside = inside;
+      }
+    });
+  }
+</script>
 
 <script>
   import { GOOGLE_CLIENT_ID } from '../../lib/urls';
