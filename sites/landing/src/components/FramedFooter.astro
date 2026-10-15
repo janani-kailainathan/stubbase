@@ -1,15 +1,16 @@
 ---
 // The site's footer, on every page, after xmind.com's: the closing call to
-// action as a centred card in a sketched frame, then the site map on a ground
-// of its own.
+// action as a centred card in a sketched frame, then the wordmark and the legal
+// line on a ground of their own. The site map's columns (use cases to pricing)
+// came out; the last version with them is FramedFooter.astro.bak.
 //
 // The CTA stays the footer's, as CLAUDE.md asks: a page passes `cta` to Layout
-// and never builds its own, so the call to action and the site map read as one
+// and never builds its own, so the call to action and the rest of the footer read as one
 // ending rather than several footers stacked. It takes an optional second
 // button and a line of microcopy.
 import { ArrowRight } from 'lucide-astro';
 import ThemeToggle from './ThemeToggle.astro';
-import { USE_CASES, ROLES, NAV_GROUPS, RESOURCE_LINKS, LEGAL_LINKS } from '../lib/nav';
+import { LEGAL_LINKS } from '../lib/nav';
 import type { FooterCta } from '../lib/cta';
 
 interface Props {
@@ -17,25 +18,6 @@ interface Props {
 }
 
 const { cta } = Astro.props;
-
-// Read the groups by name, not by position: this list grows, and destructuring
-// it once silently re-labelled a whole column when an entry was added.
-const features = NAV_GROUPS.find((group) => group.key === 'features')!;
-
-const columns = [
-  { heading: 'Use cases', links: USE_CASES.links },
-  { heading: 'Roles', links: ROLES.links },
-  { heading: 'Features', links: features.links },
-  { heading: 'Resources', links: RESOURCE_LINKS },
-  {
-    heading: 'Pricing',
-    links: [
-      { href: '/pricing', label: 'Plans' },
-      // Enterprise has no list price; it is "Let's talk" on /pricing too.
-      { href: '/contact', label: 'Enterprise' },
-    ],
-  },
-];
 ---
 
 <footer>
@@ -81,10 +63,10 @@ const columns = [
     )
   }
 
-  {/* The site map sits on a ground of its own, full bleed, as xmind's does. */}
+  {/* The wordmark and the legal line sit on a ground of their own, full bleed, as xmind's do. */}
   <div class="bg-card">
     <div class="mx-auto max-w-7xl px-6 pt-14 pb-10">
-      <div class="mb-12 flex flex-col items-start gap-3">
+      <div class="flex flex-col items-start gap-3">
         <a href="/" class="flex items-center">
           <img src="/stubbase-logo-text-dark.svg" alt="Stubbase" class="h-7 w-auto" data-wordmark="dark" />
           <img src="/stubbase-logo-text-light.svg" alt="Stubbase" class="h-7 w-auto" data-wordmark="light" />
@@ -92,27 +74,8 @@ const columns = [
         <p class="text-sm text-subtle">An AI-powered, zero-config, instant backend engine.</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:grid-cols-5">
-        {
-          columns.map((column) => (
-            <nav aria-label={column.heading}>
-              <p class="mb-4 font-semibold text-foreground">{column.heading}</p>
-              <ul class="space-y-3">
-                {column.links.map((link) => (
-                  <li>
-                    <a href={link.href} class="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ))
-        }
-      </div>
-
       {/* Space, not a rule, sets this line apart (see CLAUDE.md). */}
-      <div class="mt-16 flex flex-wrap items-center justify-between gap-4">
+      <div class="mt-10 flex flex-wrap items-center justify-between gap-4">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
           <span>© 2026 Stubbase</span>
           <nav class="flex gap-x-5" aria-label="Legal">
