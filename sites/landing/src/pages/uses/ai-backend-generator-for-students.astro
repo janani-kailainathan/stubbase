@@ -201,33 +201,10 @@ const subhead =
         Ask your AI Co-Pilot friend about what you are building, and it designs the tables and links
         them. Ask it to fill them with sample records. Ask it to start or stop the server.
       </p>
-      <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
-        <div class="absolute top-0 left-0 w-60 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
-          <p class="mb-2 flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
-          <p class="text-sm leading-relaxed text-foreground">A study planner with courses, assignments and grades.</p>
-          <div class="mt-3 flex items-center justify-between">
-            <span class="rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-subtle">3 tables</span>
-            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><ArrowRight class="h-4 w-4" /></span>
-          </div>
-        </div>
-        <div class="absolute right-0 bottom-0 hidden gap-2 sm:flex">
-          {
-            [
-              { name: 'courses', fields: ['id', 'name'] },
-              { name: 'assignments', fields: ['id', 'courseId'] },
-              { name: 'grades', fields: ['id', 'assignmentId'] },
-            ].map((table, i) => (
-              <div class={`w-28 rounded-xl border border-border-c bg-background ${i === 1 ? '-translate-y-5' : ''}`}>
-                <p class="border-b border-border-c px-3 py-1.5 font-mono text-[11px] font-semibold text-foreground">{table.name}</p>
-                <ul class="px-3 py-1.5 font-mono text-[11px] leading-5">
-                  {table.fields.map((field) => (
-                    <li class={field.endsWith('Id') ? 'text-syntax-fn' : 'text-muted-foreground'}>{field}</li>
-                  ))}
-                </ul>
-              </div>
-            ))
-          }
-        </div>
+      {/* Drawn in VectorCraft (design/student-card-copilot-*.vectorcraft), one per theme. */}
+      <div aria-hidden="true" class="mt-8 mb-6">
+        <img src="/student-card-copilot-dark.webp" alt="" width="520" height="224" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
+        <img src="/student-card-copilot-light.webp" alt="" width="520" height="224" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
       <a href="/features/ai-rest-api-generation" class="bento-link" aria-label="AI Co-Pilot: read more"><ArrowUpRight class="h-4 w-4" /></a>
     </article>
@@ -241,34 +218,10 @@ const subhead =
       <p class="leading-relaxed text-muted-foreground">
         Every JSON file you add gets its own REST API, with CRUD endpoints for its records.
       </p>
-      <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
-        <div class="absolute top-3 left-0 hidden w-44 -rotate-3 rounded-xl border border-border-c bg-background sm:block">
-          <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
-            <FileJson class="h-3.5 w-3.5 text-(--tint)" /> assignments.json
-          </p>
-          <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
-  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Essay"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
-<span class="text-syntax-punct">{'}'}]</span></pre>
-        </div>
-        <div class="absolute top-0 right-0 w-72 rounded-xl border border-border-c bg-background p-2">
-          {
-            [
-              ['GET', '/assignments'],
-              ['GET', '/assignments/1'],
-              ['POST', '/assignments'],
-              ['PUT', '/assignments/1'],
-              ['DELETE', '/assignments/1'],
-              ['GET', '/assignments?_expand=course'],
-            ].map(([method, path]) => (
-              <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
-                <span class="w-12 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
-                <span class={`whitespace-nowrap ${path.includes('_expand') ? 'text-(--tint)' : ''}`}>{path}</span>
-              </p>
-            ))
-          }
-        </div>
+      {/* Drawn in VectorCraft (design/student-card-json-*.vectorcraft), one per theme. */}
+      <div aria-hidden="true" class="mt-8 mb-6">
+        <img src="/student-card-json-dark.webp" alt="" width="540" height="236" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
+        <img src="/student-card-json-light.webp" alt="" width="540" height="236" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
       <a href="/use-cases/mock-apis" class="bento-link" aria-label="JSON to REST API: read more"><ArrowUpRight class="h-4 w-4" /></a>
     </article>
