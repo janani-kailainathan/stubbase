@@ -232,21 +232,16 @@ const subhead =
     <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
       <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
         <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-bool)/15 text-syntax-bool"><KeyRound class="h-4.5 w-4.5" /></span>
-        Sign-up and login, built in
+        Built-in authentication
       </h3>
       <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
-        One setting switches on sign-up with email verification, login, password reset and Google
-        or GitHub sign-in, with no password hashing for you to get wrong.
+        Ask your AI Co-Pilot to add authentication, or enable it yourself with a feature flag.
+        Need Google or GitHub sign-in? Enable them as well.
       </p>
-      <div aria-hidden="true" class="space-y-2 font-mono text-[11px]">
-        <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
-          <span class="text-foreground">POST /auth/signup</span>
-          <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">code sent</span>
-        </p>
-        <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
-          <span class="text-foreground">POST /auth/login</span>
-          <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">token</span>
-        </p>
+      {/* Drawn in VectorCraft (design/student-card-signin-*.vectorcraft), one per theme. */}
+      <div aria-hidden="true">
+        <img src="/student-card-signin-dark.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
+        <img src="/student-card-signin-light.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
     </article>
 
