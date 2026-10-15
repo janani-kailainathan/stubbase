@@ -8,7 +8,7 @@
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
   differ by request limits alone, so never describe a feature here as paid.
 */
-import { FileJson, Sparkles, ArrowRight, ArrowUpRight, KeyRound, Play, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
+import { FileJson, Sparkles, ArrowUpRight, KeyRound, Play, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, LayoutTemplate } from 'lucide-astro';
 import RoleLayout from '../../layouts/RoleLayout.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
 
@@ -245,23 +245,20 @@ const subhead =
       </div>
     </article>
 
-    {/* Deploy */}
+    {/* Starters, after Home's card (components/home/HomeStart.astro). */}
     <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
       <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
-        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-num)/15 text-syntax-num"><Rocket class="h-4.5 w-4.5" /></span>
-        One URL for the whole team
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-num)/15 text-syntax-num"><LayoutTemplate class="h-4.5 w-4.5" /></span>
+        Start from a starter
       </h3>
       <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
-        Press Deploy and every endpoint is a public URL, so your web app, your teammate's phone app
-        and whoever grades it all point at the same project.
+        No need to build everything from scratch: use a starter template and build your backend on
+        top of it.
       </p>
-      <div aria-hidden="true" class="space-y-2 text-xs">
-        <p class="truncate rounded-lg border border-border-c bg-background px-3 py-2 font-mono text-[11px] text-emphasis">{CORE_URL}/study-planner/assignments</p>
-        <ul class="flex flex-wrap gap-1.5">
-          {['React app', 'Android build', 'Postman'].map((who) => (
-            <li class="flex items-center gap-1 rounded-full border border-border-c bg-background px-2.5 py-1 text-muted-foreground"><Check class="h-3 w-3 text-primary-accent" /> {who}</li>
-          ))}
-        </ul>
+      {/* Drawn in VectorCraft (design/student-card-starter-*.vectorcraft), one per theme. */}
+      <div aria-hidden="true">
+        <img src="/student-card-starter-dark.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
+        <img src="/student-card-starter-light.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
     </article>
 
