@@ -24,11 +24,16 @@ interface Props {
     | 'free-api';
   /** Closing call to action, rendered as the footer's cap. */
   cta?: FooterCta;
+  /** Leave the footer off, for a page that stands alone (the 404). */
+  hideFooter?: boolean;
+  /** Extra classes for <main>, which fills the screen below the nav — `flex flex-col`
+   *  lets a page's own section grow into that space (the 404 centres in it). */
+  mainClass?: string;
   ogType?: 'website' | 'article';
   publishedTime?: string;
 }
 
-const { title, description, schema = [], active, cta, ogType, publishedTime } = Astro.props;
+const { title, description, schema = [], active, cta, hideFooter = false, mainClass, ogType, publishedTime } = Astro.props;
 ---
 
 <BaseLayout
@@ -38,9 +43,14 @@ const { title, description, schema = [], active, cta, ogType, publishedTime } = 
   ogType={ogType}
   publishedTime={publishedTime}
 >
-  <FloatingNav active={active} />
-  <main>
-    <slot />
-  </main>
-  <FramedFooter cta={cta} />
+  {/* At least a screen tall, with main taking up the slack, so the footer
+      sits at the bottom of a page shorter than the window (the 404). The
+      wrapper spans the whole page, so the sticky nav still sticks throughout. */}
+  <div class="flex min-h-dvh flex-col">
+    <FloatingNav active={active} />
+    <main class:list={["flex-1", mainClass]}>
+      <slot />
+    </main>
+    {!hideFooter && <FramedFooter cta={cta} />}
+  </div>
 </BaseLayout>
