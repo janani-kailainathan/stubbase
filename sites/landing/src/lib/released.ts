@@ -10,7 +10,8 @@
  * to. robots.txt never Disallows anything: a crawler blocked there never sees
  * a page's noindex and can keep an indexed URL in results indefinitely.
  *
- * The bare "/" is not here: Caddy redirects it to the students page.
+ * The bare "/" is not here: it redirects to the students page, in
+ * astro.config.mjs and in Caddy alike. The home page is /home.
  */
 export const RELEASED: { path: string; indexed: boolean }[] = [
   { path: '/uses/ai-backend-generator-for-students', indexed: true },

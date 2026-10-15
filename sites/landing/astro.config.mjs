@@ -38,8 +38,8 @@ function pendingShots() {
  * Then it fails the build if a released page links to one it just removed —
  * a link that would quietly become a 404 in production. It deletes first and
  * checks second on purpose: a failed build leaves dist/ in place, and that
- * dist/ must never be the unfiltered site. The bare "/" is exempt, because
- * Caddy redirects it to the students page.
+ * dist/ must never be the unfiltered site. The bare "/" is exempt from both:
+ * it is the redirect to the students page (see `redirects` below), not a page.
  */
 function releasePages() {
   return {
@@ -47,7 +47,9 @@ function releasePages() {
     hooks: {
       'astro:build:done': ({ dir, pages, logger }) => {
         const root = fileURLToPath(dir);
-        const paths = pages.map((page) => normalizePath('/' + page.pathname)).filter((path) => path !== '/404');
+        const paths = pages
+          .map((page) => normalizePath('/' + page.pathname))
+          .filter((path) => path !== '/404' && path !== '/');
         const fileOf = (path) => join(root, path, 'index.html');
 
         const removed = new Set(paths.filter((path) => !isReleased(path)));
@@ -87,6 +89,15 @@ function releasePages() {
 // https://astro.build/config
 export default defineConfig({
   site: 'https://stubbase.dev',
+
+  // The bare root opens the students page, here as well as in Caddy, so
+  // `astro dev` answers "/" exactly as production does. Caddy's 302 is what
+  // production clients see; the static build's stub for it (a meta refresh)
+  // is what anything serving dist/ without Caddy gets. The home page itself
+  // lives at /home, unreleased.
+  redirects: {
+    '/': { status: 302, destination: '/uses/ai-backend-generator-for-students' },
+  },
 
   // Markdown fences in src/content/** are highlighted at build time by Shiki —
   // no client JS, and the same theme pair CodeBlock.astro uses on the hub pages.
