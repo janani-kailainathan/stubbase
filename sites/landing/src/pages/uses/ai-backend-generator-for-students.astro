@@ -201,38 +201,12 @@ const subhead =
           </div>
         </div>
 
-        {/* Bottom left: the student, with Friday's deadline. */}
-        <div class="hero-rise absolute bottom-0 left-0 w-60 text-foreground [--d:0.65s]">
-          <svg
-            viewBox="0 0 420 340"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="3"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="h-auto w-full"
-          >
-            <ellipse cx="196" cy="304" rx="78" ry="9" fill="currentColor" stroke="none" />
-            <path d="M156 170 Q190 162 228 168 L234 298 Q194 304 152 299 Z" class="fill-primary" />
-            <text x="193" y="248" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="34">{'{ }'}</text>
-            <path d="M160 190 C130 182 122 152 138 134" />
-            <circle cx="142" cy="128" r="8" class="fill-background" />
-            <path d="M190 82 C216 81 234 100 233 124 C232 150 214 168 190 167 C164 166 147 148 148 123 C149 98 166 83 190 82 Z" class="fill-background" />
-            <circle cx="177" cy="124" r="3.5" fill="currentColor" stroke="none" />
-            <circle cx="204" cy="124" r="3.5" fill="currentColor" stroke="none" />
-            <path d="M182 142 Q192 149 202 141" />
-            <path d="M162 92 L162 104 Q192 116 222 104 L222 92" fill="currentColor" />
-            <path d="M138 84 L192 62 L246 84 L192 104 Z" fill="currentColor" />
-            <path d="M192 83 L238 90 L240 116" stroke-width="2.5" />
-            <rect x="235" y="114" width="10" height="14" rx="2" class="fill-primary" stroke-width="2" />
-            <path d="M226 192 Q252 206 258 228" />
-            <path d="M250 194 L332 188 L336 246 L254 252 Z" class="fill-background" />
-            <text x="292" y="218" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="13">GET</text>
-            <text x="294" y="236" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">200 OK</text>
-            <path d="M242 254 L346 247 L340 258 L246 264 Z" fill="currentColor" />
-            <path d="M96 52 L100 66 L114 70 L100 74 L96 88 L92 74 L78 70 L92 66 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
-            <text x="40" y="250" class="doodle-note" fill="currentColor" stroke="none" font-size="26" transform="rotate(-6 40 250)">due friday!</text>
-          </svg>
+        {/* Bottom left: the student, with Friday's deadline. Drawn in VectorCraft and
+            exported once per theme (2x, transparent WebP); global.css's
+            data-theme-image rules show the one matching the surface. */}
+        <div class="hero-rise absolute bottom-0 left-0 w-60 [--d:0.65s]">
+          <img src="/student-doodle-dark.webp" alt="" width="420" height="340" class="h-auto w-full" data-theme-image="dark" />
+          <img src="/student-doodle-light.webp" alt="" width="420" height="340" class="h-auto w-full" data-theme-image="light" />
         </div>
 
         {/* Bottom right: one sentence to the Co-Pilot, and what it staged. */}

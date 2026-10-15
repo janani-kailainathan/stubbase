@@ -302,31 +302,32 @@ html.dark {
   color-scheme: dark;
 }
 
-/* Brand wordmark. The raster asset is light-on-transparent, so a light page
-   needs the dark-ink variant or the word disappears and only the mark reads.
+/* Brand wordmark, and any image drawn once per theme (`data-theme-image`, the
+   students page's doodle). The raster asset is light-on-transparent, so a light
+   page needs the dark-ink variant or the word disappears and only the mark reads.
 
    Swapped here rather than with a `light:` utility on the element: that variant
    only matches the stamped `.light` class, while the tokens ALSO flip via
    prefers-color-scheme on the JS-off path. The image has to agree with the
    surface underneath it in all four states, so it follows the same two-path
    cascade the tokens do. */
-[data-wordmark='light'] {
+:is([data-wordmark='light'], [data-theme-image='light']) {
   display: none;
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not(.dark) [data-wordmark='dark'] {
+  :root:not(.dark) :is([data-wordmark='dark'], [data-theme-image='dark']) {
     display: none;
   }
-  :root:not(.dark) [data-wordmark='light'] {
+  :root:not(.dark) :is([data-wordmark='light'], [data-theme-image='light']) {
     display: block;
   }
 }
 
-:root.light [data-wordmark='dark'] {
+:root.light :is([data-wordmark='dark'], [data-theme-image='dark']) {
   display: none;
 }
-:root.light [data-wordmark='light'] {
+:root.light :is([data-wordmark='light'], [data-theme-image='light']) {
   display: block;
 }
 
