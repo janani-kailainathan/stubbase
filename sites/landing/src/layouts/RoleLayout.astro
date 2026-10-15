@@ -7,6 +7,10 @@
 
   A page hands over its words as props and its pictures as slots:
     art      the hero drawing (an inline SVG; RoleLayout sizes it)
+    hero     optional: a page's own hero, replacing the default one whole
+             (the students page's, after Home's). `tags` and `art` then go
+             unused, and the page renders the h1 itself — pass the same
+             wording as `h1`, which the JSON-LD still reads.
     default  the four reasons, under the "why" heading — built from the
              global .feature-canvas / .feature-label / .explore-btn classes
     extra    an optional band after the starters (the students page's free APIs)
@@ -41,8 +45,8 @@ interface Props {
   primary: Link;
   secondary?: Link;
   note?: string;
-  /** Name tags at the screenshot's edges: left, top right, bottom right. */
-  tags: { label: string; initial?: string; bot?: boolean; tint: string }[];
+  /** Name tags at the screenshot's edges: left, top right, bottom right. Unused with a `hero` slot. */
+  tags?: { label: string; initial?: string; bot?: boolean; tint: string }[];
   clientsLabel: string;
   clients: string[];
   challengesTitle: string;
@@ -71,7 +75,7 @@ const {
   primary,
   secondary,
   note,
-  tags,
+  tags = [],
   clientsLabel,
   clients,
   challengesTitle,
@@ -150,6 +154,7 @@ if (crumb) {
     Hero. The H1 is each page's keyword — an SEO target. No script: the
     entrance and the tags' drift are CSS, and both stop under reduced motion.
   */}
+  {Astro.slots.has('hero') ? <slot name="hero" /> : (
   <section class="hero-wash relative">
     <div class="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-6 pt-16 pb-14 sm:grid-cols-[1fr_auto] lg:pt-24 lg:pb-20">
       <div class="max-w-2xl">
@@ -219,6 +224,7 @@ if (crumb) {
       </div>
     </div>
   </section>
+  )}
 
   {/* What it works with, in xmind's logo-strip slot. Names only, never logos:
       this lists what can call the API, not who uses it. The second copy only

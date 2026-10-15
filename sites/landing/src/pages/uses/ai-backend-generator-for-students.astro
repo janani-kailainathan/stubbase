@@ -1,39 +1,55 @@
 ---
 /*
-  The students page, on RoleLayout (after xmind.com/roles/student). This file
-  holds the words, the hero drawing, the four reasons and the free practice
-  APIs; the layout holds the shape. Plan figures in the FAQ are PLANS and
+  The students page, on RoleLayout (after xmind.com/roles/student) with Home's
+  hero in place of the layout's: a centred headline with one handwritten word,
+  on a dot grid with pieces of a student project pinned around it. This file
+  holds the words, that hero, the four reasons and the free practice APIs (in
+  Home's Free Resources shape); the layout holds the rest. Plan figures in the FAQ are PLANS and
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
   differ by request limits alone, so never describe a feature here as paid.
 */
-import { FileJson, Sparkles, ArrowRight, ArrowUpRight, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
+import { FileJson, Sparkles, ArrowRight, MousePointer2, Bot, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
 import RoleLayout from '../../layouts/RoleLayout.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
 
 const publicResources = [
-  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper },
-  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare },
-  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3 },
-  { path: '/photos', count: 5000, noun: 'photos', Icon: Image },
-  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks },
-  { path: '/users', count: 10, noun: 'users', Icon: Users },
+  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper, tint: 'var(--syntax-fn)' },
+  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare, tint: 'var(--syntax-bool)' },
+  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3, tint: 'var(--syntax-num)' },
+  { path: '/photos', count: 5000, noun: 'photos', Icon: Image, tint: 'var(--syntax-fn)' },
+  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks, tint: 'var(--primary)' },
+  { path: '/users', count: 10, noun: 'users', Icon: Users, tint: 'var(--syntax-num)' },
 ];
+
+// Real records from the `public` demo project, verbatim — the same copy as
+// index.astro's. Its seed (scripts/seed-public-tenant.ts) is deterministic, so
+// these are exactly what the links return; reseeding means updating both.
+const sampleRecords: { path: string; record: Record<string, string | number | boolean> }[] = [
+  { path: '/users/1', record: { id: 1, name: 'Ivy Rossi', username: 'ivyrossi', company: 'Rossi Collective', active: true } },
+  { path: '/todos/1', record: { id: 1, userId: 1, title: 'dashboard handoff payload mock sandbox', completed: true } },
+  { path: '/comments/1', record: { id: 1, postId: 1, email: 'omarweber@example.com', body: 'Endpoint cursor record api schema payload.' } },
+  { path: '/albums/1', record: { id: 1, userId: 1, title: 'endpoint api latency mock' } },
+  { path: '/users/2', record: { id: 2, name: 'Yuki Okafor', username: 'yukiokafor', company: 'Okafor Works', active: false } },
+  { path: '/photos/1', record: { id: 1, albumId: 1, title: 'draft latency response endpoint', thumbnailUrl: 'https://picsum.photos/seed/stubbase-1/150/150' } },
+  { path: '/todos/2', record: { id: 2, userId: 1, title: 'payload billing billing handoff billing draft', completed: false } },
+  { path: '/posts/1', record: { id: 1, userId: 1, title: 'latency fixture prototype fixture cursor shipping' } },
+];
+// Two rows drifting opposite ways, each repeated four times so the loop is seamless.
+const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
+
+const subhead =
+  'Describe your app to the AI Co-Pilot or write one JSON file, and get a REST API with the relations linked for you. No database to install, no server to deploy. Built for class projects, hackathons and portfolio apps.';
 ---
 
 <RoleLayout
   title="AI Backend Generator for Students — Stubbase"
   description="Chat with AI or write one JSON file, your data model and database in one, and get a REST API with relationships linked automatically. Built for student projects."
   eyebrow="Stubbase for students"
-  h1="The AI Backend Generator for Students"
-  subhead="No database to install, no server to deploy. Built for class projects, hackathons and portfolio apps."
+  h1="AI Backend Generator for Students"
+  subhead={subhead}
   primary={{ label: 'Generate API (Free)', href: APP_URL }}
   secondary={{ label: 'Use Public APIs', href: '#free-resources' }}
   note="No credit card required"
-  tags={[
-    { label: 'You', initial: 'Y', tint: 'var(--syntax-str)' },
-    { label: 'Lab partner', initial: 'L', tint: 'var(--syntax-num)' },
-    { label: 'AI Co-Pilot', bot: true, tint: 'var(--syntax-bool)' },
-  ]}
   clientsLabel="Works with whatever your course uses"
   clients={['React', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Flutter', 'React Native', 'Android', 'SwiftUI', 'Python', 'Postman', 'curl']}
   challengesTitle="What gets in the way of a student project?"
@@ -126,58 +142,150 @@ const publicResources = [
     note: 'No credit card required',
   }}
 >
-  {/* A student, mid-thought, with the pieces of a project around them. */}
-  <svg
-    slot="art"
-    viewBox="0 0 420 340"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="3"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"
-  >
-    {/* Ground. */}
-    <ellipse cx="196" cy="304" rx="78" ry="9" fill="currentColor" stroke="none" />
-    {/* Body, with braces on the shirt. */}
-    <path d="M156 170 Q190 162 228 168 L234 298 Q194 304 152 299 Z" class="fill-primary" />
-    <text x="193" y="248" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="34">{'{ }'}</text>
-    {/* Arm up, scratching the head. */}
-    <path d="M160 190 C130 182 122 152 138 134" />
-    <circle cx="142" cy="128" r="8" class="fill-background" />
-    {/* Head. */}
-    <path d="M190 82 C216 81 234 100 233 124 C232 150 214 168 190 167 C164 166 147 148 148 123 C149 98 166 83 190 82 Z" class="fill-background" />
-    <circle cx="177" cy="124" r="3.5" fill="currentColor" stroke="none" />
-    <circle cx="204" cy="124" r="3.5" fill="currentColor" stroke="none" />
-    <path d="M182 142 Q192 149 202 141" />
-    {/* Mortarboard and tassel. */}
-    <path d="M162 92 L162 104 Q192 116 222 104 L222 92" fill="currentColor" />
-    <path d="M138 84 L192 62 L246 84 L192 104 Z" fill="currentColor" />
-    <path d="M192 83 L238 90 L240 116" stroke-width="2.5" />
-    <rect x="235" y="114" width="10" height="14" rx="2" class="fill-primary" stroke-width="2" />
-    {/* Other arm, holding a laptop that shows a request. */}
-    <path d="M226 192 Q252 206 258 228" />
-    <path d="M250 194 L332 188 L336 246 L254 252 Z" class="fill-background" />
-    <text x="292" y="218" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="13">GET</text>
-    <text x="294" y="236" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">200 OK</text>
-    <path d="M242 254 L346 247 L340 258 L246 264 Z" fill="currentColor" />
-    {/* A paper plane, and the line it flew in on. */}
-    <path d="M30 196 L104 166 L80 222 L70 202 Z" class="fill-background" />
-    <path d="M70 202 L104 166" />
-    <path d="M22 156 Q40 126 78 134" class="stroke-primary" />
-    <path d="M68 126 L80 134 L70 145" class="stroke-primary" />
-    {/* A database, which is the thing nobody has to install. */}
-    <ellipse cx="364" cy="128" rx="28" ry="9" class="fill-primary" />
-    <path d="M336 128 L336 168 Q364 182 392 168 L392 128" class="fill-background" />
-    <path d="M336 148 Q364 160 392 148" stroke-width="2.5" />
-    <path d="M346 98 L382 194" class="stroke-primary" stroke-width="3.5" />
-    {/* Sparkles and an arrow up and away. */}
-    <path d="M96 52 L100 66 L114 70 L100 74 L96 88 L92 74 L78 70 L92 66 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
-    <path d="M374 262 L377 272 L387 275 L377 278 L374 288 L371 278 L361 275 L371 272 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
-    <path d="M282 64 Q300 40 318 30" class="stroke-primary" />
-    <path d="M304 28 L320 28 L318 44" class="stroke-primary" />
-    <text x="44" y="276" class="doodle-note" fill="currentColor" stroke="none" font-size="22" transform="rotate(-6 44 276)">due friday!</text>
-  </svg>
+  {/*
+    Hero, after Home's: a centred two-line headline with one handwritten
+    accent word, on a dot grid with pieces of a student project pinned around
+    it and the team's cursors pointing at them. The pieces are decoration
+    (aria-hidden, xl only); everything they say is also in the page's text.
+    The H1 wording is the `h1` prop's — an SEO target. No script: the entrance
+    and the cursors' drift are showcase.css's hero-rise and hero-tag, and both
+    stop under prefers-reduced-motion.
+  */}
+  <section slot="hero" class="relative overflow-hidden">
+    <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
+
+    <div class="relative mx-auto max-w-7xl px-6 pt-16 pb-16 lg:pt-24 xl:pt-28 xl:pb-36">
+      {/* Only from xl: below that the headline needs the width the pieces sit in. */}
+      <div aria-hidden="true" class="pointer-events-none absolute inset-0 mx-6 hidden xl:block">
+        {/* Top left: a resource file, wired to what it becomes. */}
+        <div class="hero-rise absolute top-10 left-0 w-56 [--d:0.35s]">
+          <div class="rounded-xl border border-border-c bg-card">
+            <div class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
+              <FileJson class="h-3.5 w-3.5 text-primary-accent" />
+              assignments.json
+            </div>
+            <pre class="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
+<span class="text-syntax-punct">{'}'}]</span></pre>
+          </div>
+          <div class="ml-6 h-6 w-px border-l border-dashed border-border-strong"></div>
+          <div class="ml-6 flex items-center">
+            <div class="w-5 border-t border-dashed border-border-strong"></div>
+            <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+              A REST API, with<br />the course linked in
+            </div>
+          </div>
+          <div class="hero-tag absolute top-3 -right-6 [--c:var(--syntax-str)] [--drift:6px]">
+            <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
+            <span class="absolute top-4 left-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Y</span>You</span>
+          </div>
+        </div>
+
+        {/* Top right: a write, and where it went. */}
+        <div class="hero-rise absolute top-16 right-4 w-36 [--d:0.5s]">
+          <div class="rounded-lg border border-primary-soft-border bg-primary-soft p-3">
+            <p class="font-mono text-xs text-subtle">201</p>
+            <p class="text-3xl font-extrabold text-foreground">POST</p>
+            <p class="font-mono text-xs text-muted-foreground">/grades</p>
+            <p class="font-mono text-[11px] text-subtle">[saved for good]</p>
+          </div>
+          <div class="ml-10 h-6 w-px bg-border-strong"></div>
+          <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+            Still there<br />after a refresh
+          </div>
+          <div class="hero-tag absolute top-6 -left-6 [--c:var(--syntax-num)] [--drift:-5px]">
+            <MousePointer2 class="h-5 w-5 -scale-x-100 fill-current text-(--c)" />
+            <span class="absolute top-4 right-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">L</span>Lab partner</span>
+          </div>
+        </div>
+
+        {/* Bottom left: the student, with Friday's deadline. */}
+        <div class="hero-rise absolute bottom-0 left-0 w-60 text-foreground [--d:0.65s]">
+          <svg
+            viewBox="0 0 420 340"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-auto w-full"
+          >
+            <ellipse cx="196" cy="304" rx="78" ry="9" fill="currentColor" stroke="none" />
+            <path d="M156 170 Q190 162 228 168 L234 298 Q194 304 152 299 Z" class="fill-primary" />
+            <text x="193" y="248" text-anchor="middle" class="doodle-note" fill="currentColor" stroke="none" font-size="34">{'{ }'}</text>
+            <path d="M160 190 C130 182 122 152 138 134" />
+            <circle cx="142" cy="128" r="8" class="fill-background" />
+            <path d="M190 82 C216 81 234 100 233 124 C232 150 214 168 190 167 C164 166 147 148 148 123 C149 98 166 83 190 82 Z" class="fill-background" />
+            <circle cx="177" cy="124" r="3.5" fill="currentColor" stroke="none" />
+            <circle cx="204" cy="124" r="3.5" fill="currentColor" stroke="none" />
+            <path d="M182 142 Q192 149 202 141" />
+            <path d="M162 92 L162 104 Q192 116 222 104 L222 92" fill="currentColor" />
+            <path d="M138 84 L192 62 L246 84 L192 104 Z" fill="currentColor" />
+            <path d="M192 83 L238 90 L240 116" stroke-width="2.5" />
+            <rect x="235" y="114" width="10" height="14" rx="2" class="fill-primary" stroke-width="2" />
+            <path d="M226 192 Q252 206 258 228" />
+            <path d="M250 194 L332 188 L336 246 L254 252 Z" class="fill-background" />
+            <text x="292" y="218" text-anchor="middle" class="doodle-mono" fill="currentColor" stroke="none" font-size="13">GET</text>
+            <text x="294" y="236" text-anchor="middle" class="doodle-mono fill-primary" stroke="none" font-size="12">200 OK</text>
+            <path d="M242 254 L346 247 L340 258 L246 264 Z" fill="currentColor" />
+            <path d="M96 52 L100 66 L114 70 L100 74 L96 88 L92 74 L78 70 L92 66 Z" class="fill-primary stroke-primary" stroke-width="1.5" />
+            <text x="40" y="250" class="doodle-note" fill="currentColor" stroke="none" font-size="26" transform="rotate(-6 40 250)">due friday!</text>
+          </svg>
+        </div>
+
+        {/* Bottom right: one sentence to the Co-Pilot, and what it staged. */}
+        <div class="hero-rise absolute right-0 bottom-6 w-64 [--d:0.8s]">
+          <div class="rounded-xl border border-border-c bg-card p-3">
+            <p class="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-subtle">
+              <Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot
+            </p>
+            <p class="text-xs leading-relaxed text-foreground">A study planner with courses, assignments and grades.</p>
+          </div>
+          <div class="mr-12 ml-auto h-5 w-px bg-border-strong"></div>
+          <div class="flex justify-end gap-1.5">
+            {['courses', 'assignments', 'grades'].map((table) => (
+              <span class="rounded-md border border-border-c bg-card px-2 py-1 font-mono text-[10px] text-muted-foreground">{table}</span>
+            ))}
+          </div>
+          <p class="mt-1.5 text-right font-mono text-[10px] text-subtle">3 tables · staged until Deploy</p>
+          <div class="hero-tag absolute top-3 -left-6 [--c:var(--syntax-bool)] [--drift:4px]">
+            <MousePointer2 class="h-5 w-5 -scale-x-100 fill-current text-(--c)" />
+            <span class="absolute top-4 right-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background"><Bot class="h-3 w-3" /></span>AI Co-Pilot</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative mx-auto max-w-4xl text-center">
+        <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl lg:text-6xl 2xl:text-7xl [--d:0.05s]">
+          AI Backend{' '}<br class="hidden sm:inline" />
+          Generator for <span class="hero-accent">Students</span>
+        </h1>
+        <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">{subhead}</p>
+
+        <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
+          <a href={APP_URL} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
+            <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
+            Generate API (Free)
+          </a>
+          <a href="#free-resources" class="flex items-center rounded-xl bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+            Use Public APIs
+          </a>
+        </div>
+        <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">No credit card required · Every feature on the Free plan</p>
+      </div>
+    </div>
+
+    <div class="hero-rise relative mx-auto max-w-5xl px-6 pb-20 [--d:0.4s]">
+      <div class="rounded-2xl bg-muted-hover p-1.5">
+        <div class="overflow-hidden rounded-xl border border-border-c bg-background p-2">
+          <img src="/dashboard-ui.png" alt="Stubbase Dashboard UI" class="w-full rounded-lg border border-border-faint" />
+        </div>
+      </div>
+    </div>
+  </section>
+
 
   {/* Four reasons, in xmind's three shapes: one wide block with its words split
       under the picture, two cards side by side, one with the picture on its
@@ -334,11 +442,13 @@ const publicResources = [
   </article>
 
   {/*
-    The public demo project's six resources, each opening its live endpoint.
+    The public demo project's six resources, in Home's Free Resources shape: a
+    row of big numbers, each opening its live endpoint, then a wall of real
+    records drifting past, labelled with the request that returns them.
     The hero's and the footer's "Use Public APIs" land here — keep the id.
   */}
   <section slot="extra" id="free-resources" class="scroll-mt-24">
-    <div class="mx-auto max-w-5xl px-6 py-24">
+    <div class="mx-auto max-w-6xl px-6 pt-24 pb-12">
       <div class="reveal mx-auto mb-10 max-w-2xl text-center">
         <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free APIs to practise with</h2>
         <p class="font-medium text-muted-foreground">
@@ -352,36 +462,57 @@ const publicResources = [
         </p>
       </div>
 
-      <ul class="reveal grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul class="free-stats reveal grid grid-cols-2 gap-y-10 lg:grid-cols-3 lg:gap-y-14">
         {
-          publicResources.map(({ path, count, noun, Icon }) => (
-            <li>
-              <a
-                href={`${CORE_URL}/public${path}`}
-                class="group flex items-center gap-4 rounded-2xl border border-border-c bg-card p-4 transition-colors hover:bg-muted"
-              >
-                <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-accent">
-                  <Icon class="h-5 w-5" />
+          publicResources.map(({ path, count, noun, Icon, tint }) => (
+            <li class="free-stat relative flex justify-center">
+              <a href={`${CORE_URL}/public${path}`} class="group flex flex-col items-center text-center" style={`--tint: ${tint}`}>
+                <span class="flex items-center gap-3">
+                  <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint) sm:h-12 sm:w-12">
+                    <Icon class="h-5 w-5 sm:h-6 sm:w-6" />
+                  </span>
+                  <span class="text-4xl font-bold tracking-tight text-foreground tabular-nums sm:text-5xl">
+                    {count.toLocaleString('en-US')}
+                  </span>
                 </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block font-mono text-sm font-semibold text-foreground">{path}</span>
-                  <span class="block text-sm text-subtle">{count.toLocaleString('en-US')} {noun}</span>
+                <span class="mt-2 font-mono text-sm text-primary-ink underline-offset-4 group-hover:text-primary-ink-hover group-hover:underline">
+                  {path}
                 </span>
-                <ArrowUpRight class="h-4 w-4 shrink-0 text-subtle transition-colors group-hover:text-foreground" />
+                <span class="sr-only">{count} {noun}</span>
               </a>
             </li>
           ))
         }
       </ul>
-
-      <p class="reveal mt-10 text-center text-sm text-muted-foreground">
-        These are read-only, so everyone sees the same data.{' '}
-        <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
-          Create a free project
-        </a>{' '}
-        for your own full CRUD API: GET, POST, PUT and DELETE on every resource.
-      </p>
     </div>
+
+    <div role="group" aria-label="Sample records from the practice APIs" class="free-marquee reveal space-y-4 pb-10">
+      {
+        recordRows.map((row, r) => (
+          <div class="free-track flex w-max gap-4" data-direction={r === 0 ? 'left' : 'right'}>
+            {[...row, ...row, ...row, ...row].map(({ path, record }, i) => (
+              <article aria-hidden={i >= row.length ? 'true' : undefined} class="w-72 shrink-0 rounded-2xl border border-border-c bg-card p-4 sm:w-80">
+                <p class="mb-3 flex items-center justify-between border-b border-border-c pb-3 font-mono text-xs">
+                  <span><span class="text-subtle">GET</span> <span class="text-foreground">/public{path}</span></span>
+                  <span class="font-semibold text-primary-ink">200</span>
+                </p>
+                <pre class="font-mono text-[11px] leading-5 text-code-fg"><span class="text-syntax-punct">{'{'}</span>{Object.entries(record).map(([key, value]) => (
+  <span class="block truncate pl-3"><span class="text-syntax-str">"{key}"</span><span class="text-syntax-punct">: </span>{typeof value === 'string' ? <span class="text-syntax-fn">"{value}"</span> : typeof value === 'boolean' ? <span class="text-syntax-bool">{String(value)}</span> : <span class="text-syntax-num">{value}</span>}</span>
+))}<span class="text-syntax-punct">{'}'}</span></pre>
+              </article>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+
+    <p class="reveal mx-auto max-w-2xl px-6 pb-24 text-center text-sm text-muted-foreground">
+      These are read-only, so everyone sees the same data.{' '}
+      <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
+        Create a free project
+      </a>{' '}
+      for your own full CRUD API: GET, POST, PUT and DELETE on every resource.
+    </p>
   </section>
 </RoleLayout>
 
@@ -496,3 +627,80 @@ const publicResources = [
 
   void startOneTap();
 </script>
+
+{/*
+  Home's hero canvas and Free Resources, copied from index.astro's global block
+  (as 404.astro copies the canvas): the rest — entrance, drift, reveal — is
+  showcase.css's. Scoped, since every element they style is this page's own.
+*/}
+<style>
+  /* The canvas: a dot grid that fades out towards the edges. */
+  .hero-dots {
+    background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+    background-size: 20px 20px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 75%);
+    opacity: 0.6;
+  }
+
+  /* The one handwritten word, on a tinted card like a sticky note. */
+  .hero-accent {
+    display: inline-block;
+    padding: 0 0.12em;
+    font-family: 'Sedgwick Ave', cursive;
+    font-weight: 400;
+    color: var(--primary-ink);
+    background: var(--primary-soft);
+    rotate: -2deg;
+  }
+
+  /* Soft vertical rules between the numbers, drawn only where a column has a neighbour. */
+  .free-stat + .free-stat::before {
+    content: '';
+    position: absolute;
+    top: 10%;
+    bottom: 10%;
+    left: 0;
+    width: 1px;
+    background: linear-gradient(transparent, var(--border-strong), transparent);
+  }
+  .free-stats .free-stat:nth-child(2n + 1)::before {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .free-stats .free-stat:nth-child(2n + 1)::before {
+      display: block;
+    }
+    .free-stats .free-stat:nth-child(3n + 1)::before {
+      display: none;
+    }
+  }
+
+  /* The record wall drifts, row against row, fading out at the edges. */
+  .free-marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+  .free-track {
+    animation: free-drift 60s linear infinite;
+  }
+  .free-track[data-direction='right'] {
+    animation-direction: reverse;
+  }
+  .free-marquee:hover .free-track {
+    animation-play-state: paused;
+  }
+  @keyframes free-drift {
+    to {
+      transform: translateX(calc(-50% - 0.5rem));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .free-track {
+      animation: none;
+    }
+    .free-marquee {
+      overflow-x: auto;
+    }
+  }
+</style>
