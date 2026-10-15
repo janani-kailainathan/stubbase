@@ -2,7 +2,7 @@
 /*
   The students page, on RoleLayout (after xmind.com/roles/student) with Home's
   hero in place of the layout's: a centred headline with one handwritten word,
-  on a dot grid with pieces of a student project pinned around it. This file
+  on a dot grid. This file
   holds the words, that hero, the four reasons and the free practice APIs (in
   Home's Free Resources shape); the layout holds the rest. Plan figures in the FAQ are PLANS and
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
@@ -38,7 +38,7 @@ const sampleRecords: { path: string; record: Record<string, string | number | bo
 const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
 
 const subhead =
-  'Describe your app to the AI Co-Pilot or write one JSON file, and get a REST API with the relations linked for you. No database to install, no server to deploy. Built for class projects, hackathons and portfolio apps.';
+  'Use AI Co-Pilot to generate your backend for your class projects, hackathons and portfolio apps. No database to install, no server to deploy.';
 ---
 
 <RoleLayout
@@ -143,97 +143,16 @@ const subhead =
   }}
 >
   {/*
-    Hero, after Home's: a centred two-line headline with one handwritten
-    accent word, on a dot grid with pieces of a student project pinned around
-    it and the team's cursors pointing at them. The pieces are decoration
-    (aria-hidden, xl only); everything they say is also in the page's text.
-    The H1 wording is the `h1` prop's — an SEO target. Each cursor is one image
-    per theme, pointer and name chip together, drawn in VectorCraft (sources in
-    design/): its box is the pointer's 20px, which the offsets place, and the
-    image overhangs it towards the chip. No script: the entrance and the
-    cursors' drift are showcase.css's hero-rise and hero-tag, and both stop
-    under prefers-reduced-motion.
+    Hero, after Home's, kept bare: a centred two-line headline with one
+    handwritten accent word on a fading dot grid, the buttons, and the
+    dashboard below — no pieces pinned around it. The H1 wording is the `h1`
+    prop's — an SEO target. No script: the entrance is showcase.css's
+    hero-rise, which stops under prefers-reduced-motion.
   */}
   <section slot="hero" class="relative overflow-hidden">
     <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
-    <div class="relative mx-auto max-w-7xl px-6 pt-16 pb-16 lg:pt-24 xl:pt-28 xl:pb-36">
-      {/* Only from xl: below that the headline needs the width the pieces sit in. */}
-      <div aria-hidden="true" class="pointer-events-none absolute inset-0 mx-6 hidden xl:block">
-        {/* Top left: a resource file, wired to what it becomes. */}
-        <div class="hero-rise absolute top-10 left-0 w-56 [--d:0.35s]">
-          <div class="rounded-xl border border-border-c bg-card">
-            <div class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
-              <FileJson class="h-3.5 w-3.5 text-primary-accent" />
-              assignments.json
-            </div>
-            <pre class="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
-  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
-<span class="text-syntax-punct">{'}'}]</span></pre>
-          </div>
-          <div class="ml-6 h-6 w-px border-l border-dashed border-border-strong"></div>
-          <div class="ml-6 flex items-center">
-            <div class="w-5 border-t border-dashed border-border-strong"></div>
-            <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-              A REST API, with<br />the course linked in
-            </div>
-          </div>
-          <div class="hero-tag absolute h-5 w-5 top-3 -right-6 [--drift:6px]">
-            <img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" />
-            <img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" />
-          </div>
-        </div>
-
-        {/* Top right: a write, and where it went. */}
-        <div class="hero-rise absolute top-16 right-4 w-36 [--d:0.5s]">
-          <div class="rounded-lg border border-primary-soft-border bg-primary-soft p-3">
-            <p class="font-mono text-xs text-subtle">201</p>
-            <p class="text-3xl font-extrabold text-foreground">POST</p>
-            <p class="font-mono text-xs text-muted-foreground">/grades</p>
-            <p class="font-mono text-[11px] text-subtle">[saved for good]</p>
-          </div>
-          <div class="ml-10 h-6 w-px bg-border-strong"></div>
-          <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-            Still there<br />after a refresh
-          </div>
-          <div class="hero-tag absolute h-5 w-5 top-6 -left-6 [--drift:-5px]">
-            <img src="/student-cursor-lab-partner-dark.webp" alt="" width="124" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" />
-            <img src="/student-cursor-lab-partner-light.webp" alt="" width="124" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" />
-          </div>
-        </div>
-
-        {/* Bottom left: the student, with Friday's deadline. Drawn in VectorCraft and
-            exported once per theme (2x, transparent WebP); global.css's
-            data-theme-image rules show the one matching the surface. */}
-        <div class="hero-rise absolute bottom-0 left-0 w-60 [--d:0.65s]">
-          <img src="/student-doodle-dark.webp" alt="" width="420" height="340" class="h-auto w-full" data-theme-image="dark" />
-          <img src="/student-doodle-light.webp" alt="" width="420" height="340" class="h-auto w-full" data-theme-image="light" />
-        </div>
-
-        {/* Bottom right: one sentence to the Co-Pilot, and what it staged. */}
-        <div class="hero-rise absolute right-0 bottom-6 w-64 [--d:0.8s]">
-          <div class="rounded-xl border border-border-c bg-card p-3">
-            <p class="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-subtle">
-              <Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot
-            </p>
-            <p class="text-xs leading-relaxed text-foreground">A study planner with courses, assignments and grades.</p>
-          </div>
-          <div class="mr-12 ml-auto h-5 w-px bg-border-strong"></div>
-          <div class="flex justify-end gap-1.5">
-            {['courses', 'assignments', 'grades'].map((table) => (
-              <span class="rounded-md border border-border-c bg-card px-2 py-1 font-mono text-[10px] text-muted-foreground">{table}</span>
-            ))}
-          </div>
-          <p class="mt-1.5 text-right font-mono text-[10px] text-subtle">3 tables · staged until Deploy</p>
-          <div class="hero-tag absolute h-5 w-5 top-3 -left-6 [--drift:4px]">
-            <img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" />
-            <img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" />
-          </div>
-        </div>
-      </div>
-
+    <div class="relative mx-auto max-w-7xl px-6 pt-24 pb-20 lg:pt-36 lg:pb-28 xl:pt-44 xl:pb-32">
       <div class="relative mx-auto max-w-4xl text-center">
         <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl lg:text-6xl 2xl:text-7xl [--d:0.05s]">
           AI Backend{' '}<br class="hidden sm:inline" />
@@ -250,7 +169,7 @@ const subhead =
             Use Public APIs
           </a>
         </div>
-        <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">No credit card required · Every feature on the Free plan</p>
+        <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">No credit card required</p>
       </div>
     </div>
 
