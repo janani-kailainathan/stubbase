@@ -8,7 +8,7 @@
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
   differ by request limits alone, so never describe a feature here as paid.
 */
-import { FileJson, Sparkles, ArrowRight, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
+import { FileJson, Sparkles, ArrowRight, ArrowUpRight, KeyRound, Play, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
 import RoleLayout from '../../layouts/RoleLayout.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
 
@@ -71,6 +71,7 @@ const subhead =
     },
   ]}
   whyTitle="Why students build on Stubbase"
+  whyFirst
   starters={{
     title: 'Starter projects to learn from',
     intro: 'Every new project offers these on its first screen, with real sample data and a query that shows what each one is for.',
@@ -183,65 +184,25 @@ const subhead =
   </section>
 
 
-  {/* Four reasons, in xmind's three shapes: one wide block with its words split
-      under the picture, two cards side by side, one with the picture on its
-      left. Each picture is a drawn piece of the dashboard, not a screenshot. */}
-  {/* 1. JSON to REST — the wide block. */}
-  <article class="reveal">
-    <div aria-hidden="true" class="feature-canvas relative flex min-h-80 items-center justify-center gap-6 overflow-hidden rounded-3xl border border-border-c p-8 sm:gap-10 sm:p-12">
-      <div class="w-56 shrink-0 -rotate-2 rounded-xl border border-border-c bg-background">
-        <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-xs text-subtle">
-          <FileJson class="h-3.5 w-3.5 text-primary-accent" /> assignments.json
-        </p>
-        <pre class="px-3 py-2.5 font-mono text-xs leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
-  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span><span class="text-syntax-punct">,</span>
-  <span class="text-syntax-str">"due"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"2026-12-04"</span>
-<span class="text-syntax-punct">{'}'}]</span></pre>
-      </div>
-      <ArrowRight class="hidden h-8 w-8 shrink-0 text-primary-accent sm:block" />
-      <div class="hidden w-80 shrink-0 rounded-xl border border-border-c bg-background p-2 sm:block">
-        {
-          [
-            ['GET', '/assignments'],
-            ['GET', '/assignments/1'],
-            ['POST', '/assignments'],
-            ['PUT', '/assignments/1'],
-            ['DELETE', '/assignments/1'],
-            ['GET', '/assignments?_expand=course'],
-          ].map(([method, path]) => (
-            <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-xs text-muted-foreground">
-              <span class="w-14 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
-              <span class={path.includes('_expand') ? 'text-primary-ink' : ''}>{path}</span>
-            </p>
-          ))
-        }
-      </div>
-      <span class="doodle-note absolute right-8 bottom-6 hidden -rotate-3 text-xl text-primary-ink lg:block">relations, linked for you</span>
-    </div>
-    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-12">
-      <div>
-        <p class="feature-label">JSON to REST</p>
-        <h3 class="text-2xl font-semibold text-foreground">One JSON file becomes a REST API</h3>
-      </div>
-      <div>
-        <p class="mb-6 leading-relaxed text-muted-foreground">
-          Write your data as a list of objects and every resource gets GET, POST, PUT and DELETE at
-          a public URL. Name a field <code class="font-mono text-sm whitespace-nowrap text-emphasis">courseId</code> and
-          {" "}<code class="font-mono text-sm whitespace-nowrap text-emphasis">?_expand=course</code> nests the course inside
-          — the relation is the data model, with no schema to write first.
-        </p>
-        <a href="/use-cases/mock-apis" class="explore-btn">Explore now</a>
-      </div>
-    </div>
-  </article>
-
-  <div class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-8 [&>*]:min-w-0">
-    {/* 2. AI Co-Pilot. */}
-    <article class="reveal flex flex-col">
-      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
-        <div class="absolute top-8 left-6 w-64 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
+  {/*
+    The reasons, in Home's "Stop Writing Boilerplate APIs" shape: two large
+    cards for the two ways a project's tables are born, then three small ones
+    for what a student does with them. Drawings are aria-hidden; each card's
+    text carries its claim.
+  */}
+  <div class="grid grid-cols-1 gap-5 md:grid-cols-2 [&>*]:min-w-0">
+    {/* AI Co-Pilot */}
+    <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-7 sm:p-9 [--tint:var(--primary)]">
+      <h3 class="mb-2 flex items-center gap-3 text-xl font-semibold text-foreground">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent"><Sparkles class="h-4.5 w-4.5" /></span>
+        AI Co-Pilot guides you along the way
+      </h3>
+      <p class="leading-relaxed text-muted-foreground">
+        Ask your AI Co-Pilot friend about what you are building, and it designs the tables and links
+        them. Ask it to fill them with sample records. Ask it to start or stop the server.
+      </p>
+      <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+        <div class="absolute top-0 left-0 w-60 -rotate-2 rounded-2xl border border-border-c bg-background p-4">
           <p class="mb-2 flex items-center gap-2 text-xs font-medium text-subtle"><Sparkles class="h-3.5 w-3.5 text-primary-accent" /> AI Co-Pilot</p>
           <p class="text-sm leading-relaxed text-foreground">A study planner with courses, assignments and grades.</p>
           <div class="mt-3 flex items-center justify-between">
@@ -249,18 +210,18 @@ const subhead =
             <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><ArrowRight class="h-4 w-4" /></span>
           </div>
         </div>
-        <div class="absolute right-6 bottom-6 flex gap-2">
+        <div class="absolute right-0 bottom-0 hidden gap-2 sm:flex">
           {
             [
-              { name: 'courses', fields: ['id', 'name', 'term'] },
-              { name: 'assignments', fields: ['id', 'title', 'courseId'] },
-              { name: 'grades', fields: ['id', 'score', 'assignmentId'] },
+              { name: 'courses', fields: ['id', 'name'] },
+              { name: 'assignments', fields: ['id', 'courseId'] },
+              { name: 'grades', fields: ['id', 'assignmentId'] },
             ].map((table, i) => (
-              <div class={`w-28 rounded-xl border border-border-c bg-background ${i === 1 ? '-translate-y-5' : ''} ${i === 0 ? 'hidden sm:block' : ''}`}>
+              <div class={`w-28 rounded-xl border border-border-c bg-background ${i === 1 ? '-translate-y-5' : ''}`}>
                 <p class="border-b border-border-c px-3 py-1.5 font-mono text-[11px] font-semibold text-foreground">{table.name}</p>
                 <ul class="px-3 py-1.5 font-mono text-[11px] leading-5">
                   {table.fields.map((field) => (
-                    <li class={field.endsWith('Id') ? 'text-primary-ink' : 'text-muted-foreground'}>{field}</li>
+                    <li class={field.endsWith('Id') ? 'text-syntax-fn' : 'text-muted-foreground'}>{field}</li>
                   ))}
                 </ul>
               </div>
@@ -268,74 +229,113 @@ const subhead =
           }
         </div>
       </div>
-      <p class="feature-label mt-8">AI Co-Pilot</p>
-      <h3 class="mb-3 text-2xl font-semibold text-foreground">Describe your app, get the backend</h3>
-      <p class="mb-6 leading-relaxed text-muted-foreground">
-        Tell the Co-Pilot what you are building in one sentence. It designs the tables, links
-        them and fills them with sample records, staged as drafts until you press Deploy — so
-        you stay in charge of what goes live.
-      </p>
-      <a href="/features/ai-rest-api-generation" class="explore-btn mt-auto self-start">Explore now</a>
+      <a href="/features/ai-rest-api-generation" class="bento-link" aria-label="AI Co-Pilot: read more"><ArrowUpRight class="h-4 w-4" /></a>
     </article>
 
-    {/* 3. Sign-in. */}
-    <article class="reveal flex flex-col">
-      <div aria-hidden="true" class="feature-canvas relative h-72 overflow-hidden rounded-3xl border border-border-c">
-        <div class="absolute top-8 left-6 w-56 rounded-2xl border border-border-c bg-background p-4">
-          <p class="mb-3 text-sm font-semibold text-foreground">Sign in to Study Planner</p>
-          <p class="mb-2 rounded-lg border border-border-c px-3 py-1.5 text-xs text-subtle">ana@uni.edu</p>
-          <p class="mb-3 rounded-lg border border-border-c px-3 py-1.5 text-xs text-subtle">••••••••••</p>
-          <p class="mb-2 rounded-lg bg-primary py-1.5 text-center text-xs font-semibold text-primary-foreground">Log in</p>
-          <div class="grid grid-cols-2 gap-2 text-center text-[11px] font-medium text-muted-foreground">
-            <span class="rounded-lg border border-border-c py-1">Google</span>
-            <span class="rounded-lg border border-border-c py-1">GitHub</span>
-          </div>
+    {/* JSON to REST */}
+    <article class="bento reveal relative overflow-hidden rounded-3xl border border-border-c p-7 sm:p-9 [--tint:var(--syntax-fn)]">
+      <h3 class="mb-2 flex items-center gap-3 text-xl font-semibold text-foreground">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--tint)/15 text-(--tint)"><FileJson class="h-4.5 w-4.5" /></span>
+        JSON to REST API
+      </h3>
+      <p class="leading-relaxed text-muted-foreground">
+        Every JSON file you add gets its own REST API, with CRUD endpoints for its records.
+      </p>
+      <div aria-hidden="true" class="pointer-events-none relative mt-8 h-56">
+        <div class="absolute top-3 left-0 hidden w-44 -rotate-3 rounded-xl border border-border-c bg-background sm:block">
+          <p class="flex items-center gap-2 border-b border-border-c px-3 py-2 font-mono text-[11px] text-subtle">
+            <FileJson class="h-3.5 w-3.5 text-(--tint)" /> assignments.json
+          </p>
+          <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed text-code-fg"><span class="text-syntax-punct">[{'{'}</span>
+  <span class="text-syntax-str">"id"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">1</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"title"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-fn">"Essay"</span><span class="text-syntax-punct">,</span>
+  <span class="text-syntax-str">"courseId"</span><span class="text-syntax-punct">:</span> <span class="text-syntax-num">2</span>
+<span class="text-syntax-punct">{'}'}]</span></pre>
         </div>
-        <div class="absolute right-6 bottom-8 w-48 rotate-2 rounded-xl border border-border-c bg-background px-3 py-2.5 font-mono text-[11px] leading-relaxed">
-          <span class="text-syntax-punct">POST</span> <span class="text-syntax-str">/auth/login</span><br />
-          <span class="text-subtle">200 ·</span> <span class="text-syntax-fn">token</span><span class="text-syntax-punct">,</span> <span class="text-syntax-fn">refreshToken</span>
+        <div class="absolute top-0 right-0 w-72 rounded-xl border border-border-c bg-background p-2">
+          {
+            [
+              ['GET', '/assignments'],
+              ['GET', '/assignments/1'],
+              ['POST', '/assignments'],
+              ['PUT', '/assignments/1'],
+              ['DELETE', '/assignments/1'],
+              ['GET', '/assignments?_expand=course'],
+            ].map(([method, path]) => (
+              <p class="flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                <span class="w-12 shrink-0 rounded border border-border-c px-1 text-center text-[10px] text-subtle">{method}</span>
+                <span class={`whitespace-nowrap ${path.includes('_expand') ? 'text-(--tint)' : ''}`}>{path}</span>
+              </p>
+            ))
+          }
         </div>
       </div>
-      <p class="feature-label mt-8">Authentication</p>
-      <h3 class="mb-3 text-2xl font-semibold text-foreground">Sign-up and login, already built</h3>
-      <p class="mb-6 leading-relaxed text-muted-foreground">
-        Switch on auth with one setting and your API gets sign-up with email verification, login,
-        password reset and Google or GitHub sign-in. Each user's records are their own, with no
-        password hashing for you to get wrong.
-      </p>
-      <a href="/features/google-github-social-login" class="explore-btn mt-auto self-start">Explore now</a>
+      <a href="/use-cases/mock-apis" class="bento-link" aria-label="JSON to REST API: read more"><ArrowUpRight class="h-4 w-4" /></a>
     </article>
   </div>
 
-  {/* 4. Deploy — picture on the left, words on the right. */}
-  <article class="reveal mt-16 grid grid-cols-1 overflow-hidden rounded-3xl border border-border-c bg-card md:grid-cols-2">
-    <div aria-hidden="true" class="feature-canvas relative flex min-h-64 flex-col items-start justify-center gap-4 p-8 sm:p-10">
-      <div class="flex items-center gap-3">
-        <span class="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"><Rocket class="h-4 w-4" /> Deploy</span>
-        <span class="flex items-center gap-1.5 rounded-full border border-primary-soft-border bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary-soft-ink">
-          <span class="h-1.5 w-1.5 rounded-full bg-primary"></span> Live
-        </span>
+  <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3 [&>*]:min-w-0">
+    {/* Sign-in */}
+    <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+      <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-bool)/15 text-syntax-bool"><KeyRound class="h-4.5 w-4.5" /></span>
+        Sign-up and login, built in
+      </h3>
+      <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+        One setting switches on sign-up with email verification, login, password reset and Google
+        or GitHub sign-in, with no password hashing for you to get wrong.
+      </p>
+      <div aria-hidden="true" class="space-y-2 font-mono text-[11px]">
+        <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
+          <span class="text-foreground">POST /auth/signup</span>
+          <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">code sent</span>
+        </p>
+        <p class="flex items-center justify-between rounded-lg border border-border-c bg-background px-3 py-2">
+          <span class="text-foreground">POST /auth/login</span>
+          <span class="rounded bg-(--syntax-bool)/15 px-1.5 py-0.5 text-[10px] font-medium text-syntax-bool">token</span>
+        </p>
       </div>
-      <p class="max-w-full truncate rounded-xl border border-border-c bg-background px-3 py-2 font-mono text-xs text-emphasis">
-        {CORE_URL}/study-planner/assignments
+    </article>
+
+    {/* Deploy */}
+    <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+      <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-(--syntax-num)/15 text-syntax-num"><Rocket class="h-4.5 w-4.5" /></span>
+        One URL for the whole team
+      </h3>
+      <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+        Press Deploy and every endpoint is a public URL, so your web app, your teammate's phone app
+        and whoever grades it all point at the same project.
       </p>
-      <ul class="space-y-1.5 text-xs text-muted-foreground">
-        {['Your React app', 'Your teammate\'s Android build', 'The marker\'s Postman'].map((who) => (
-          <li class="flex items-center gap-2"><Check class="h-3.5 w-3.5 text-primary-accent" /> {who}</li>
-        ))}
-      </ul>
-    </div>
-    <div class="flex flex-col justify-center p-8 sm:p-10">
-      <p class="feature-label">Deploy</p>
-      <h3 class="mb-3 text-2xl font-semibold text-foreground">One URL your whole team can call</h3>
-      <p class="mb-6 leading-relaxed text-muted-foreground">
-        A new table waits as a draft until you press Deploy, then goes live with no downtime.
-        Every endpoint is a public URL, so a web app, a phone app and whoever grades it all point
-        at the same project.
+      <div aria-hidden="true" class="space-y-2 text-xs">
+        <p class="truncate rounded-lg border border-border-c bg-background px-3 py-2 font-mono text-[11px] text-emphasis">{CORE_URL}/study-planner/assignments</p>
+        <ul class="flex flex-wrap gap-1.5">
+          {['React app', 'Android build', 'Postman'].map((who) => (
+            <li class="flex items-center gap-1 rounded-full border border-border-c bg-background px-2.5 py-1 text-muted-foreground"><Check class="h-3 w-3 text-primary-accent" /> {who}</li>
+          ))}
+        </ul>
+      </div>
+    </article>
+
+    {/* Playground */}
+    <article class="reveal relative rounded-3xl border border-border-c bg-card p-7">
+      <h3 class="mb-2 flex items-center gap-3 text-lg font-semibold text-foreground">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-accent"><Play class="h-4.5 w-4.5" /></span>
+        Test it in the browser
+      </h3>
+      <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
+        The dashboard's Live tab sends real requests to your deployed API and shows what comes
+        back, so you can check a route before your frontend calls it.
       </p>
-      <a href="/features/instant-api-deployments" class="explore-btn self-start">Explore now</a>
-    </div>
-  </article>
+      <div aria-hidden="true" class="rounded-lg border border-border-c bg-background font-mono text-[11px]">
+        <p class="flex items-center justify-between border-b border-border-c px-3 py-2">
+          <span class="text-foreground"><span class="text-subtle">GET</span> /assignments?_page=1</span>
+          <span class="rounded bg-primary-soft px-1.5 py-0.5 text-[10px] font-medium text-primary-soft-ink">200</span>
+        </p>
+        <p class="truncate px-3 py-2"><span class="text-syntax-punct">[{'{'} </span><span class="text-syntax-str">"id"</span><span class="text-syntax-punct">: </span><span class="text-syntax-num">1</span><span class="text-syntax-punct">, </span><span class="text-syntax-str">"title"</span><span class="text-syntax-punct">: </span><span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct"> {'}'}, …]</span></p>
+      </div>
+    </article>
+  </div>
 
   {/*
     The public demo project's six resources, in Home's Free Resources shape: a
@@ -525,7 +525,7 @@ const subhead =
 </script>
 
 {/*
-  Home's hero canvas and Free Resources, copied from index.astro's global block
+  Home's hero canvas, capability cards and Free Resources, copied from index.astro's global block
   (as 404.astro copies the canvas): the rest — entrance, drift, reveal — is
   showcase.css's. Scoped, since every element they style is this page's own.
 */}
@@ -547,6 +547,36 @@ const subhead =
     color: var(--primary-ink);
     background: var(--primary-soft);
     rotate: -2deg;
+  }
+
+  /* Capability cards, as Home's: the card surface with a wash of its own colour
+     rising from the bottom right, where the drawing sits. */
+  .bento {
+    background:
+      radial-gradient(90% 80% at 100% 100%, color-mix(in oklab, var(--tint) 16%, transparent), transparent 70%),
+      var(--card);
+  }
+  .bento-link {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 10;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--contrast);
+    color: var(--contrast-foreground);
+    transition: background-color 150ms ease;
+  }
+  .bento-link:hover {
+    background: var(--contrast-hover);
+  }
+  .bento-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 
   /* Soft vertical rules between the numbers, drawn only where a column has a neighbour. */

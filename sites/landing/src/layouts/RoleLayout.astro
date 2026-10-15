@@ -52,6 +52,8 @@ interface Props {
   challengesTitle: string;
   challenges: { art: DoodleName; title: string; body: string }[];
   whyTitle: string;
+  /** Put the reasons straight after the client strip, ahead of the problems. */
+  whyFirst?: boolean;
   starters: {
     title: string;
     intro: string;
@@ -81,6 +83,7 @@ const {
   challengesTitle,
   challenges,
   whyTitle,
+  whyFirst = false,
   starters,
   reading,
   solutions,
@@ -246,6 +249,15 @@ if (crumb) {
     </div>
   </section>
 
+  {whyFirst && (
+    <section>
+      <div class="mx-auto max-w-6xl px-6 py-24">
+        <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{whyTitle}</h2>
+        <slot />
+      </div>
+    </section>
+  )}
+
   <section>
     <div class="mx-auto max-w-6xl px-6 py-24">
       <h2 class="reveal mb-16 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{challengesTitle}</h2>
@@ -263,12 +275,14 @@ if (crumb) {
     </div>
   </section>
 
-  <section>
-    <div class="mx-auto max-w-6xl px-6 py-24">
-      <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{whyTitle}</h2>
-      <slot />
-    </div>
-  </section>
+  {!whyFirst && (
+    <section>
+      <div class="mx-auto max-w-6xl px-6 py-24">
+        <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{whyTitle}</h2>
+        <slot />
+      </div>
+    </section>
+  )}
 
   {/* Starters, in xmind's templates slot. Each is a card on a new project's
       empty state (STARTERS in sites/dashboard/src/lib/starters.ts). */}
