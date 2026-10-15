@@ -24,8 +24,7 @@ const subhead =
   eyebrow="Stubbase for students"
   h1="AI Backend Generator for Students"
   subhead={subhead}
-  primary={{ label: 'Generate API (Free)', href: APP_URL }}
-  secondary={{ label: 'Use Public APIs', href: '/free-api' }}
+  primary={{ label: 'Generate API', href: APP_URL }}
   note="No credit card required"
   clientsLabel="Works with whatever your course uses"
   clients={['React', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Flutter', 'React Native', 'Android', 'SwiftUI', 'Python', 'Postman', 'curl']}
@@ -60,9 +59,10 @@ const subhead =
   cta={{
     title: 'Generate your first API in seconds.',
     body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free practice APIs. No database to run, no server to deploy.',
-    label: 'Generate API (Free)',
+    label: 'Generate API',
     href: APP_URL,
-    secondary: { label: 'Use Public APIs', href: '/free-api' },
+    secondary: { label: 'Login', href: `${APP_URL}/login` },
+    secondaryFirst: true,
     note: 'No credit card required',
   }}
 >
@@ -116,12 +116,12 @@ const subhead =
         <p class="hero-rise mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground [--d:0.1s]">{subhead}</p>
 
         <div class="hero-rise mt-8 flex flex-wrap items-center justify-center gap-3 [--d:0.2s]">
+          <a href={`${APP_URL}/login`} class="flex min-w-32 items-center justify-center rounded-xl bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+            Login
+          </a>
           <a href={APP_URL} class="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary-hover">
             <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
-            Generate API (Free)
-          </a>
-          <a href="/free-api" class="flex items-center rounded-xl bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
-            Use Public APIs
+            Generate API
           </a>
         </div>
         <p class="hero-rise mt-4 text-sm text-subtle [--d:0.3s]">No credit card required</p>
@@ -234,9 +234,33 @@ const subhead =
   </div>
 
   {/* Home's "Query it like a real backend" and "Every feature on every plan",
-      shared as they are. */}
+      shared — the first reworded for students, the second as it is. */}
   <Fragment slot="extra">
-    <HomeQuery />
+    <HomeQuery
+      title="What APIs can do"
+      lead={'Plain APIs are no use, here are filters, sorting, relationships and so on.\nNothing to switch on, and they all combine.'}
+      rewrite={{
+        filter: {
+          body: 'Add a query parameter with a field name and value (`?brand=Samsung`), and you get back only the records that match. You can also use operators such as `?brand[contains]=sam`, which ignores case. The others are `gt`, `gte`, `lt` and `lte`, for comparing numbers and dates.',
+          url: '/acme/products?brand=Samsung',
+        },
+        sort: {
+          body: 'Add `?_sort=` with a field name to put the records in order, such as `?_sort=price`. `?_sort=created` lists the newest first, and `_direction=asc` or `desc` sets the order yourself.',
+        },
+        page: {
+          body: 'Add `?_page=2&_limit=10` to get the second page of 10 records. The `X-Total-Count` header tells you how many records there are in all, so you can show page numbers.',
+        },
+        expand: {
+          body: 'Give a record a `userId` field and add `?_expand=users`, and the matching user comes back inside the record. One request, instead of one per record.',
+        },
+        time: {
+          body: 'Every record you create gets `createdAt` and `updatedAt`, and every update moves `updatedAt` on. The server sets them, so whatever your app sends for them is replaced.',
+        },
+        openapi: {
+          body: 'Open `/<project>/openapi.json` for a description of every live endpoint in your API. Load it into Swagger UI or Postman to try it out, or to generate client code.',
+        },
+      }}
+    />
     <HomePlans />
   </Fragment>
 </RoleLayout>

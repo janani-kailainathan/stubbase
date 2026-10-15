@@ -70,8 +70,8 @@ const columns = [
             </a>
             {
               cta.secondary && (
-                <a href={cta.secondary.href} class="group rounded-2xl bg-muted-hover p-1">
-                  <span class="flex items-center rounded-xl border border-border-c bg-card px-5 py-2.5 font-semibold text-foreground transition-colors group-hover:bg-muted">
+                <a href={cta.secondary.href} class:list={["group rounded-2xl bg-muted-hover p-1", cta.secondaryFirst && "order-first"]}>
+                  <span class="flex min-w-32 items-center justify-center rounded-xl border border-border-c bg-card px-5 py-2.5 font-semibold text-foreground transition-colors group-hover:bg-muted">
                     {cta.secondary.label}
                   </span>
                 </a>

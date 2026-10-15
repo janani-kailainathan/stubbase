@@ -9,5 +9,7 @@ export interface FooterCta {
   label: string;
   href: string;
   secondary?: { label: string; href: string };
+  /** Put the second button before the first, as a Login beside a sign-up does. */
+  secondaryFirst?: boolean;
   note?: string;
 }
