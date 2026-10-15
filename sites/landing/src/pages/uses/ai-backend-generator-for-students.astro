@@ -13,6 +13,7 @@ import RoleLayout from '../../layouts/RoleLayout.astro';
 import HomeQuery from '../../components/home/HomeQuery.astro';
 import HomePlans from '../../components/home/HomePlans.astro';
 import { APP_URL } from '../../lib/urls';
+import { isReleased } from '../../lib/released';
 
 const subhead =
   'Use AI Co-Pilot to generate your backend for your class projects, hackathons and portfolio apps. No database to install, no server to deploy.';
@@ -160,7 +161,8 @@ const subhead =
         <img src="/student-card-copilot-dark.webp" alt="" width="520" height="224" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
         <img src="/student-card-copilot-light.webp" alt="" width="520" height="224" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
-      <a href="/features/ai-rest-api-generation" class="bento-link" aria-label="AI Co-Pilot: read more"><ArrowUpRight class="h-4 w-4" /></a>
+      {/* Each arrow shows once the page it opens is released (src/lib/released.ts). */}
+      {isReleased('/features/ai-rest-api-generation') && <a href="/features/ai-rest-api-generation" class="bento-link" aria-label="AI Co-Pilot: read more"><ArrowUpRight class="h-4 w-4" /></a>}
     </article>
 
     {/* JSON to REST */}
@@ -177,7 +179,7 @@ const subhead =
         <img src="/student-card-json-dark.webp" alt="" width="540" height="236" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
         <img src="/student-card-json-light.webp" alt="" width="540" height="236" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
-      <a href="/use-cases/mock-apis" class="bento-link" aria-label="JSON to REST API: read more"><ArrowUpRight class="h-4 w-4" /></a>
+      {isReleased('/use-cases/mock-apis') && <a href="/use-cases/mock-apis" class="bento-link" aria-label="JSON to REST API: read more"><ArrowUpRight class="h-4 w-4" /></a>}
     </article>
   </div>
 

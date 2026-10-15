@@ -3,9 +3,10 @@ import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
 import sitemap from '@astrojs/sitemap';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { isIndexed } from './src/lib/indexing.ts';
+import { readdirSync, readFileSync, rmSync, rmdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isIndexed, isReleased, normalizePath } from './src/lib/released.ts';
 
 /**
  * A guide is written before its screenshots exist, so every figure ships as
@@ -26,6 +27,61 @@ function pendingShots() {
     }
   }
   return pending;
+}
+
+/**
+ * Ships only the pages src/lib/released.ts lists. Every page is built, so an
+ * unreleased one still compiles; this deletes its HTML from dist/ afterwards,
+ * which is all Caddy serves, so its URL answers with the site's 404. 404.html
+ * and every asset stay.
+ *
+ * Then it fails the build if a released page links to one it just removed —
+ * a link that would quietly become a 404 in production. It deletes first and
+ * checks second on purpose: a failed build leaves dist/ in place, and that
+ * dist/ must never be the unfiltered site. The bare "/" is exempt, because
+ * Caddy redirects it to the students page.
+ */
+function releasePages() {
+  return {
+    name: 'stubbase:release',
+    hooks: {
+      'astro:build:done': ({ dir, pages, logger }) => {
+        const root = fileURLToPath(dir);
+        const paths = pages.map((page) => normalizePath('/' + page.pathname)).filter((path) => path !== '/404');
+        const fileOf = (path) => join(root, path, 'index.html');
+
+        const removed = new Set(paths.filter((path) => !isReleased(path)));
+        for (const path of removed) {
+          rmSync(fileOf(path), { force: true });
+          // Drop directories the page leaves empty; one holding assets stays.
+          for (let folder = dirname(fileOf(path)); folder !== root; folder = dirname(folder)) {
+            try {
+              rmdirSync(folder);
+            } catch {
+              break;
+            }
+          }
+        }
+        logger.info(`shipped ${paths.length - removed.size} of ${paths.length} pages; the rest are unreleased (src/lib/released.ts)`);
+
+        const broken = [];
+        for (const path of paths.filter((path) => !removed.has(path))) {
+          const html = readFileSync(fileOf(path), 'utf8');
+          for (const [, href] of html.matchAll(/href="([^"]*)"/g)) {
+            const url = new URL(href, `https://stubbase.dev${path}/`);
+            if (url.hostname !== 'stubbase.dev') continue;
+            const target = normalizePath(url.pathname);
+            if (target !== '/' && removed.has(target)) broken.push(`${path} → ${target}`);
+          }
+        }
+        if (broken.length > 0) {
+          throw new Error(
+            `released pages link to unreleased ones, which 404 in production — release the target in src/lib/released.ts or drop the link:\n  ${[...new Set(broken)].join('\n  ')}`,
+          );
+        }
+      },
+    },
+  };
 }
 
 // https://astro.build/config
@@ -63,8 +119,9 @@ export default defineConfig({
   },
 
   integrations: [
-    // Only the pages src/lib/indexing.ts names; the rest carry noindex.
+    // Only the released pages that may be indexed (src/lib/released.ts).
     sitemap({ filter: (page) => isIndexed(page) }),
+    releasePages(),
     {
       name: 'stubbase:pending-shots',
       hooks: {
