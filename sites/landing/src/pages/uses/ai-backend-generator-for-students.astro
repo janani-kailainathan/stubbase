@@ -96,6 +96,16 @@ const subhead =
         <div class="hero-rise absolute right-0 bottom-8 w-48 [--d:0.65s]">
           <div class="hero-float [--tilt:5deg] [--dur:8s] [--delay:-4s]"><img src="/student-rest-client-dark.webp" alt="" width="196" height="152" class="h-auto w-full" data-theme-image="dark" /><img src="/student-rest-client-light.webp" alt="" width="196" height="152" class="h-auto w-full" data-theme-image="light" /></div>
         </div>
+        {/* Two collaborators' cursors pointing at the headline from opposite
+            sides — the Co-Pilot at "Generator", you at "Students": the pointer
+            is a 20px box the offsets place, the name chip hangs from its tail
+            (VectorCraft, design/student-cursor-*). */}
+        <div class="hero-rise absolute top-[336px] left-[1002px] [--d:0.8s]">
+          <div class="hero-nudge relative h-5 w-5 [--nx:-7px] [--ny:-7px] [--dur:2.2s]"><img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" /></div>
+        </div>
+        <div class="hero-rise absolute top-[324px] left-[210px] [--d:0.9s]">
+          <div class="hero-nudge relative h-5 w-5 [--nx:7px] [--ny:-7px] [--dur:2.6s]"><img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" /></div>
+        </div>
       </div>
 
       <div class="relative mx-auto max-w-4xl text-center">
@@ -372,6 +382,25 @@ const subhead =
     }
   }
 
+  /* The headline's cursors tap towards the words and back, at their own
+     pace: --nx/--ny is the step towards the text. */
+  .hero-nudge {
+    animation: hero-nudge var(--dur, 2.4s) ease-in-out infinite;
+  }
+  @keyframes hero-nudge {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: var(--nx, 0) var(--ny, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-nudge {
+      animation: none;
+    }
+  }
   /* The canvas: a dot grid that fades out towards the edges. */
   .hero-dots {
     background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
