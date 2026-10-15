@@ -30,10 +30,11 @@ const subhead =
   clients={['React', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Flutter', 'React Native', 'Android', 'SwiftUI', 'Python', 'Postman', 'curl']}
   whyTitle="Why students build on Stubbase"
   whyFirst
+  hideFaq
   faqs={[
     {
       q: 'Is Stubbase free for students?',
-      a: 'Yes. The Free plan has every feature, with no credit card and no trial that runs out: 10,000 requests a month, 5 requests a second with bursts of 20, and 1,000 AI credits when you sign up, valid for 3 months. That covers a class project or a hackathon demo.',
+      a: 'Yes. The Free plan has every feature, with no credit card and no trial that runs out: 10,000 requests a month, 5 requests a second with bursts of 20, and 1,000 AI credits when you sign up, valid for 3 months. That covers a class project or a hackathon demo. Sign up with your university email and you also get the Starter AI pack free: 5,000 more AI credits, valid for 12 months, normally $9.99.',
     },
     {
       q: 'Do I need to install a database or run a server?',
@@ -57,13 +58,12 @@ const subhead =
     },
   ]}
   cta={{
-    title: 'Generate your first API in seconds.',
-    body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free practice APIs. No database to run, no server to deploy.',
+    title: 'Generate APIs in seconds',
+    body: 'Use AI Co-Pilot to generate your backend for your class projects, hackathons and portfolio apps',
     label: 'Generate API',
     href: APP_URL,
     secondary: { label: 'Login', href: `${APP_URL}/login` },
     secondaryFirst: true,
-    note: 'No credit card required',
   }}
 >
   {/*
@@ -234,7 +234,7 @@ const subhead =
   </div>
 
   {/* Home's "Query it like a real backend" and "Every feature on every plan",
-      shared — the first reworded for students, the second as it is. */}
+      shared, both reworded for students. */}
   <Fragment slot="extra">
     <HomeQuery
       title="What APIs can do"
@@ -261,7 +261,36 @@ const subhead =
         },
       }}
     />
-    <HomePlans />
+    <HomePlans
+      title="Student friendly pricing"
+      alignTop
+      hideMore
+      lead="Start free, with every feature and no credit card. Sign up with your university email and the Starter AI pack is free too."
+      included={[]}
+      cards={[
+        {
+          name: 'Free',
+          price: '$0',
+          per: '',
+          rows: [
+            '10,000 requests per month',
+            '5 requests per second',
+            'Bursts of 20',
+            { text: 'Sign up bonus 1,000 AI credits', note: 'Valid for 3 months' },
+          ],
+          featured: false,
+        },
+        {
+          name: 'Starter AI pack',
+          was: '$9.99',
+          price: '',
+          per: '',
+          rows: ['5,000 AI credits', 'Valid for 12 months', 'Free with your university email', 'Works on the Free plan'],
+          featured: true,
+          badge: 'Student offer',
+        },
+      ]}
+    />
   </Fragment>
 </RoleLayout>
 
