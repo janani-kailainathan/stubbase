@@ -269,15 +269,12 @@ const subhead =
         Test it in the browser
       </h3>
       <p class="mb-6 text-sm leading-relaxed text-muted-foreground">
-        The dashboard's Live tab sends real requests to your deployed API and shows what comes
-        back, so you can check a route before your frontend calls it.
+        Test your API using the built-in REST client, or debug it using live logs.
       </p>
-      <div aria-hidden="true" class="rounded-lg border border-border-c bg-background font-mono text-[11px]">
-        <p class="flex items-center justify-between border-b border-border-c px-3 py-2">
-          <span class="text-foreground"><span class="text-subtle">GET</span> /assignments?_page=1</span>
-          <span class="rounded bg-primary-soft px-1.5 py-0.5 text-[10px] font-medium text-primary-soft-ink">200</span>
-        </p>
-        <p class="truncate px-3 py-2"><span class="text-syntax-punct">[{'{'} </span><span class="text-syntax-str">"id"</span><span class="text-syntax-punct">: </span><span class="text-syntax-num">1</span><span class="text-syntax-punct">, </span><span class="text-syntax-str">"title"</span><span class="text-syntax-punct">: </span><span class="text-syntax-fn">"Final project"</span><span class="text-syntax-punct"> {'}'}, …]</span></p>
+      {/* Drawn in VectorCraft (design/student-card-live-*.vectorcraft), one per theme. */}
+      <div aria-hidden="true">
+        <img src="/student-card-live-dark.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="dark" />
+        <img src="/student-card-live-light.webp" alt="" width="320" height="200" loading="lazy" class="h-auto w-full" data-theme-image="light" />
       </div>
     </article>
   </div>
