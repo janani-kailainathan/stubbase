@@ -1,0 +1,6 @@
+# Every page may be crawled, so each one's noindex can be read; which pages
+# are indexed is decided by src/lib/indexing.ts, not here.
+User-agent: *
+Allow: /
+
+Sitemap: https://stubbase.dev/sitemap-index.xml

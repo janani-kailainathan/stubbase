@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import sitemap from '@astrojs/sitemap';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isIndexed } from './src/lib/indexing.ts';
 
 /**
  * A guide is written before its screenshots exist, so every figure ships as
@@ -62,7 +63,8 @@ export default defineConfig({
   },
 
   integrations: [
-    sitemap(),
+    // Only the pages src/lib/indexing.ts names; the rest carry noindex.
+    sitemap({ filter: (page) => isIndexed(page) }),
     {
       name: 'stubbase:pending-shots',
       hooks: {

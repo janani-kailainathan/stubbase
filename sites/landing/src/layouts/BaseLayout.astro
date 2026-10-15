@@ -4,6 +4,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/jetbrains-mono/600.css';
 import '../styles/global.css';
+import { isIndexed } from '../lib/indexing';
 
 interface Props {
   title: string;
@@ -48,6 +49,7 @@ const jsonLdBlocks = [softwareApplicationSchema, ...schema];
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {!isIndexed(Astro.url.pathname) && <meta name="robots" content="noindex" />}
     {/* SVG first for anything modern; the 32px PNG is the fallback for the
         handful of clients that ignore it. apple-touch-icon must stay an opaque
         PNG — iOS renders transparency black and applies its own corner mask. */}

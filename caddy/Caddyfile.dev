@@ -9,6 +9,13 @@ http://stubbase.localhost {
 		reverse_proxy dashboard-api:3001
 	}
 
+	# Mirrors the apex: the bare root opens the students page for now,
+	# temporarily (302). Only the exact path "/" — every other page,
+	# /index.html included, is served as before.
+	handle / {
+		redir /uses/ai-backend-generator-for-students 302
+	}
+
 	handle {
 		root * /srv/landing
 		file_server

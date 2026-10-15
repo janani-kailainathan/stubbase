@@ -11,6 +11,14 @@ stubbase.dev {
 		reverse_proxy 127.0.0.1:3001
 	}
 
+	# The bare root opens the students page for now. Temporary (302), so "/"
+	# keeps its place in search and the redirect can come out without
+	# browsers having cached it. Only the exact path "/" — every other page,
+	# /index.html included, is served as before.
+	handle / {
+		redir /uses/ai-backend-generator-for-students 302
+	}
+
 	handle {
 		root * /var/www/stubbase-landing/dist
 		file_server
