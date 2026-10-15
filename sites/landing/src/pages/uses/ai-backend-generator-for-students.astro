@@ -100,11 +100,11 @@ const subhead =
             sides — the Co-Pilot at "Generator", you at "Students": the pointer
             is a 20px box the offsets place, the name chip hangs from its tail
             (VectorCraft, design/student-cursor-*). */}
-        <div class="hero-rise absolute top-[336px] left-[1002px] z-30 [--d:0.8s]" data-pushable>
-          <div class="hero-nudge relative h-5 w-5 [--nx:-7px] [--ny:-7px] [--dur:2.2s]"><img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" /></div>
+        <div class="hero-rise absolute top-[348px] left-[1016px] z-30 [--d:0.8s]" data-pushable>
+          <div class="hero-nudge relative h-5 w-5 [--nx:-7px] [--ny:-7px] [--dur:4.2s]"><img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" /></div>
         </div>
-        <div class="hero-rise absolute top-[324px] left-[210px] z-30 [--d:0.9s]" data-pushable>
-          <div class="hero-nudge relative h-5 w-5 [--nx:7px] [--ny:-7px] [--dur:2.6s]"><img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" /></div>
+        <div class="hero-rise absolute top-[336px] left-[196px] z-30 [--d:0.9s]" data-pushable>
+          <div class="hero-nudge relative h-5 w-5 [--nx:7px] [--ny:-7px] [--dur:4.8s]"><img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" /><img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" /></div>
         </div>
       </div>
 
@@ -248,7 +248,8 @@ const subhead =
     the mouse's direction and a small share of its speed, capped, so a
     collision nudges a cursor rather than launching it. An off-centre hit spins it, and it rights
     itself as it slows. It glides with drag, bounces off the hero's edges
-    losing some energy each time, and the two can knock into each other.
+    losing some energy each time, the two can knock into each other, and a
+    second after its last hit a cursor eases back to its spot.
     Decoration only: with JS off, on a screen too narrow to show them, or with
     reduced motion, they stay where they are. The motion is a `transform`,
     never `translate`, which the entrance animation owns on the same element,
@@ -267,9 +268,11 @@ const subhead =
     const MAX_SPEED = 3; // px per frame — a collision is a nudge, never a launch
     const TORQUE = 0.0025; // spin per unit of off-centre hit
     const PAD = 6; // gap kept from the hero's edges
+    const HOME = 0.0006; // spring pulling a resting cursor back to its spot
+    const SETTLE_MS = 1000; // how long after its last hit a cursor heads home
 
-    type Body = { el: HTMLElement; x: number; y: number; vx: number; vy: number; a: number; va: number; inside: boolean };
-    const bodies: Body[] = items.map((el) => ({ el, x: 0, y: 0, vx: 0, vy: 0, a: 0, va: 0, inside: false }));
+    type Body = { el: HTMLElement; x: number; y: number; vx: number; vy: number; a: number; va: number; inside: boolean; hit: number };
+    const bodies: Body[] = items.map((el) => ({ el, x: 0, y: 0, vx: 0, vy: 0, a: 0, va: 0, inside: false, hit: 0 }));
     let frame = 0;
     let last = 0;
     let mouse = { x: 0, y: 0, t: 0, vx: 0, vy: 0 };
@@ -308,6 +311,13 @@ const subhead =
       let moving = false;
 
       for (const b of bodies) {
+        // Left alone for a moment, a cursor eases back to its spot by the
+        // headline: a soft spring, with the drag below keeping it from
+        // overshooting.
+        if (!b.inside && now - b.hit > SETTLE_MS) {
+          b.vx -= b.x * HOME * k;
+          b.vy -= b.y * HOME * k;
+        }
         b.x += b.vx * k;
         b.y += b.vy * k;
         b.a += b.va * k;
@@ -322,7 +332,7 @@ const subhead =
         if (e.top < bounds.top + PAD) { b.y += bounds.top + PAD - e.top; b.vy = Math.abs(b.vy) * BOUNCE; }
         if (e.bottom > bounds.bottom - PAD) { b.y -= e.bottom - (bounds.bottom - PAD); b.vy = -Math.abs(b.vy) * BOUNCE; }
         apply(b);
-        if (Math.hypot(b.vx, b.vy) > 0.03 || Math.abs(b.va) > 0.03 || Math.abs(b.a) > 0.2) moving = true;
+        if (Math.hypot(b.vx, b.vy) > 0.03 || Math.abs(b.va) > 0.03 || Math.abs(b.a) > 0.2 || Math.hypot(b.x, b.y) > 0.5) moving = true;
       }
 
       // The two cursors knock into each other, as circles of equal mass.
@@ -378,6 +388,7 @@ const subhead =
           const speed = Math.hypot(mouse.vx, mouse.vy);
           if (speed > 0.2) {
             pivot(b);
+            b.hit = performance.now();
             const share = b.inside ? HIT * 0.35 : HIT; // the first contact hits hardest
             b.vx += mouse.vx * share;
             b.vy += mouse.vy * share;
