@@ -8,7 +8,7 @@
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
   differ by request limits alone, so never describe a feature here as paid.
 */
-import { FileJson, Sparkles, ArrowRight, MousePointer2, Bot, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
+import { FileJson, Sparkles, ArrowRight, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, Rocket, Check } from 'lucide-astro';
 import RoleLayout from '../../layouts/RoleLayout.astro';
 import { APP_URL, CORE_URL } from '../../lib/urls';
 
@@ -147,9 +147,12 @@ const subhead =
     accent word, on a dot grid with pieces of a student project pinned around
     it and the team's cursors pointing at them. The pieces are decoration
     (aria-hidden, xl only); everything they say is also in the page's text.
-    The H1 wording is the `h1` prop's — an SEO target. No script: the entrance
-    and the cursors' drift are showcase.css's hero-rise and hero-tag, and both
-    stop under prefers-reduced-motion.
+    The H1 wording is the `h1` prop's — an SEO target. Each cursor is one image
+    per theme, pointer and name chip together, drawn in VectorCraft (sources in
+    design/): its box is the pointer's 20px, which the offsets place, and the
+    image overhangs it towards the chip. No script: the entrance and the
+    cursors' drift are showcase.css's hero-rise and hero-tag, and both stop
+    under prefers-reduced-motion.
   */}
   <section slot="hero" class="relative overflow-hidden">
     <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
@@ -177,9 +180,9 @@ const subhead =
               A REST API, with<br />the course linked in
             </div>
           </div>
-          <div class="hero-tag absolute top-3 -right-6 [--c:var(--syntax-str)] [--drift:6px]">
-            <MousePointer2 class="h-5 w-5 fill-current text-(--c)" />
-            <span class="absolute top-4 left-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">Y</span>You</span>
+          <div class="hero-tag absolute h-5 w-5 top-3 -right-6 [--drift:6px]">
+            <img src="/student-cursor-you-dark.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="dark" />
+            <img src="/student-cursor-you-light.webp" alt="" width="78" height="44" class="absolute -top-0.5 -left-0.5 max-w-none" data-theme-image="light" />
           </div>
         </div>
 
@@ -195,9 +198,9 @@ const subhead =
           <div class="rounded-lg border border-border-c bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
             Still there<br />after a refresh
           </div>
-          <div class="hero-tag absolute top-6 -left-6 [--c:var(--syntax-num)] [--drift:-5px]">
-            <MousePointer2 class="h-5 w-5 -scale-x-100 fill-current text-(--c)" />
-            <span class="absolute top-4 right-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background">L</span>Lab partner</span>
+          <div class="hero-tag absolute h-5 w-5 top-6 -left-6 [--drift:-5px]">
+            <img src="/student-cursor-lab-partner-dark.webp" alt="" width="124" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" />
+            <img src="/student-cursor-lab-partner-light.webp" alt="" width="124" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" />
           </div>
         </div>
 
@@ -224,9 +227,9 @@ const subhead =
             ))}
           </div>
           <p class="mt-1.5 text-right font-mono text-[10px] text-subtle">3 tables · staged until Deploy</p>
-          <div class="hero-tag absolute top-3 -left-6 [--c:var(--syntax-bool)] [--drift:4px]">
-            <MousePointer2 class="h-5 w-5 -scale-x-100 fill-current text-(--c)" />
-            <span class="absolute top-4 right-3.5 inline-flex items-center gap-1.5 rounded-full border border-border-c bg-card py-0.5 pr-2.5 pl-0.5 text-xs font-medium whitespace-nowrap text-(--c)"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-(--c) text-[10px] font-bold text-background"><Bot class="h-3 w-3" /></span>AI Co-Pilot</span>
+          <div class="hero-tag absolute h-5 w-5 top-3 -left-6 [--drift:4px]">
+            <img src="/student-cursor-ai-co-pilot-dark.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="dark" />
+            <img src="/student-cursor-ai-co-pilot-light.webp" alt="" width="120" height="44" class="absolute -top-0.5 -right-0.5 max-w-none" data-theme-image="light" />
           </div>
         </div>
       </div>
