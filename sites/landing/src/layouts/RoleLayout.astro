@@ -13,7 +13,9 @@
              wording as `h1`, which the JSON-LD still reads.
     default  the four reasons, under the "why" heading — built from the
              global .feature-canvas / .feature-label / .explore-btn classes
-    extra    an optional band after the starters (the students page's free APIs)
+    extra    an optional band after the starters (the students page's query and plans sections)
+  The problems, starters, further reading and other solutions are optional:
+  a page that passes none of them gets none of those sections.
   The styles live in styles/showcase.css, shared with FeatureLayout: they are
   global because slotted markup belongs to the page, not to the layout, and
   scoped styles would never reach it. Only pages on those two layouts load it.
@@ -49,19 +51,19 @@ interface Props {
   tags?: { label: string; initial?: string; bot?: boolean; tint: string }[];
   clientsLabel: string;
   clients: string[];
-  challengesTitle: string;
-  challenges: { art: DoodleName; title: string; body: string }[];
+  challengesTitle?: string;
+  challenges?: { art: DoodleName; title: string; body: string }[];
   whyTitle: string;
   /** Put the reasons straight after the client strip, ahead of the problems. */
   whyFirst?: boolean;
-  starters: {
+  starters?: {
     title: string;
     intro: string;
     items: { title: string; body: string; head: string; accent?: string; rows: [string, string][] }[];
   };
-  reading: { title: string; items: { tag: string; title: string; href: string; tint: string }[] };
+  reading?: { title: string; items: { tag: string; title: string; href: string; tint: string }[] };
   /** Hrefs from the Solutions menu in nav.ts (roles and use cases) — the label comes from there. */
-  solutions: string[];
+  solutions?: string[];
   faqs: { q: string; a: string }[];
   cta: FooterCta;
 }
@@ -103,7 +105,7 @@ const ROLE_ART: Record<string, { art: DoodleName; tint: string }> = {
 };
 const solutionLinks = SOLUTION_GROUPS.flatMap((group) => group.links);
 // Read from nav.ts so a renamed page cannot leave a dead card here.
-const roleCards = solutions
+const roleCards = (solutions ?? [])
   .map((href) => solutionLinks.find((link) => link.href === href))
   .filter((link) => link !== undefined)
   .map((link) => ({ ...link, ...(ROLE_ART[link.href] ?? { art: 'browser' as const, tint: 'var(--syntax-fn)' }) }));
@@ -258,6 +260,7 @@ if (crumb) {
     </section>
   )}
 
+  {challenges && challenges.length > 0 && (
   <section>
     <div class="mx-auto max-w-6xl px-6 py-24">
       <h2 class="reveal mb-16 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{challengesTitle}</h2>
@@ -274,6 +277,7 @@ if (crumb) {
       </ul>
     </div>
   </section>
+  )}
 
   {!whyFirst && (
     <section>
@@ -286,6 +290,7 @@ if (crumb) {
 
   {/* Starters, in xmind's templates slot. Each is a card on a new project's
       empty state (STARTERS in sites/dashboard/src/lib/starters.ts). */}
+  {starters && (
   <section>
     <div class="mx-auto max-w-6xl px-6 py-24">
       <h2 class="reveal mb-4 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{starters.title}</h2>
@@ -323,9 +328,11 @@ if (crumb) {
       </ul>
     </div>
   </section>
+  )}
 
   <slot name="extra" />
 
+  {reading && (
   <section>
     <div class="mx-auto max-w-6xl px-6 py-24">
       <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{reading.title}</h2>
@@ -346,7 +353,9 @@ if (crumb) {
       </ul>
     </div>
   </section>
+  )}
 
+  {roleCards.length > 0 && (
   <section>
     <div class="mx-auto max-w-6xl px-6 py-24">
       <h2 class="reveal mb-14 text-center text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Explore more solutions</h2>
@@ -367,6 +376,7 @@ if (crumb) {
       </ul>
     </div>
   </section>
+  )}
 
   <section>
     <div class="mx-auto max-w-3xl px-6 py-24">

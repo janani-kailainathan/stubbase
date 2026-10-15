@@ -3,39 +3,16 @@
   The students page, on RoleLayout (after xmind.com/roles/student) with Home's
   hero in place of the layout's: a centred headline with one handwritten word,
   on a dot grid. This file
-  holds the words, that hero, the four reasons and the free practice APIs (in
-  Home's Free Resources shape); the layout holds the rest. Plan figures in the FAQ are PLANS and
+  holds the words, that hero, the five reasons, and Home's query and plans
+  sections; the layout holds the rest. Plan figures in the FAQ are PLANS and
   GIFT_CREDITS/GIFT_VALID_MONTHS in apps/dashboard-api/server-app.ts — plans
   differ by request limits alone, so never describe a feature here as paid.
 */
-import { FileJson, Sparkles, ArrowUpRight, KeyRound, Play, Newspaper, MessagesSquare, Disc3, Image, ListChecks, Users, LayoutTemplate } from 'lucide-astro';
+import { FileJson, Sparkles, ArrowUpRight, KeyRound, Play, LayoutTemplate } from 'lucide-astro';
 import RoleLayout from '../../layouts/RoleLayout.astro';
-import { APP_URL, CORE_URL } from '../../lib/urls';
-
-const publicResources = [
-  { path: '/posts', count: 100, noun: 'posts', Icon: Newspaper, tint: 'var(--syntax-fn)' },
-  { path: '/comments', count: 500, noun: 'comments', Icon: MessagesSquare, tint: 'var(--syntax-bool)' },
-  { path: '/albums', count: 100, noun: 'albums', Icon: Disc3, tint: 'var(--syntax-num)' },
-  { path: '/photos', count: 5000, noun: 'photos', Icon: Image, tint: 'var(--syntax-fn)' },
-  { path: '/todos', count: 200, noun: 'todos', Icon: ListChecks, tint: 'var(--primary)' },
-  { path: '/users', count: 10, noun: 'users', Icon: Users, tint: 'var(--syntax-num)' },
-];
-
-// Real records from the `public` demo project, verbatim — the same copy as
-// index.astro's. Its seed (scripts/seed-public-tenant.ts) is deterministic, so
-// these are exactly what the links return; reseeding means updating both.
-const sampleRecords: { path: string; record: Record<string, string | number | boolean> }[] = [
-  { path: '/users/1', record: { id: 1, name: 'Ivy Rossi', username: 'ivyrossi', company: 'Rossi Collective', active: true } },
-  { path: '/todos/1', record: { id: 1, userId: 1, title: 'dashboard handoff payload mock sandbox', completed: true } },
-  { path: '/comments/1', record: { id: 1, postId: 1, email: 'omarweber@example.com', body: 'Endpoint cursor record api schema payload.' } },
-  { path: '/albums/1', record: { id: 1, userId: 1, title: 'endpoint api latency mock' } },
-  { path: '/users/2', record: { id: 2, name: 'Yuki Okafor', username: 'yukiokafor', company: 'Okafor Works', active: false } },
-  { path: '/photos/1', record: { id: 1, albumId: 1, title: 'draft latency response endpoint', thumbnailUrl: 'https://picsum.photos/seed/stubbase-1/150/150' } },
-  { path: '/todos/2', record: { id: 2, userId: 1, title: 'payload billing billing handoff billing draft', completed: false } },
-  { path: '/posts/1', record: { id: 1, userId: 1, title: 'latency fixture prototype fixture cursor shipping' } },
-];
-// Two rows drifting opposite ways, each repeated four times so the loop is seamless.
-const recordRows = [sampleRecords.slice(0, 4), sampleRecords.slice(4)];
+import HomeQuery from '../../components/home/HomeQuery.astro';
+import HomePlans from '../../components/home/HomePlans.astro';
+import { APP_URL } from '../../lib/urls';
 
 const subhead =
   'Use AI Co-Pilot to generate your backend for your class projects, hackathons and portfolio apps. No database to install, no server to deploy.';
@@ -48,66 +25,12 @@ const subhead =
   h1="AI Backend Generator for Students"
   subhead={subhead}
   primary={{ label: 'Generate API (Free)', href: APP_URL }}
-  secondary={{ label: 'Use Public APIs', href: '#free-resources' }}
+  secondary={{ label: 'Use Public APIs', href: '/free-api' }}
   note="No credit card required"
   clientsLabel="Works with whatever your course uses"
   clients={['React', 'Next.js', 'Vue', 'Angular', 'Svelte', 'Flutter', 'React Native', 'Android', 'SwiftUI', 'Python', 'Postman', 'curl']}
-  challengesTitle="What gets in the way of a student project?"
-  challenges={[
-    {
-      art: 'database',
-      title: 'A database to set up before anything else',
-      body: 'Most class projects stall before the interesting part: installing a database, writing a server, and wiring the two together. By the time it runs, the week you had for the frontend is gone.',
-    },
-    {
-      art: 'frontend',
-      title: 'A frontend with nothing real to call',
-      body: 'Hard-coded arrays get a screen drawn, but they never save, never page and never fail the way a real API does. The demo works until someone refreshes it.',
-    },
-    {
-      art: 'deadline',
-      title: 'Login and hosting eat the deadline',
-      body: 'Sign-up, passwords, tokens and somewhere to host it all are each a project of their own. On a hackathon clock, they are usually the part that does not ship.',
-    },
-  ]}
   whyTitle="Why students build on Stubbase"
   whyFirst
-  starters={{
-    title: 'Starter projects to learn from',
-    intro: 'Every new project offers these on its first screen, with real sample data and a query that shows what each one is for.',
-    items: [
-      {
-        title: 'Issue tracker',
-        body: 'One resource, ten tasks. The place to learn filtering, sorting and pagination on a list.',
-        head: 'GET /tasks',
-        accent: '?status=in_progress',
-        rows: [['Wire up the log stream', 'in_progress'], ['Add pagination', 'in_progress'], ['Chase the reconnect bug', 'in_progress']],
-      },
-      {
-        title: 'Blog',
-        body: 'Posts belong to authors and comments to posts, so one query brings back a post with its author nested inside.',
-        head: 'GET /posts',
-        accent: '?_expand=author',
-        rows: [['Why we dropped the ORM', 'Sam Reyes'], ['Argon2 in practice', 'Mira Haddad'], ['Testing without mocks', 'Sam Reyes']],
-      },
-      {
-        title: 'Storefront',
-        body: 'Products, customers and orders that point at both, with anyone able to read and only a signed-in user able to write.',
-        head: 'GET /orders',
-        accent: '?status=shipped',
-        rows: [['#1 · 1 × product 3', 'shipped'], ['#2 · 2 × product 1', 'shipped'], ['#5 · 1 × product 4', 'shipped']],
-      },
-    ],
-  }}
-  reading={{
-    title: 'More resources for learning APIs',
-    items: [
-      { tag: 'Reference', title: 'Call a live API in one line, then make it slow or fail', href: '/quick-start', tint: 'var(--syntax-bool)' },
-      { tag: 'Guide', title: 'How to get Google and GitHub OAuth keys', href: '/guides/google-github-oauth-keys', tint: 'var(--syntax-num)' },
-      { tag: 'Free API', title: 'Every field, filter and query of the practice APIs', href: '/free-api', tint: 'var(--syntax-fn)' },
-    ],
-  }}
-  solutions={['/roles/frontend-developer', '/roles/indie-hacker', '/roles/ai-engineer']}
   faqs={[
     {
       q: 'Is Stubbase free for students?',
@@ -139,14 +62,14 @@ const subhead =
     body: 'Start from a JSON file, a sentence to the AI Co-Pilot, or one of the free practice APIs. No database to run, no server to deploy.',
     label: 'Generate API (Free)',
     href: APP_URL,
-    secondary: { label: 'Use Public APIs', href: '#free-resources' },
+    secondary: { label: 'Use Public APIs', href: '/free-api' },
     note: 'No credit card required',
   }}
 >
   {/*
-    Hero, after Home's, kept bare: a centred two-line headline with one
-    handwritten accent word on a fading dot grid, the buttons, and the
-    dashboard below — no pieces pinned around it. The H1 wording is the `h1`
+    Hero, after Home's: a centred two-line headline with one handwritten
+    accent word on a fading dot grid, the buttons, the dashboard below, and
+    three drawn pieces floating around the headline on wide screens. The H1 wording is the `h1`
     prop's — an SEO target. No script: the entrance is showcase.css's
     hero-rise, which stops under prefers-reduced-motion.
   */}
@@ -154,6 +77,27 @@ const subhead =
     <div class="hero-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
     <div class="relative mx-auto max-w-7xl px-6 pt-24 pb-20 lg:pt-36 lg:pb-28 xl:pt-44 xl:pb-32">
+      {/* Floating pieces of the Co-Pilot scene and the Test card, drawn in
+          VectorCraft (design/student-copilot-chat-*, design/student-json-icons-*,
+          design/student-card-starter-*, design/student-rest-client-*).
+          Decoration only, and only from xl, where the headline leaves room;
+          each rises in (showcase.css's hero-rise), then floats at its own tilt
+          and pace (.hero-float, below). */}
+      <div aria-hidden="true" class="pointer-events-none absolute inset-0 mx-6 hidden xl:block">
+        <div class="hero-rise absolute top-24 left-0 w-72 [--d:0.35s]">
+          <div class="hero-float [--tilt:-5deg] [--dur:7s] [--delay:0s]"><img src="/student-copilot-chat-dark.webp" alt="" width="358" height="186" class="h-auto w-full" data-theme-image="dark" /><img src="/student-copilot-chat-light.webp" alt="" width="358" height="186" class="h-auto w-full" data-theme-image="light" /></div>
+        </div>
+        <div class="hero-rise absolute top-24 right-0 w-60 [--d:0.5s]">
+          <div class="hero-float [--tilt:13deg] [--dur:9s] [--delay:-6s]"><img src="/student-json-icons-dark.webp" alt="" width="256" height="116" class="h-auto w-full" data-theme-image="dark" /><img src="/student-json-icons-light.webp" alt="" width="256" height="116" class="h-auto w-full" data-theme-image="light" /></div>
+        </div>
+        <div class="hero-rise absolute bottom-6 left-6 w-56 [--d:0.6s]">
+          <div class="hero-float [--tilt:-18deg] [--dur:8.5s] [--delay:-3s]"><img src="/student-card-starter-dark.webp" alt="" width="320" height="200" class="h-auto w-full" data-theme-image="dark" /><img src="/student-card-starter-light.webp" alt="" width="320" height="200" class="h-auto w-full" data-theme-image="light" /></div>
+        </div>
+        <div class="hero-rise absolute right-0 bottom-8 w-48 [--d:0.65s]">
+          <div class="hero-float [--tilt:5deg] [--dur:8s] [--delay:-4s]"><img src="/student-rest-client-dark.webp" alt="" width="196" height="152" class="h-auto w-full" data-theme-image="dark" /><img src="/student-rest-client-light.webp" alt="" width="196" height="152" class="h-auto w-full" data-theme-image="light" /></div>
+        </div>
+      </div>
+
       <div class="relative mx-auto max-w-4xl text-center">
         <h1 class="hero-rise text-4xl leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-5xl lg:text-6xl 2xl:text-7xl [--d:0.05s]">
           AI Backend{' '}<br class="hidden sm:inline" />
@@ -166,7 +110,7 @@ const subhead =
             <span class="hero-mark h-5 w-5 bg-current" aria-hidden="true"></span>
             Generate API (Free)
           </a>
-          <a href="#free-resources" class="flex items-center rounded-xl bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
+          <a href="/free-api" class="flex items-center rounded-xl bg-card px-5 py-2.5 text-base font-semibold text-foreground transition-colors hover:bg-muted">
             Use Public APIs
           </a>
         </div>
@@ -279,79 +223,12 @@ const subhead =
     </article>
   </div>
 
-  {/*
-    The public demo project's six resources, in Home's Free Resources shape: a
-    row of big numbers, each opening its live endpoint, then a wall of real
-    records drifting past, labelled with the request that returns them.
-    The hero's and the footer's "Use Public APIs" land here — keep the id.
-  */}
-  <section slot="extra" id="free-resources" class="scroll-mt-24">
-    <div class="mx-auto max-w-6xl px-6 pt-24 pb-12">
-      <div class="reveal mx-auto mb-10 max-w-2xl text-center">
-        <h2 class="mb-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free APIs to practise with</h2>
-        <p class="font-medium text-muted-foreground">
-          Six ready-made endpoints full of sample data, for practising fetch, lists and detail
-          pages. Filter, search, sort, page and expand them with query parameters. No account, no
-          API key.
-        </p>
-        <p class="mt-6 inline-flex max-w-full items-center gap-3 rounded-2xl border border-border-c bg-card py-2 pr-4 pl-2">
-          <span class="shrink-0 rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold tracking-wide whitespace-nowrap text-subtle uppercase">Base URL</span>
-          <code class="truncate font-mono text-sm text-emphasis">{CORE_URL}/public</code>
-        </p>
-      </div>
-
-      <ul class="free-stats reveal grid grid-cols-2 gap-y-10 lg:grid-cols-3 lg:gap-y-14">
-        {
-          publicResources.map(({ path, count, noun, Icon, tint }) => (
-            <li class="free-stat relative flex justify-center">
-              <a href={`${CORE_URL}/public${path}`} class="group flex flex-col items-center text-center" style={`--tint: ${tint}`}>
-                <span class="flex items-center gap-3">
-                  <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--tint)/15 text-(--tint) sm:h-12 sm:w-12">
-                    <Icon class="h-5 w-5 sm:h-6 sm:w-6" />
-                  </span>
-                  <span class="text-4xl font-bold tracking-tight text-foreground tabular-nums sm:text-5xl">
-                    {count.toLocaleString('en-US')}
-                  </span>
-                </span>
-                <span class="mt-2 font-mono text-sm text-primary-ink underline-offset-4 group-hover:text-primary-ink-hover group-hover:underline">
-                  {path}
-                </span>
-                <span class="sr-only">{count} {noun}</span>
-              </a>
-            </li>
-          ))
-        }
-      </ul>
-    </div>
-
-    <div role="group" aria-label="Sample records from the practice APIs" class="free-marquee reveal space-y-4 pb-10">
-      {
-        recordRows.map((row, r) => (
-          <div class="free-track flex w-max gap-4" data-direction={r === 0 ? 'left' : 'right'}>
-            {[...row, ...row, ...row, ...row].map(({ path, record }, i) => (
-              <article aria-hidden={i >= row.length ? 'true' : undefined} class="w-72 shrink-0 rounded-2xl border border-border-c bg-card p-4 sm:w-80">
-                <p class="mb-3 flex items-center justify-between border-b border-border-c pb-3 font-mono text-xs">
-                  <span><span class="text-subtle">GET</span> <span class="text-foreground">/public{path}</span></span>
-                  <span class="font-semibold text-primary-ink">200</span>
-                </p>
-                <pre class="font-mono text-[11px] leading-5 text-code-fg"><span class="text-syntax-punct">{'{'}</span>{Object.entries(record).map(([key, value]) => (
-  <span class="block truncate pl-3"><span class="text-syntax-str">"{key}"</span><span class="text-syntax-punct">: </span>{typeof value === 'string' ? <span class="text-syntax-fn">"{value}"</span> : typeof value === 'boolean' ? <span class="text-syntax-bool">{String(value)}</span> : <span class="text-syntax-num">{value}</span>}</span>
-))}<span class="text-syntax-punct">{'}'}</span></pre>
-              </article>
-            ))}
-          </div>
-        ))
-      }
-    </div>
-
-    <p class="reveal mx-auto max-w-2xl px-6 pb-24 text-center text-sm text-muted-foreground">
-      These are read-only, so everyone sees the same data.{' '}
-      <a href={APP_URL} class="font-semibold text-primary-ink underline underline-offset-4 hover:text-primary-ink-hover">
-        Create a free project
-      </a>{' '}
-      for your own full CRUD API: GET, POST, PUT and DELETE on every resource.
-    </p>
-  </section>
+  {/* Home's "Query it like a real backend" and "Every feature on every plan",
+      shared as they are. */}
+  <Fragment slot="extra">
+    <HomeQuery />
+    <HomePlans />
+  </Fragment>
 </RoleLayout>
 
 <script>
@@ -467,11 +344,34 @@ const subhead =
 </script>
 
 {/*
-  Home's hero canvas, capability cards and Free Resources, copied from index.astro's global block
+  Home's hero canvas and capability cards, copied from index.astro's global block
   (as 404.astro copies the canvas): the rest — entrance, drift, reveal — is
   showcase.css's. Scoped, since every element they style is this page's own.
 */}
 <style>
+  /* The hero's floating pieces: each held at its own tilt, bobbing and
+     swaying around it at its own pace, so no two move together. */
+  .hero-float {
+    rotate: var(--tilt, 0deg);
+    animation: hero-float var(--dur, 7s) ease-in-out var(--delay, 0s) infinite;
+  }
+  @keyframes hero-float {
+    0%,
+    100% {
+      translate: 0 0;
+      rotate: var(--tilt, 0deg);
+    }
+    50% {
+      translate: 0 -12px;
+      rotate: calc(var(--tilt, 0deg) + 3deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-float {
+      animation: none;
+    }
+  }
+
   /* The canvas: a dot grid that fades out towards the edges. */
   .hero-dots {
     background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
@@ -521,54 +421,26 @@ const subhead =
     outline-offset: 2px;
   }
 
-  /* Soft vertical rules between the numbers, drawn only where a column has a neighbour. */
-  .free-stat + .free-stat::before {
-    content: '';
-    position: absolute;
-    top: 10%;
-    bottom: 10%;
-    left: 0;
-    width: 1px;
-    background: linear-gradient(transparent, var(--border-strong), transparent);
-  }
-  .free-stats .free-stat:nth-child(2n + 1)::before {
+</style>
+
+{/*
+  HomeQuery's tab switching, copied from index.astro's global block: the open
+  item picks the preview, and with every item closed the first stays up.
+*/}
+<style is:global>
+  .q-preview {
     display: none;
   }
-  @media (min-width: 1024px) {
-    .free-stats .free-stat:nth-child(2n + 1)::before {
-      display: block;
-    }
-    .free-stats .free-stat:nth-child(3n + 1)::before {
-      display: none;
-    }
+  .query:has(details[data-q='filter'][open]) .q-preview[data-q='filter'],
+  .query:has(details[data-q='sort'][open]) .q-preview[data-q='sort'],
+  .query:has(details[data-q='page'][open]) .q-preview[data-q='page'],
+  .query:has(details[data-q='expand'][open]) .q-preview[data-q='expand'],
+  .query:has(details[data-q='time'][open]) .q-preview[data-q='time'],
+  .query:has(details[data-q='openapi'][open]) .q-preview[data-q='openapi'],
+  .query:not(:has(details[open])) .q-preview[data-q='filter'] {
+    display: flex;
   }
-
-  /* The record wall drifts, row against row, fading out at the edges. */
-  .free-marquee {
-    overflow: hidden;
-    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
-  }
-  .free-track {
-    animation: free-drift 60s linear infinite;
-  }
-  .free-track[data-direction='right'] {
-    animation-direction: reverse;
-  }
-  .free-marquee:hover .free-track {
-    animation-play-state: paused;
-  }
-  @keyframes free-drift {
-    to {
-      transform: translateX(calc(-50% - 0.5rem));
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .free-track {
-      animation: none;
-    }
-    .free-marquee {
-      overflow-x: auto;
-    }
+  .q-item[open] {
+    border-color: var(--border-strong);
   }
 </style>
